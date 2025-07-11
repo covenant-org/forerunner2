@@ -25,19 +25,3 @@ incluir independecias (capnp, zmq, mavsdk) static?
         - theta
     controller - comunicacion mavlink
 - hooking
-
-## Setup
-
-Clone repository:
-
-```
-git clone --recurse-submodules -j8 git@github.com:covenant-org/forerunner2.git
-```
-
-Compile third party dependencies:
-
-```
-cd vendor
-cmake -Bbuild && cd build && cmake --build . && sudo cmake --install .
-```
-

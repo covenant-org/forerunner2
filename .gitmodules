@@ -1,0 +1,6 @@
+[submodule "vendor/capnproto"]
+	path = vendor/capnproto
+	url = https://github.com/capnproto/capnproto
+[submodule "vendor/cppzmq"]
+	path = vendor/cppzmq
+	url = https://github.com/zeromq/cppzmq.git
