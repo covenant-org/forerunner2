@@ -36,6 +36,10 @@ git clone --recurse-submodules -j8 git@github.com:covenant-org/forerunner2.git
 
 Compile third party dependencies:
 
+!!!
+CMAKE version has to be 3.22 in order to successfully run cmake for vendor
+!!!
+
 ```
 cd vendor
 cmake -Bbuild && cd build && cmake --build . && sudo cmake --install .
