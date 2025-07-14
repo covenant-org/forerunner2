@@ -4,7 +4,6 @@
 #include <map>
 #include <optional>
 #include <string>
-#include <time.h>
 #include <vector>
 #include <zmq.hpp>
 #include <zmq_addon.hpp>
@@ -15,14 +14,14 @@ struct Endpoint {
   uint16_t port;
 };
 
-struct EndpointMetadata {
-  Endpoint endpoint;
-  time_t created_at;
-  std::uint8_t ttl;
-};
-
 struct RegistryConfiguration {
   int16_t port;
+  int8_t threads;
+};
+
+struct RouterEvent {
+  zmq::message_t identity;
+  zmq::message_t data;
 };
 
 class Registry {
@@ -37,7 +36,8 @@ class Registry {
   std::optional<Endpoint> check_topic(const std::string topic);
   void persist_topics();
 
-  void handle_request();
+  void handle_request(RouterEvent);
+  std::optional<RouterEvent> wait_for_message(zmq::socket_t& socket);
 
  private:
   RegistryConfiguration config;
