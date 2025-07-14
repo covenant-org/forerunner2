@@ -3,14 +3,12 @@ project(core)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_definitions("-Wall -Wextra -Werror")
 
-add_library(core STATIC
-	src/vertex.cpp
-	src/subscriber.cpp
-	src/publisher.cpp
-	src/action.cpp
-)
+find_package(cppzmq REQUIRED)
+find_package(capnp_schemas REQUIRED)
 
-target_link_libraries()
+add_executable(testing testing.cpp)
+target_link_libraries(testing PRIVATE cppzmq capnp capnp_schemas kj)

@@ -41,3 +41,9 @@ cd vendor
 cmake -Bbuild && cd build && cmake --build . && sudo cmake --install .
 ```
 
+Compile messages:
+
+```
+cd messages
+cmake -Bbuild && cd build && cmake --build . && sudo cmake --install .
+```
