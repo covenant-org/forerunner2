@@ -29,6 +29,8 @@ void TestingVertex::run() {
     auto msg = builder.initRoot<Telemetry>();
     msg.initBattery().setPercentage(100);
     this->_telemetry_publisher->publish(builder);
+
+    sleep(1);
   }
 }
 

@@ -1,9 +1,8 @@
-#include <iostream>
 #include <capnp/message.h>
 #include <capnp/serialize-packed.h>
+#include <iostream>
 #include <kj/io.h>
 #include <string>
-#include <thread>
 #include <zmq.hpp>
 #include <zmq_addon.hpp>
 
@@ -28,6 +27,7 @@ class Publisher {
   Publisher(const std::string& topic, uint32_t port)
       : _topic(std::move(topic)),
         _port(port),
+        _context(1),
         _socket(_context, zmq::socket_type::pub) {}
 
   void setup(const std::string& uri) {
@@ -46,10 +46,8 @@ class Publisher {
     ::capnp::writePackedMessage(buffer, builder);
     auto serialized = buffer.getArray();
 
-    // TODO: check if we con avoid the copy
     zmq::message_t zmq_message(serialized.size());
     memcpy(zmq_message.data(), serialized.begin(), serialized.size());
-    std::cout << "sent message" << std::endl;
     this->_socket.send(zmq_message, zmq::send_flags::none);
 
     return 0;
