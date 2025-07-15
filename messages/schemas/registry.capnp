@@ -3,31 +3,29 @@
 enum RequestType {
   addNode @0;
   queryNode @1;
+  addHost @2;
 }
 
 struct RegistryRequest {
   type @0 :RequestType;
+  path @1 :Text;
   union {
-    addNode :group {
-      path @1 :Text;
-      port @2 :UInt32;
-    }
-
-    queryNode :group {
-      path @3 :Text;
+    addNode @2 :Void;
+    queryNode @3 :Void;
+    addHost :group{
+      address @4 :Text;
+      port    @5 :UInt32;
     }
   }
 }
 
 struct RegistryResponse {
   code @0 :UInt32;
-  errorMessage @1 :Text;
   union {
-    queryNode :group {
-      port @2 :UInt32;
-    }
-    addNode :group {
-      port @3 :UInt32;
+    errorMessage @1 :Text;
+    host :group{
+        port    @2 :UInt32;
+        address @3 :Text;
     }
   }
 } 

@@ -1,22 +1,27 @@
 #ifndef REGISTRY_HPP
 #define REGISTRY_HPP
 
+#include <capnp/message.h>
+#include <cstdint>
 #include <map>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <zmq.hpp>
 #include <zmq_addon.hpp>
 
+#define MAX_PORT_SEARCHES 100
+
 namespace Core {
 struct Endpoint {
   std::string host;
-  uint16_t port;
+  uint32_t port;
 };
 
 struct RegistryConfiguration {
   int16_t port;
-  int8_t threads;
+  uint8_t threads;
 };
 
 struct RouterEvent {
@@ -30,8 +35,8 @@ class Registry {
 
   void run();
   void register_topic(const std::string topic, const Endpoint& host);
-
   void deregister_topic(const std::string topic);
+  std::optional<uint32_t> get_free_port();
 
   std::optional<Endpoint> check_topic(const std::string topic);
   void persist_topics();
@@ -39,13 +44,18 @@ class Registry {
   void handle_request(RouterEvent);
   std::optional<RouterEvent> wait_for_message(zmq::socket_t& socket);
 
+  void respond_event(RouterEvent& event, zmq::message_t data);
+  zmq::message_t message_from_builder(::capnp::MallocMessageBuilder& msg);
+  void notify_waiters(std::string path);
+
  private:
-  RegistryConfiguration config;
-  zmq::context_t ctx;
-  zmq::socket_t router;
+  uint32_t _last_free_port;
+  RegistryConfiguration _config;
+  zmq::context_t _ctx;
+  zmq::socket_t _router;
   std::string _persistance_file;
-  std::map<std::string, Endpoint> _topic_to_endpoint;
-  std::map<std::string, std::vector<Endpoint>> _topic_to_waiters;
+  std::unordered_map<std::string, Endpoint> _topic_to_endpoint;
+  std::map<std::string, std::vector<std::string>> _topic_to_waiters;
 };
 }  // namespace Core
 

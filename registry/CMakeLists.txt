@@ -4,9 +4,10 @@ set(CMAKE_CXX_STANDARD 20)
 project(registry)
 
 find_package(cppzmq REQUIRED)
+find_package(capnp_schemas REQUIRED)
 
 add_executable(registry registry.cpp)
-target_link_libraries(registry cppzmq)
+target_link_libraries(registry PRIVATE cppzmq capnp capnp_schemas kj)
 
 add_executable(dummy dummy.cpp)
-target_link_libraries(dummy cppzmq)
+target_link_libraries(dummy PRIVATE cppzmq capnp capnp_schemas kj)

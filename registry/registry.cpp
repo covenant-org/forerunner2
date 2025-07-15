@@ -1,39 +1,166 @@
+#include "capnp_schemas/registry.capnp.h"
 #include "registry.hpp"
+#include <capnp/common.h>
+#include <capnp/generated-header-support.h>
+#include <capnp/message.h>
+#include <capnp/serialize-packed.h>
+#include <capnp/serialize.h>
 #include <csignal>
+#include <cstdint>
 #include <cstdio>
 #include <iostream>
+#include <kj/common.h>
+#include <kj/io.h>
 #include <optional>
+#include <stdexcept>
 #include <zmq.h>
 #include <zmq.hpp>
 
 namespace Core {
 Registry::Registry(RegistryConfiguration config)
-    : config(config), ctx(config.threads), router(ctx, ZMQ_ROUTER) {}
+    : _config(config), _ctx(config.threads), _router(_ctx, ZMQ_ROUTER) {}
+
+zmq::message_t Registry::message_from_builder(
+    ::capnp::MallocMessageBuilder &message) {
+  std::string ptr(
+      ::capnp::computeSerializedSizeInWords(message) * sizeof(capnp::word),
+      '\0');
+  auto array = ::kj::arrayPtr((kj::byte *)ptr.data(), ptr.size());
+  ::kj::ArrayOutputStream output(array);
+  ::capnp::writePackedMessage(output, message);
+  auto packed_size = output.getArray().size();
+
+  return zmq::message_t(ptr.data(), packed_size);
+}
+
+void Registry::respond_event(RouterEvent &event, zmq::message_t msg) {
+  _router.send(event.identity, zmq::send_flags::sndmore);
+  _router.send(zmq::message_t(), zmq::send_flags::sndmore);
+  _router.send(msg, zmq::send_flags::none);
+}
+
+void Registry::notify_waiters(std::string path) {
+  try {
+    auto endpoint = _topic_to_endpoint[path];
+    for (auto id : _topic_to_waiters[path]) {
+      RouterEvent wait_event{
+          .identity = zmq::message_t(id.data(), id.size()),
+          .data = zmq::message_t(),
+      };
+      ::capnp::MallocMessageBuilder message;
+      RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
+      res.setCode(200);
+      auto host = res.initHost();
+      host.setAddress(endpoint.host);
+      host.setPort(endpoint.port);
+      respond_event(wait_event, message_from_builder(message));
+    }
+  } catch (std::out_of_range) {
+  }
+}
 
 void Registry::handle_request(RouterEvent event) {
-  router.send(event.identity, zmq::send_flags::sndmore);
-  router.send(zmq::message_t(), zmq::send_flags::sndmore);
-  router.send(zmq::str_buffer("World\0"), zmq::send_flags::none);
+  auto array = ::kj::arrayPtr((uint8_t *)event.data.data(), event.data.size());
+  auto stream = ::kj::ArrayInputStream(array);
+  ::capnp::PackedMessageReader message(stream);
+  RegistryRequest::Reader request = message.getRoot<RegistryRequest>();
+
+  if (request.getType() == RequestType::ADD_NODE) {
+    ::capnp::MallocMessageBuilder message;
+    RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
+    auto free_port = get_free_port();
+    if (!free_port.has_value()) {
+      res.setCode(408);
+      res.setErrorMessage("Could not find a free port within range");
+      respond_event(event, message_from_builder(message));
+      return;
+    }
+    std::string path = request.getPath();
+    Endpoint endpoint{
+        .host = "127.0.0.1",
+        .port = free_port.value(),
+    };
+    _topic_to_endpoint.insert_or_assign(path, endpoint);
+    res.setCode(201);
+    auto host = res.initHost();
+    host.setAddress(endpoint.host);
+    host.setPort(endpoint.port);
+    respond_event(event, message_from_builder(message));
+    notify_waiters(path);
+    return;
+  }
+
+  if (request.getType() == RequestType::QUERY_NODE) {
+    auto path = request.getPath();
+    try {
+      Endpoint node = _topic_to_endpoint.at(path);
+      ::capnp::MallocMessageBuilder message;
+      RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
+      res.setCode(200);
+      auto host = res.initHost();
+      host.setAddress(node.host);
+      host.setPort(node.port);
+    } catch (std::out_of_range) {
+      _topic_to_waiters[path].emplace_back((char *)event.identity.data(),
+                                           event.identity.size());
+    }
+  }
+
+  // NOTE: Not so sure about this one
+  if (request.getType() == RequestType::ADD_HOST) {
+    ::capnp::MallocMessageBuilder message;
+    RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
+    auto obj = request.getAddHost();
+    auto path = request.getPath();
+    Endpoint endpoint{
+        .host = obj.getAddress(),
+        .port = obj.getPort(),
+    };
+    _topic_to_endpoint.insert_or_assign(request.getPath(), endpoint);
+    res.setCode(201);
+    auto host = res.initHost();
+    host.setAddress(endpoint.host);
+    host.setPort(endpoint.port);
+    respond_event(event, message_from_builder(message));
+    notify_waiters(path);
+  }
+}
+
+std::optional<uint32_t> Registry::get_free_port() {
+  zmq::socket_t tmp;
+  for (int i = 1; i < MAX_PORT_SEARCHES; i++) {
+    char bind_dir[20];
+    sprintf(bind_dir, "tcp://*:%d", _last_free_port + i);
+    try {
+      tmp.bind(bind_dir);
+      tmp.unbind(bind_dir);
+      tmp.close();
+      _last_free_port += i;
+      return _last_free_port;
+    } catch (zmq::error_t) {
+    }
+  }
+  return std::nullopt;
 }
 
 std::optional<RouterEvent> Registry::wait_for_message(zmq::socket_t &socket) {
   // Router gets the identity first
   zmq::message_t identity(5);
-  auto res = router.recv(identity);
+  auto res = _router.recv(identity);
   if (res.value_or(0) == 0) {
     return std::nullopt;
     std::cerr << "Bad message while waiting for id" << std::endl;
   }
 
   zmq::message_t empty;
-  res = router.recv(empty);
+  res = _router.recv(empty);
   if (res.value_or(0) != 0) {
     std::cerr << "Bad message while waiting for package separator" << std::endl;
     return std::nullopt;
   }
 
   zmq::message_t data(1024);
-  res = router.recv(data);
+  res = _router.recv(data);
   if (res.has_value()) {
     printf("Received data %s\n", (char *)data.data());
     return std::optional<RouterEvent>(
@@ -44,12 +171,11 @@ std::optional<RouterEvent> Registry::wait_for_message(zmq::socket_t &socket) {
 
 void Registry::run() {
   char bind_dir[20];
-  sprintf(bind_dir, "tcp://*:%d", config.port);
-  router.bind(std::string(bind_dir));
+  sprintf(bind_dir, "tcp://*:%d", _config.port);
+  _router.bind(std::string(bind_dir));
   printf("Listening to %s\n", bind_dir);
-
   while (true) {
-    auto event = wait_for_message(router);
+    auto event = wait_for_message(_router);
     if (!event.has_value()) continue;
     handle_request(std::move(event.value()));
   }
@@ -59,7 +185,6 @@ void Registry::run() {
 
 int main(int argc, char **argv) {
   Core::Registry registry({.port = 4020, .threads = 5});
-  printf("help\n");
   registry.run();
   return 0;
 }
