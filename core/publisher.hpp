@@ -1,4 +1,8 @@
+#ifndef PUBLISHER_HPP
+#define PUBLISHER_HPP
+
 #include "capnp_schemas/registry.capnp.h"
+#include "message.hpp"
 #include <capnp/common.h>
 #include <capnp/generated-header-support.h>
 #include <capnp/message.h>
@@ -11,12 +15,9 @@
 #include <zmq.hpp>
 #include <zmq_addon.hpp>
 
-#ifndef PUBLISHER_HPP
-#define PUBLISHER_HPP
-
 namespace Core {
 template <typename T>
-class Publisher {
+class Publisher : public ISender {
  private:
   std::string _topic;
   uint32_t _port;
@@ -82,9 +83,11 @@ class Publisher {
     }
 
     char buffer[20];
-    _socket.bind(buffer);
     sprintf(buffer, "tcp://0.0.0.0:%d", _port);
+    _socket.bind(buffer);
   }
+
+  OutgoingMessage<T> new_msg() { return OutgoingMessage<T>(this); }
 
   uint32_t publish(::capnp::MallocMessageBuilder& builder) {
     kj::VectorOutputStream buffer;

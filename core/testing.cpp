@@ -23,10 +23,9 @@ TestingVertex::TestingVertex(int argc, char **argv) : Vertex(argc, argv) {
 
 void TestingVertex::run() {
   while (true) {
-    ::capnp::MallocMessageBuilder builder;
-    auto msg = builder.initRoot<Telemetry>();
-    msg.initBattery().setPercentage(100);
-    this->_telemetry_publisher->publish(builder);
+    auto msg = _telemetry_publisher->new_msg();
+    msg.content.initBattery().setPercentage(100);
+    msg.publish();
 
     sleep(1);
   }
