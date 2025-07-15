@@ -49,11 +49,10 @@ class Registry {
   void notify_waiters(std::string path);
 
  private:
-  uint32_t _last_free_port;
   RegistryConfiguration _config;
   zmq::context_t _ctx;
   zmq::socket_t _router;
-  std::string _persistance_file;
+  uint32_t _last_free_port;
   std::unordered_map<std::string, Endpoint> _topic_to_endpoint;
   std::map<std::string, std::vector<std::string>> _topic_to_waiters;
 };

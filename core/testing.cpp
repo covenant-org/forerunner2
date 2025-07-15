@@ -17,10 +17,8 @@ class TestingVertex : public Core::Vertex {
 };
 
 TestingVertex::TestingVertex(int argc, char **argv) : Vertex(argc, argv) {
-  this->_telemetry_publisher =
-      this->create_publisher<Telemetry>("telemetry", 5551);
-  this->_odometry_publisher =
-      this->create_publisher<Odometry>("odometry", 5552);
+  this->_telemetry_publisher = this->create_publisher<Telemetry>("telemetry");
+  this->_odometry_publisher = this->create_publisher<Odometry>("odometry");
 }
 
 void TestingVertex::run() {

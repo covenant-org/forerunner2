@@ -13,12 +13,16 @@
 #include <kj/io.h>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <zmq.h>
 #include <zmq.hpp>
 
 namespace Core {
 Registry::Registry(RegistryConfiguration config)
-    : _config(config), _ctx(config.threads), _router(_ctx, ZMQ_ROUTER) {}
+    : _config(config),
+      _ctx(config.threads),
+      _router(_ctx, ZMQ_ROUTER),
+      _last_free_port(config.port) {}
 
 zmq::message_t Registry::message_from_builder(
     ::capnp::MallocMessageBuilder &message) {
@@ -127,17 +131,18 @@ void Registry::handle_request(RouterEvent event) {
 }
 
 std::optional<uint32_t> Registry::get_free_port() {
-  zmq::socket_t tmp;
+  zmq::context_t tmp_ctx(1);
+  zmq::socket_t tmp(tmp_ctx, ZMQ_REQ);
   for (int i = 1; i < MAX_PORT_SEARCHES; i++) {
     char bind_dir[20];
-    sprintf(bind_dir, "tcp://*:%d", _last_free_port + i);
+    sprintf(bind_dir, "tcp://0.0.0.0:%d", _last_free_port + i);
     try {
       tmp.bind(bind_dir);
       tmp.unbind(bind_dir);
-      tmp.close();
       _last_free_port += i;
       return _last_free_port;
-    } catch (zmq::error_t) {
+    } catch (zmq::error_t error) {
+      printf("%s", error.what());
     }
   }
   return std::nullopt;
@@ -162,7 +167,6 @@ std::optional<RouterEvent> Registry::wait_for_message(zmq::socket_t &socket) {
   zmq::message_t data(1024);
   res = _router.recv(data);
   if (res.has_value()) {
-    printf("Received data %s\n", (char *)data.data());
     return std::optional<RouterEvent>(
         RouterEvent{.identity = std::move(identity), .data = std::move(data)});
   }
