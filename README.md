@@ -34,12 +34,24 @@ Clone repository:
 git clone --recurse-submodules -j8 git@github.com:covenant-org/forerunner2.git
 ```
 
-Compile third party dependencies:
+Compile third party dependencies (except MAVSDK):
 
 ```
 cd vendor
-cmake -Bbuild && cd build && cmake --build . && sudo cmake --install .
+cmake -Bbuild && cmake --build build && sudo cmake --install build
 ```
+
+Compile and install MAVSDK
+
+```
+cd vendor
+cmake -DCMAKE_BUILD_TYPE=Debug -Bbuildmav -SMAVSDK && sudo cmake --build buildmav --target install && sudo ldconfig
+```
+
+**Notes**:
+
+- This is installed in a different step since there is a conflict with a target using the same name from `capnpproto`
+- You can use `-GNinja` to build with Ninja instead of make (faster compilations)
 
 Compile messages:
 
