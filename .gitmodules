@@ -7,3 +7,6 @@
 [submodule "vendor/libzmq"]
 	path = vendor/libzmq
 	url = https://github.com/zeromq/libzmq.git
+[submodule "vendor/MAVSDK"]
+	path = vendor/MAVSDK
+	url = https://github.com/mavlink/MAVSDK.git
