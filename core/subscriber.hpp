@@ -1,8 +1,8 @@
 #ifndef SUBSCRIBER_HPP
 #define SUBSCRIBER_HPP
 
-#include "capnp_schemas/registry.capnp.h"
 #include "message.hpp"
+#include "utils.hpp"
 #include <capnp/common.h>
 #include <capnp/generated-header-support.h>
 #include <capnp/message.h>
@@ -29,63 +29,22 @@ class Subscriber {
   std::function<void(IncomingMessage<T>)> _callback;
   std::thread* _listener_thread;
 
+  // TODO: Should we make this in another thread so it won't block?
   bool query_registry(const std::string& registry_uri) {
-    // Create capnp message
-    ::capnp::MallocMessageBuilder msg;
-    RegistryRequest::Builder req = msg.initRoot<RegistryRequest>();
-    req.setType(RequestType::QUERY_NODE);
-    req.setPath(_topic);
-
-    // Backend to copy later to zmq (trying to not reallocate in the heap)
-    std::string ptr(
-        ::capnp::computeSerializedSizeInWords(msg) * sizeof(::capnp::word),
-        '\0');
-    auto array = ::kj::arrayPtr((::kj::byte*)ptr.data(), ptr.size());
-    ::kj::ArrayOutputStream stream(array);
-    ::capnp::writePackedMessage(stream, msg);
-
-    // Copy message, connect and send
-    zmq::message_t zreq(ptr.data(), stream.getArray().size());
-    zmq::socket_t registry_sock(_context, ZMQ_REQ);
-    registry_sock.connect(registry_uri);
-    registry_sock.send(zreq, zmq::send_flags::none);
-
-    // Preallocate memory and receive message
-    // TODO: This is not the best way to do this
-    zmq::message_t zres(::capnp::sizeInWords<RegistryResponse>() *
-                        sizeof(::capnp::word));
-    auto read = registry_sock.recv(zres);
-    if (read.value_or(0) == 0) return false;
-
-    // Deserialize the message
-    auto res_array = ::kj::arrayPtr((::kj::byte*)zres.data(), read.value());
-    ::kj::ArrayInputStream res_stream(res_array);
-    ::capnp::PackedMessageReader res_reader(res_stream);
-    RegistryResponse::Reader res = res_reader.getRoot<RegistryResponse>();
-    if (res.which() == RegistryResponse::HOST) {
-      auto host = res.getHost();
-      sprintf(_pub_add, "tcp://%s:%d", host.getAddress().cStr(),
-              host.getPort());
-      printf("Topic '%s' found in %s\n", _topic.c_str(), _pub_add);
-      return true;
-    }
-    if (res.which() == RegistryResponse::ERROR_MESSAGE) {
-      printf("Querying '%s' got error %d: %s\n", _topic.c_str(), res.getCode(),
-             res.getErrorMessage().cStr());
-    }
-    return false;
+    auto res = query_topic(_topic, registry_uri);
+    if (!res.has_value()) return false;
+    sprintf(_pub_add, "tcp://127.0.0.1:%d", res.value());
+    return true;
   }
 
   void listen_to_new_messages() {
-    printf("help thread\n");
     zmq::context_t ctx(1);
     zmq::socket_t socket(ctx, zmq::socket_type::sub);
     socket.connect(_pub_add);
     socket.set(zmq::sockopt::subscribe, "");
-    auto size = ::capnp::sizeInWords<T>() * sizeof(::capnp::word);
     // TODO: Cleaner exit?
     while (true) {
-      zmq::message_t msg(size);
+      zmq::message_t msg;
       auto res = socket.recv(msg);
       if (res.has_value()) {
         _callback(IncomingMessage<T>((unsigned char*)msg.data(), res.value()));

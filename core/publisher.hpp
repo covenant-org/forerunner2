@@ -3,6 +3,7 @@
 
 #include "capnp_schemas/registry.capnp.h"
 #include "message.hpp"
+#include "utils.hpp"
 #include <capnp/common.h>
 #include <capnp/generated-header-support.h>
 #include <capnp/message.h>
@@ -25,48 +26,10 @@ class Publisher : public ISender {
   zmq::socket_t _socket;
 
   bool notify_registry(const std::string& registry_uri) {
-    // Create capnp message
-    ::capnp::MallocMessageBuilder msg;
-    RegistryRequest::Builder req = msg.initRoot<RegistryRequest>();
-    req.setType(RequestType::ADD_NODE);
-    req.setPath(_topic);
-
-    // Backend to copy later to zmq (trying to not reallocate in the heap)
-    std::string ptr(
-        ::capnp::computeSerializedSizeInWords(msg) * sizeof(::capnp::word),
-        '\0');
-    auto array = ::kj::arrayPtr((::kj::byte*)ptr.data(), ptr.size());
-    ::kj::ArrayOutputStream stream(array);
-    ::capnp::writePackedMessage(stream, msg);
-
-    // Copy message, connect and send
-    zmq::message_t zreq(ptr.data(), stream.getArray().size());
-    zmq::socket_t registry_sock(_context, ZMQ_REQ);
-    registry_sock.connect(registry_uri);
-    registry_sock.send(zreq, zmq::send_flags::none);
-
-    // Preallocate memory and receive message
-    // TODO: This is not the best way to do this
-    zmq::message_t zres(::capnp::sizeInWords<RegistryResponse>() *
-                        sizeof(::capnp::word));
-    auto read = registry_sock.recv(zres);
-    if (read.value_or(0) == 0) return false;
-
-    // Deserialize the message
-    auto res_array = ::kj::arrayPtr((::kj::byte*)zres.data(), read.value());
-    ::kj::ArrayInputStream res_stream(res_array);
-    ::capnp::PackedMessageReader res_reader(res_stream);
-    RegistryResponse::Reader res = res_reader.getRoot<RegistryResponse>();
-    if (res.which() == RegistryResponse::HOST) {
-      _port = res.getHost().getPort();
-      printf("Publisher '%s' got the port %d\n", _topic.c_str(), _port);
-      return true;
-    }
-    if (res.which() == RegistryResponse::ERROR_MESSAGE) {
-      printf("Publisher '%s' got error %d: %s\n", _topic.c_str(), res.getCode(),
-             res.getErrorMessage().cStr());
-    }
-    return false;
+    auto res = register_topic(_topic, registry_uri);
+    if (!res.has_value()) return false;
+    _port = res.value();
+    return true;
   }
 
  public:
