@@ -1,3 +1,4 @@
+#include "action.hpp"
 #include "message.hpp"
 #include "publisher.hpp"
 #include "subscriber.hpp"
@@ -42,7 +43,16 @@ class Vertex {
     return subscriber;
   }
 
+  template <typename T, typename K>
+  std::shared_ptr<ActionServer<T, K>> create_action_server(
+      const std::string &topic,
+      std::function<void(IncomingMessage<T>, typename K::Builder &)> callback) {
+    auto server = std::make_shared<ActionServer<T, K>>(topic, callback);
+    server->setup(this->_registry);
+    return server;
+  }
+
   virtual void run() = 0;
 };
-};      // namespace Core
+};  // namespace Core
 #endif  // VERTEX_HPP

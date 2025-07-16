@@ -36,7 +36,7 @@ struct Offboard {
     start :group {
       pos @1: Position;
     }
-    stop :group {}
+    stop @2: Void;
   }
 }
 

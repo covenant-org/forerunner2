@@ -1,7 +1,6 @@
 #ifndef ACTION_HPP
 #define ACTION_HPP
 
-#include "capnp_schemas/registry.capnp.h"
 #include "message.hpp"
 #include "utils.hpp"
 #include <capnp/common.h>
@@ -9,6 +8,7 @@
 #include <capnp/message.h>
 #include <capnp/serialize-packed.h>
 #include <capnp/serialize.h>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <exception>
@@ -41,10 +41,11 @@ class ActionServer {
     auto port = register_topic(_topic, registry_uri);
     if (!port.has_value()) return false;
     _port = port.value();
+    return true;
   }
 
-  void worker(zmq::context_t ctx) {
-    zmq::socket_t socket(ctx, zmq::socket_type::dealer);
+  void worker() {
+    zmq::socket_t socket(_ctx, zmq::socket_type::dealer);
     socket.connect("inproc://backend");
     try {
       while (true) {
@@ -55,8 +56,9 @@ class ActionServer {
         res = socket.recv(msg);
         if (res.value_or(0) == 0) continue;
         ::capnp::MallocMessageBuilder builder;
+        typename K::Builder root = builder.getRoot<K>();
         _callback(IncomingMessage<T>((unsigned char*)msg.data(), msg.size()),
-                  builder.getRoot<K>());
+                  root);
         kj::VectorOutputStream buffer;
         ::capnp::writePackedMessage(buffer, builder);
         auto serialized = buffer.getArray();
@@ -72,14 +74,15 @@ class ActionServer {
   ActionServer(
       const std::string& topic,
       std::function<void(IncomingMessage<T>, typename K::Builder&)> callback,
-      uint8_t num_workers)
+      uint8_t num_workers = 5)
       : _topic(std::move(topic)),
         _port(0),
         _ctx(1),
         _router(_ctx, zmq::socket_type::router),
         _dealer(_ctx, zmq::socket_type::dealer),
         _callback(callback),
-        _num_workers(num_workers) {}
+        _num_workers(num_workers),
+        _main_thread(nullptr) {}
 
   void setup_proxy() {
     char addr[20];
@@ -87,8 +90,8 @@ class ActionServer {
     _router.bind(addr);
     _dealer.bind("inproc://backend");
     for (int i = 0; i < _num_workers; i++) {
-      _workers.emplace_back(new std::thread(
-          std::bind(&ActionServer::worker, this, std::placeholders::_1), _ctx));
+      _workers.emplace_back(
+          new std::thread(std::bind(&ActionServer::worker, this)));
     }
     zmq::proxy(_router, _dealer);
     for (int i = 0; i < _workers.size(); i++) {
