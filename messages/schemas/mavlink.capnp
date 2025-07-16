@@ -25,18 +25,13 @@ struct Takeoff {
 
 struct Land {}
 
-enum OffboardOperation {
-  start @0;
-  stop @1;
+struct StartOffboard {
+  pos @0 :Position;
 }
 
-struct Offboard {
-  operation @0 :OffboardOperation;
-  union {
-    start :group {
-      pos @1: Position;
-    }
-    stop @2: Void;
-  }
+struct StopOffboard {
 }
 
+struct HomePosition {
+  pos @0 :Position;
+}

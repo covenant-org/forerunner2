@@ -15,7 +15,7 @@ target_include_directories(controller PUBLIC
 
 target_link_libraries(controller PRIVATE
 	cppzmq 
-  core
+  	core
 	capnp 
 	capnp_schemas 
 	kj 

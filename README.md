@@ -34,7 +34,7 @@ Clone repository:
 git clone --recurse-submodules -j8 git@github.com:covenant-org/forerunner2.git
 ```
 
-Compile third party dependencies (except MAVSDK):
+Compile third party dependencies (except MAVSDK & pcl):
 
 ```
 cd vendor
@@ -46,6 +46,13 @@ Compile and install MAVSDK
 ```
 cd vendor
 cmake -DCMAKE_BUILD_TYPE=Debug -Bbuildmav -SMAVSDK && sudo cmake --build buildmav --target install && sudo ldconfig
+```
+
+Compile and install PCL
+
+```
+cd vendor
+cmake -DCMAKE_BUILD_TYPE=Debug -Bbuildpcl -Spcl && sudo cmake --build buildpcl && sudo cmake --install buildpcl
 ```
 
 **Notes**:

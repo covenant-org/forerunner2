@@ -1,9 +1,12 @@
 #include "mavlink-vertex.hpp"
+#include "message.hpp"
 #include <iostream>
 #include <mavsdk/connection_result.h>
 #include <mavsdk/mavsdk.h>
 #include <mavsdk/plugins/action/action.h>
+#include <mavsdk/plugins/offboard/offboard.h>
 #include <mavsdk/plugins/telemetry/telemetry.h>
+#include <plugins/mavlink_passthrough/mavlink_passthrough.h>
 
 using namespace mavsdk;
 
@@ -15,12 +18,42 @@ MavlinkVertex::MavlinkVertex(int argc, char **argv)
     throw std::runtime_error("error initializing mavsdk");
   }
 
+  this->_home_position_publisher =
+      this->create_publisher<HomePosition>("home_position");
+
   this->_takeoff_subscriber = this->create_subscriber<Takeoff>(
       "takeoff",
       std::bind(&MavlinkVertex::takeoff_cb, this, std::placeholders::_1));
 
   this->_land_subscriber = this->create_subscriber<Land>(
       "land", std::bind(&MavlinkVertex::land_cb, this, std::placeholders::_1));
+
+  this->_start_offboard_subscriber = this->create_subscriber<StartOffboard>(
+      "start_offboard", std::bind(&MavlinkVertex::start_offboard_cb, this,
+                                  std::placeholders::_1));
+
+  this->_stop_offboard_subscriber = this->create_subscriber<StopOffboard>(
+      "stop_offboard",
+      std::bind(&MavlinkVertex::stop_offboard_cb, this, std::placeholders::_1));
+}
+
+void MavlinkVertex::stop_offboard_cb(
+    const Core::IncomingMessage<StopOffboard> &msg) {
+  const auto offboard_result = this->_offboard->stop();
+  if (offboard_result != mavsdk::Offboard::Result::Success) {
+    throw std::runtime_error("could not stop offboard");
+  }
+}
+
+void MavlinkVertex::start_offboard_cb(
+    const Core::IncomingMessage<StartOffboard> &msg) {
+  const auto pos = msg.content.getPos();
+  this->_offboard->set_velocity_body({0.0f, 0.0f, 0.0f, 0.0f});
+
+  const auto offboard_result = this->_offboard->start();
+  if (offboard_result != mavsdk::Offboard::Result::Success) {
+    throw std::runtime_error("could not start offboard");
+  }
 }
 
 void MavlinkVertex::land_cb(const Core::IncomingMessage<Land> &) {
@@ -60,12 +93,25 @@ bool MavlinkVertex::init_mavlink_connection(const std::string &uri) {
   this->_telemetry = std::make_shared<mavsdk::Telemetry>(this->_system.value());
   this->_action = std::make_shared<mavsdk::Action>(this->_system.value());
   this->_offboard = std::make_shared<mavsdk::Offboard>(this->_system.value());
+  this->_passthrough =
+      std::make_shared<mavsdk::MavlinkPassthrough>(this->_system.value());
 
   return true;
 }
 
 void MavlinkVertex::run() {
-  std::cout << "hello world" << std::endl;
+  this->_passthrough->subscribe_message(
+      HOME_POSITION_MESSAGE_ID, [this](const __mavlink_message &msg) {
+        mavlink_msg_home_position_decode(&msg, &this->_mavlink_home_position);
+        auto home_position_msg = this->_home_position_publisher->new_msg();
+        home_position_msg.content.getPos().setX(this->_mavlink_home_position.x);
+        home_position_msg.content.getPos().setY(
+            -this->_mavlink_home_position.y);
+        home_position_msg.content.getPos().setZ(
+            -this->_mavlink_home_position.z);
+        home_position_msg.publish();
+      });
+
   while (true) {
     sleep(1);
   }

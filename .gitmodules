@@ -10,3 +10,9 @@
 [submodule "vendor/MAVSDK"]
 	path = vendor/MAVSDK
 	url = https://github.com/mavlink/MAVSDK.git
+[submodule "vendor/eigen"]
+	path = vendor/eigen
+	url = https://gitlab.com/libeigen/eigen.git
+[submodule "vendor/pcl"]
+	path = vendor/pcl
+	url = https://github.com/PointCloudLibrary/pcl
