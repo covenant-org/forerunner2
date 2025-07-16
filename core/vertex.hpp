@@ -1,4 +1,6 @@
+#include "message.hpp"
 #include "publisher.hpp"
+#include "subscriber.hpp"
 #include <map>
 #include <memory>
 #include <string>
@@ -29,6 +31,15 @@ class Vertex {
     auto publisher = std::make_shared<Publisher<T>>(topic);
     publisher->setup(this->_registry);
     return publisher;
+  }
+
+  template <typename T>
+  std::shared_ptr<Subscriber<T>> create_subscriber(
+      const std::string &topic,
+      std::function<void(IncomingMessage<T>)> callback) {
+    auto subscriber = std::make_shared<Subscriber<T>>(topic, callback);
+    subscriber->setup(this->_registry);
+    return subscriber;
   }
 
   virtual void run() = 0;

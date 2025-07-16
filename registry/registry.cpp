@@ -104,10 +104,12 @@ void Registry::handle_request(RouterEvent event) {
       auto host = res.initHost();
       host.setAddress(node.host);
       host.setPort(node.port);
+      respond_event(event, message_from_builder(message));
     } catch (std::out_of_range) {
       _topic_to_waiters[path].emplace_back((char *)event.identity.data(),
                                            event.identity.size());
     }
+    return;
   }
 
   // NOTE: Not so sure about this one

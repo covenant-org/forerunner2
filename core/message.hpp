@@ -2,6 +2,11 @@
 #define MESSAGE_HPP
 
 #include <capnp/message.h>
+#include <capnp/serialize-packed.h>
+#include <capnp/serialize.h>
+#include <kj/common.h>
+#include <kj/io.h>
+#include <zmq.hpp>
 
 namespace Core {
 class ISender {
@@ -21,6 +26,26 @@ class OutgoingMessage {
   OutgoingMessage(ISender* sender)
       : builder(), sender(sender), content(builder.getRoot<T>()) {}
   uint32_t publish() { return sender->publish(builder); }
+};
+
+template <typename T>
+class IncomingMessage {
+ private:
+  // TODO: Evaluate if copying is necesary
+  std::string buffer;
+  ::kj::ArrayPtr<unsigned char> ptr;
+  ::kj::ArrayInputStream array;
+
+  ::capnp::PackedMessageReader reader;
+
+ public:
+  typename T::Reader content;
+  IncomingMessage(unsigned char* data, uint32_t size)
+      : buffer((char*)data, size),
+        ptr((unsigned char*)buffer.data(), size),
+        array(ptr),
+        reader(array),
+        content(reader.getRoot<T>()) {}
 };
 
 }  // namespace Core

@@ -12,3 +12,6 @@ find_package(capnp_schemas REQUIRED)
 
 add_executable(testing testing.cpp)
 target_link_libraries(testing PRIVATE cppzmq capnp capnp_schemas kj)
+
+add_executable(subtesting subtest.cpp)
+target_link_libraries(subtesting PRIVATE cppzmq capnp capnp_schemas kj)
