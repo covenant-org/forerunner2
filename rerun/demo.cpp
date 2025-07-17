@@ -85,7 +85,10 @@ void Demo::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
   }
 }
 
-void Demo::run() { this->_rec->spawn().exit_on_failure(); }
+void Demo::run() {
+  this->_rec->spawn().exit_on_failure();
+  while (true) sleep(1);
+}
 
 int main(int argc, char **argv) {
   auto demo = Demo(argc, argv);
