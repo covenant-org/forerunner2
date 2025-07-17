@@ -1,6 +1,7 @@
 #include "mavlink-vertex.hpp"
 #include "message.hpp"
-#include <iostream>
+#include <capnp_schemas/controller.capnp.h>
+#include <capnp_schemas/generics.capnp.h>
 #include <mavsdk/connection_result.h>
 #include <mavsdk/mavsdk.h>
 #include <mavsdk/plugins/action/action.h>
@@ -18,66 +19,91 @@ MavlinkVertex::MavlinkVertex(int argc, char **argv)
     throw std::runtime_error("error initializing mavsdk");
   }
 
+  _command_action_server = create_action_server<Command, GenericResponse>(
+      "controller", std::bind(&MavlinkVertex::command_cb, this,
+                              std::placeholders::_1, std::placeholders::_2));
   this->_home_position_publisher =
       this->create_publisher<HomePosition>("home_position");
-
-  this->_takeoff_subscriber = this->create_subscriber<Takeoff>(
-      "takeoff",
-      std::bind(&MavlinkVertex::takeoff_cb, this, std::placeholders::_1));
-
-  this->_land_subscriber = this->create_subscriber<Land>(
-      "land", std::bind(&MavlinkVertex::land_cb, this, std::placeholders::_1));
-
-  this->_start_offboard_subscriber = this->create_subscriber<StartOffboard>(
-      "start_offboard", std::bind(&MavlinkVertex::start_offboard_cb, this,
-                                  std::placeholders::_1));
-
-  this->_stop_offboard_subscriber = this->create_subscriber<StopOffboard>(
-      "stop_offboard",
-      std::bind(&MavlinkVertex::stop_offboard_cb, this, std::placeholders::_1));
 }
 
-void MavlinkVertex::stop_offboard_cb(
-    const Core::IncomingMessage<StopOffboard> &msg) {
-  const auto offboard_result = this->_offboard->stop();
-  if (offboard_result != mavsdk::Offboard::Result::Success) {
-    throw std::runtime_error("could not stop offboard");
+void MavlinkVertex::command_cb(const Core::IncomingMessage<Command> &command,
+                               GenericResponse::Builder &res) {
+  res.setCode(200);
+  res.setMessage("OK");
+  switch (command.content.which()) {
+    case Command::LAND: {
+      const auto land_result = this->_action->land();
+      if (land_result != mavsdk::Action::Result::Success) {
+        res.setCode(500);
+        res.setMessage("Error while landing");
+      }
+      return;
+    }
+    case Command::TAKEOFF: {
+      if (!this->_telemetry->armed()) {
+        const auto arm_result = this->_action->arm();
+        if (arm_result != mavsdk::Action::Result::Success) {
+          res.setCode(500);
+          res.setMessage("Failed to arm");
+          return;
+        }
+      }
+      const auto set_takeoff_altitude_result =
+          this->_action->set_takeoff_altitude(
+              command.content.getTakeoff().getAltitude());
+      if (set_takeoff_altitude_result != mavsdk::Action::Result::Success) {
+        res.setCode(500);
+        res.setMessage("Failed to set takeoff altitude");
+        return;
+      }
+      const auto takeoff_result = this->_action->takeoff();
+      if (takeoff_result != mavsdk::Action::Result::Success) {
+        res.setCode(500);
+        res.setMessage("Failed to takeoff");
+      }
+      return;
+    }
+    case Command::OFFBOARD: {
+      if (!command.content.getOffboard().getEnable()) {
+        const auto offboard_result = this->_offboard->stop();
+        if (offboard_result != mavsdk::Offboard::Result::Success) {
+          res.setCode(500);
+          res.setMessage("Error while stoping offboard");
+        }
+        return;
+      }
+      const auto offboard_result = this->_offboard->start();
+      if (offboard_result != mavsdk::Offboard::Result::Success) {
+        res.setCode(500);
+        res.setMessage("Error while enabiling offboard");
+      }
+    }
+    case Command::ARM: {
+      if (this->_telemetry->armed()) {
+        res.setCode(304);
+        res.setMessage("Already armed");
+        return;
+      }
+
+      const auto arm_result = this->_action->arm();
+      if (arm_result != mavsdk::Action::Result::Success) {
+        res.setCode(500);
+        res.setMessage("Failed to arm");
+        return;
+      }
+    }
+    case Command::WAYPOINT: {
+      auto waypoint = command.content.getWaypoint();
+      auto res = this->_offboard->set_position_ned({.north_m = waypoint.getX(),
+                                                    .east_m = waypoint.getY(),
+                                                    .down_m = waypoint.getZ(),
+                                                    .yaw_deg = 0});
+    }
   }
 }
+/*
 
-void MavlinkVertex::start_offboard_cb(
-    const Core::IncomingMessage<StartOffboard> &msg) {
-  const auto pos = msg.content.getPos();
-  this->_offboard->set_velocity_body({0.0f, 0.0f, 0.0f, 0.0f});
-
-  const auto offboard_result = this->_offboard->start();
-  if (offboard_result != mavsdk::Offboard::Result::Success) {
-    throw std::runtime_error("could not start offboard");
-  }
-}
-
-void MavlinkVertex::land_cb(const Core::IncomingMessage<Land> &) {
-  const auto land_result = this->_action->land();
-  if (land_result != mavsdk::Action::Result::Success) {
-    throw std::runtime_error("error landing");
-  }
-}
-
-void MavlinkVertex::takeoff_cb(const Core::IncomingMessage<Takeoff> &msg) {
-  const auto arm_result = this->_action->arm();
-  if (arm_result != mavsdk::Action::Result::Success) {
-    throw std::runtime_error("failed to arm");
-  }
-  const auto set_takeoff_altitude_result =
-      this->_action->set_takeoff_altitude(msg.content.getAltitude());
-  if (set_takeoff_altitude_result != mavsdk::Action::Result::Success) {
-    throw std::runtime_error("failed to set takeoff altitude");
-  }
-  const auto takeoff_result = this->_action->takeoff();
-  if (takeoff_result != mavsdk::Action::Result::Success) {
-    throw std::runtime_error("failed to takeoff");
-  }
-}
+*/
 
 bool MavlinkVertex::init_mavlink_connection(const std::string &uri) {
   ConnectionResult result = this->_mavsdk.add_any_connection(uri);

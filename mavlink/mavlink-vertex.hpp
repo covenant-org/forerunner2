@@ -1,7 +1,9 @@
-#include "capnp_schemas/mavlink.capnp.h"
 #include "publisher.hpp"
 #include "subscriber.hpp"
 #include "vertex.hpp"
+#include <capnp_schemas/controller.capnp.h>
+#include <capnp_schemas/generics.capnp.h>
+#include <capnp_schemas/mavlink.capnp.h>
 #include <mavsdk/connection_result.h>
 #include <mavsdk/mavsdk.h>
 #include <mavsdk/plugins/action/action.h>
@@ -22,10 +24,7 @@
 class MavlinkVertex : public Core::Vertex {
  private:
   std::shared_ptr<Core::Publisher<HomePosition>> _home_position_publisher;
-  std::shared_ptr<Core::Subscriber<Takeoff>> _takeoff_subscriber;
-  std::shared_ptr<Core::Subscriber<Land>> _land_subscriber;
-  std::shared_ptr<Core::Subscriber<StartOffboard>> _start_offboard_subscriber;
-  std::shared_ptr<Core::Subscriber<StopOffboard>> _stop_offboard_subscriber;
+  std::shared_ptr<Core::ActionServer<Command, GenericResponse>> _command_action_server;
 
   mavsdk::Mavsdk _mavsdk;
   std::optional<std::shared_ptr<mavsdk::System>> _system = std::nullopt;
@@ -41,10 +40,7 @@ class MavlinkVertex : public Core::Vertex {
  public:
   MavlinkVertex(int, char **);
 
-  void takeoff_cb(const Core::IncomingMessage<Takeoff> &);
-  void land_cb(const Core::IncomingMessage<Land> &);
-  void start_offboard_cb(const Core::IncomingMessage<StartOffboard> &);
-  void stop_offboard_cb(const Core::IncomingMessage<StopOffboard> &);
+  void command_cb(const Core::IncomingMessage<Command> &, GenericResponse::Builder&);
 
   void run();
 };

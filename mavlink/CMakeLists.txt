@@ -3,12 +3,13 @@ project(mavlink)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(cppzmq REQUIRED)
 find_package(capnp_schemas REQUIRED)
 find_package(MAVSDK REQUIRED)
 
-add_subdirectory(${CMAKE_SOURCE_DIR}/../core ${CMAKE_BINARY_DIR}/core})
+add_subdirectory(${CMAKE_SOURCE_DIR}/../core ${CMAKE_BINARY_DIR}/core)
 
 add_executable(mavlink-vertex mavlink-vertex.cpp)
 

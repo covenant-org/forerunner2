@@ -1,29 +1,26 @@
 @0xcf066f32651a0194;
 
-struct Waypoint{
-  x @0 :UInt32;
-  y @1 :UInt32;
-  z @2 :UInt32;
-}
-
-struct VelocityYaw{
-  x   @0 :Float;
-  y   @1 :Float;
-  z   @2 :Float;
-  r   @3 :Float;
+struct PointYaw{
+  x   @0 :Float32;
+  y   @1 :Float32;
+  z   @2 :Float32;
+  r   @3 :Float32;
 }
 
 struct Command{
  union {
-    waypoint  @1 :Waypoint;
+    waypoint  @0 :PointYaw;
     takeoff   :group{
-      height  @2 :UInt8;
+      altitude  @1 :UInt8;
     }
-    land      @3 :Void;
-    arm       @4 :Void;
-    disarm    @5 :Void;
-    accel     @6 :Waypoint;
-    velocity  @7 :VelocityYaw;
-    manual    @8 :VelocityYaw;
+    land      @2 :Void;
+    arm       @3 :Void;
+    disarm    @4 :Void;
+    accel     @5 :PointYaw;
+    velocity  @6 :PointYaw;
+    manual    @7 :PointYaw;
+    offboard   :group{
+      enable  @8 :Bool;
+    }
 }
 }
