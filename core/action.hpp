@@ -8,7 +8,6 @@
 #include <capnp/message.h>
 #include <capnp/serialize-packed.h>
 #include <capnp/serialize.h>
-#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <exception>
@@ -105,6 +104,85 @@ class ActionServer {
       throw std::runtime_error("Error while creating action server");
     }
     _main_thread = new std::thread(std::bind(&ActionServer::setup_proxy, this));
+  }
+};
+
+template <typename K>
+class ITransaction {
+ public:
+  virtual ~ITransaction() = default;
+  virtual std::optional<IncomingMessage<K>> send(
+      ::capnp::MallocMessageBuilder& builder) = 0;
+};
+
+template <typename T, typename K>
+class ActionRequest {
+ private:
+  ::capnp::MallocMessageBuilder builder;
+  ITransaction<K>* sender;
+
+ public:
+  typename T::Builder content;
+  ~ActionRequest() {}
+  ActionRequest(const ActionRequest<T, K>& a)
+      : sender(a.sender), content(builder.getRoot<T>()) {
+    builder.setRoot(a.content);
+    content = builder.getRoot<T>();
+  }
+  ActionRequest(ITransaction<K>* sender)
+      : builder(), sender(sender), content(builder.getRoot<T>()) {}
+  std::optional<IncomingMessage<K>> send() { return sender->send(builder); }
+};
+
+template <typename T, typename K>
+class ActionClient : public ITransaction<K> {
+ private:
+  std::string _topic;
+  uint32_t _port;
+  zmq::context_t _context;
+  zmq::socket_t _socket;
+
+  bool query_registry(const std::string& registry_uri) {
+    auto res = query_topic(_topic, registry_uri);
+    if (!res.has_value()) return false;
+    _port = res.value();
+    return true;
+  }
+
+ public:
+  ActionClient(const std::string& topic)
+      : _topic(std::move(topic)),
+        _port(0),
+        _context(1),
+        _socket(_context, zmq::socket_type::dealer) {}
+
+  void setup(const std::string& uri) {
+    auto success = this->query_registry(uri);
+    if (!success) {
+      throw std::runtime_error("error with registry");
+    }
+
+    char buffer[20];
+    sprintf(buffer, "tcp://127.0.0.1:%d", _port);
+    _socket.connect(buffer);
+  }
+
+  ActionRequest<T, K> new_msg() { return ActionRequest<T, K>(this); }
+
+  std::optional<IncomingMessage<K>> send(
+      ::capnp::MallocMessageBuilder& builder) {
+    kj::VectorOutputStream buffer;
+    ::capnp::writePackedMessage(buffer, builder);
+    auto serialized = buffer.getArray();
+
+    zmq::message_t zmq_message(serialized.size());
+    memcpy(zmq_message.data(), serialized.begin(), serialized.size());
+    this->_socket.send(zmq_message, zmq::send_flags::none);
+
+    zmq::message_t msg;
+    zmq::recv_result_t res = this->_socket.recv(msg);
+    if (res.value_or(0) == 0) return std::optional<IncomingMessage<K>>();
+    return IncomingMessage<K>((unsigned char*)msg.data(), msg.size());
   }
 };
 

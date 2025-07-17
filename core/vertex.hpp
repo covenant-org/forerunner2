@@ -52,6 +52,14 @@ class Vertex {
     return server;
   }
 
+  template <typename T, typename K>
+  std::shared_ptr<ActionClient<T, K>> create_action_client(
+      const std::string &topic) {
+    auto client = std::make_shared<ActionClient<T, K>>(topic);
+    client->setup(this->_registry);
+    return client;
+  }
+
   virtual void run() = 0;
 };
 };  // namespace Core

@@ -10,6 +10,7 @@ Controller::Controller(int argc, char** argv) : Core::Vertex(argc, argv) {
 
 void Controller::handle_request(const Core::IncomingMessage<Command>& command,
                                 GenericResponse::Builder& msg) {
+  printf("Received request\n");
   msg.setCode(200);
   msg.setMessage("OK");
   if (command.content.which() == Command::LAND) {

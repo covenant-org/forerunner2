@@ -40,6 +40,13 @@ class IncomingMessage {
 
  public:
   typename T::Reader content;
+  IncomingMessage(const IncomingMessage<T>& a)
+      : buffer(a.buffer.data(), a.buffer.size()),
+        ptr((unsigned char*)buffer.data(), a.buffer.size()),
+        array(ptr),
+        reader(array),
+        content(reader.getRoot<T>()) {}
+
   IncomingMessage(unsigned char* data, uint32_t size)
       : buffer((char*)data, size),
         ptr((unsigned char*)buffer.data(), size),

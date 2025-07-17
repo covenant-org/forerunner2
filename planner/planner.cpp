@@ -1,5 +1,7 @@
 #include "message.hpp"
 #include "planner.hpp"
+#include <capnp_schemas/controller.capnp.h>
+#include <capnp_schemas/generics.capnp.h>
 #include <iostream>
 #include <memory>
 
@@ -33,6 +35,12 @@ void Planner::run() {
       msg.content.setAltitude(3.0);
       msg.publish();
     } else if (command == "land") {
+      auto action = this->_controller_client->new_msg();
+      action.content.setLand();
+      auto res = action.send();
+      if (res.has_value()) {
+        printf("Landing status: %s\n", res.value().content.getMessage().cStr());
+      }
       auto msg = _land_publisher->new_msg();
       msg.publish();
     } else if (command == "start_offboard") {
