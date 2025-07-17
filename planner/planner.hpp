@@ -4,7 +4,7 @@
 #include "vertex.hpp"
 #include <Eigen/Dense>
 #include <capnp_schemas/mavlink.capnp.h>
-#include <pcl-1.15/pcl/point_cloud.h>
+// #include <pcl-1.15/pcl/point_cloud.h>
 
 #ifndef PLANNER_HPP
 #define PLANNER_HPP

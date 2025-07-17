@@ -8,11 +8,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(cppzmq REQUIRED)
 find_package(capnp_schemas REQUIRED)
 find_package(MAVSDK REQUIRED)
-find_package(PCL REQUIRED)
+# find_package(PCL REQUIRED)
 
-include_directories(${PCL_INCLUDE_DIRS})
-link_directories(${PCL_LIBRARY_DIRS})
-add_definitions(${PCL_DEFINITIONS})
+# include_directories(${PCL_INCLUDE_DIRS})
+# link_directories(${PCL_LIBRARY_DIRS})
+# add_definitions(${PCL_DEFINITIONS})
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/../core ${CMAKE_BINARY_DIR}/core)
 
