@@ -19,19 +19,6 @@ struct Odometry {
   pos @0 :Position;
 }
 
-struct Takeoff {
-  altitude @0 :Float32;
-}
-
-struct Land {}
-
-struct StartOffboard {
-  pos @0 :Position;
-}
-
-struct StopOffboard {
-}
-
 struct HomePosition {
   pos @0 :Position;
 }
