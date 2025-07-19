@@ -1,14 +1,20 @@
 #include "demo.hpp"
-#include <iterator>
+#include <exception>
+#include <iostream>
+#include <pcl/impl/point_types.hpp>
+#include <pcl/visualization/cloud_viewer.h>
 #include <rerun.hpp>
 #include <rerun/recording_stream.hpp>
 
 Demo::Demo(int argc, char **argv) : Core::Vertex(argc, argv) {
+  this->_point_cloud_decoder =
+      new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>();
+  this->_rec = std::make_shared<rerun::RecordingStream>("rerun_demo");
+  this->_rec->spawn().exit_on_failure();
+
   this->_sub = this->create_subscriber<PointCloud>(
       "point_cloud",
       std::bind(&Demo::point_cloud_cb, this, std::placeholders::_1));
-
-  this->_rec = std::make_shared<rerun::RecordingStream>("rerun_demo");
 }
 
 rerun::Color Demo::distance_to_color(float distance) {
@@ -43,9 +49,18 @@ void Demo::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
   auto width = msg.content.getWidth();
   auto height = msg.content.getHeight();
 
-  const float *float_data =
-      reinterpret_cast<const float *>(data_reader.begin());
-  size_t num_points = data_reader.size() / (4 * sizeof(float));
+  pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
+      new pcl::PointCloud<pcl::PointXYZRGBA>());
+  std::stringstream buffer(
+      std::string((char *)data_reader.begin(), data_reader.size()));
+  try {
+    _point_cloud_decoder->decodePointCloud(buffer, cloud);
+  } catch (const std::exception &e) {
+    std::cerr << "Error while decoding: " << e.what() << std::endl;
+    return;
+  }
+
+  size_t num_points = cloud->points.size();
 
   std::vector<rerun::Position3D> positions;
   std::vector<rerun::Color> colors;
@@ -54,20 +69,19 @@ void Demo::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
 
   for (size_t i = 0; i < num_points; ++i) {
     size_t idx = i * 4;
-    float x = float_data[idx + 0];
-    float y = float_data[idx + 1];
-    float z = float_data[idx + 2];
+    auto point = cloud->points[i];
+    float x = point.x;
+    float y = point.y;
+    float z = point.z;
     // float_data[idx + 3] is typically confidence or unused
 
     // Filter out invalid points (NaN or infinite values)
-    if (std::isfinite(x) && std::isfinite(y) && std::isfinite(z)) {
-      positions.emplace_back(x, y, z);
+    positions.emplace_back(x, y, z);
 
-      // Color based on distance for better visualization
-      float distance = sqrt(x * x + y * y + z * z);
-      auto color = distance_to_color(distance);
-      colors.push_back(color);
-    }
+    // Color based on distance for better visualization
+    float distance = sqrt(x * x + y * y + z * z);
+    auto color = distance_to_color(distance);
+    colors.push_back(color);
   }
   // Log to Rerun
   if (!positions.empty()) {
@@ -86,7 +100,6 @@ void Demo::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
 }
 
 void Demo::run() {
-  this->_rec->spawn().exit_on_failure();
   while (true) sleep(1);
 }
 

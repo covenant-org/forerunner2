@@ -3,6 +3,7 @@ PROJECT(zed)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_BUILD_TYPE "Release")
 
 option(LINK_SHARED_ZED "Link with the ZED SDK shared executable" ON)
@@ -15,24 +16,12 @@ find_package(ZED REQUIRED)
 find_package(CUDA ${ZED_CUDA_VERSION} REQUIRED)
 find_package(cppzmq REQUIRED)
 find_package(capnp_schemas REQUIRED)
-# find_package(OpenCV REQUIRED)
-# find_package(GLUT REQUIRED)
-# find_package(GLEW REQUIRED)
-# SET(OpenGL_GL_PREFERENCE GLVND)
-# find_package(OpenGL REQUIRED)
+find_package(PCL 1.15 REQUIRED)
 
 include_directories(${ZED_INCLUDE_DIRS})
-# include_directories(${OpenCV_INCLUDE_DIRS})
-# include_directories(${GLEW_INCLUDE_DIRS})
-# include_directories(${GLUT_INCLUDE_DIR})
 include_directories(${CUDA_INCLUDE_DIRS})
-# include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 link_directories(${ZED_LIBRARY_DIR})
-# link_directories(${OpenCV_LIBRARY_DIRS})
-# link_directories(${GLEW_LIBRARY_DIRS})
-# link_directories(${GLUT_LIBRARY_DIRS})
-# link_directories(${OpenGL_LIBRARY_DIRS})
 link_directories(${CUDA_LIBRARY_DIRS})
 
 FILE(GLOB_RECURSE SRC_FILES *.cpp)
@@ -54,11 +43,8 @@ TARGET_LINK_LIBRARIES(${PROJECT_NAME}
                         cppzmq 
                         capnp 
                         capnp_schemas 
-                        kj)
-                        # ${OpenCV_LIBRARIES}
-                        # ${OPENGL_LIBRARIES}
-                        # ${GLUT_LIBRARIES}
-                        # ${GLEW_LIBRARIES})
+                        kj
+                        ${PCL_LIBRARIES})
 
 if(INSTALL_SAMPLES)
     LIST(APPEND SAMPLE_LIST ${PROJECT_NAME})

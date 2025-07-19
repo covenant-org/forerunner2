@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.15)
 project(rerun)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 include(FetchContent)
 FetchContent_Declare(rerun_sdk URL
     https://github.com/rerun-io/rerun/releases/latest/download/rerun_cpp_sdk.zip)
@@ -8,8 +12,9 @@ FetchContent_MakeAvailable(rerun_sdk)
 
 find_package(cppzmq REQUIRED)
 find_package(capnp_schemas REQUIRED)
+find_package(PCL 1.15 REQUIRED)
 
 add_executable(rerun demo.cpp)
 add_subdirectory(${CMAKE_SOURCE_DIR}/../core ${CMAKE_BINARY_DIR}/core)
 
-target_link_libraries(rerun rerun_sdk core cppzmq capnp capnp_schemas kj)
+target_link_libraries(rerun rerun_sdk core cppzmq capnp capnp_schemas kj ${PCL_LIBRARIES})
