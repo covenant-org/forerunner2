@@ -3,19 +3,21 @@
 #include <cmath>
 #include <cstring>
 #include <pcl/common/point_tests.h>
+#include <pcl/conversions.h>
+#include <pcl/filters/passthrough.h>
+#include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/impl/point_types.hpp>
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
-#include <pcl/conversions.h>
 #include <pthread.h>
 #include <sl/Camera.hpp>
 #include <sstream>
 
 using namespace sl;
 
-Zed::Zed(int argc, char **argv) : Core::Vertex(argc, argv), viewer("Help") {
+Zed::Zed(int argc, char **argv) : Core::Vertex(argc, argv) {
   this->_cloud_point_pub = this->create_publisher<PointCloud>("point_cloud");
 
   _camera = Camera();
@@ -50,60 +52,32 @@ void Zed::run() {
       msg.content.setWidth(default_image_size.width);
       msg.content.setHeight(default_image_size.height);
 
-      pcl::PointXYZRGB point(0.0f, 0, 0);
       auto ptr = point_cloud.getPtr<float>();
-      pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(
-          new pcl::PointCloud<pcl::PointXYZRGB>(
-              default_image_size.height, default_image_size.width, point));
+      pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
+          new pcl::PointCloud<pcl::PointXYZRGBA>(default_image_size.height,
+                                                 default_image_size.width));
       cloud->width = default_image_size.width;
       cloud->height = default_image_size.height;
-      for (int x = 0; x < default_image_size.width; x++) {
-        for (int y = 0; y < default_image_size.height; y++) {
-          sl::float4 pixel;
-          point_cloud.getValue(x, y, &pixel);
-          auto point = &cloud->points[y*default_image_size.width + x];
-          point->r = 255;
-          point->g = 255;
-          point->b = 255;
-          if(!std::isfinite(pixel.x) || !std::isfinite(pixel.y) || !std::isfinite(pixel.z)){
-          point->x = 0;
-          point->y = 0;
-          point->z = 0;
-            continue;
-          }
-          point->x = pixel.x;
-          point->y = pixel.y;
-          point->z = pixel.z;
-          point->r = pixel.r;
-          point->g = pixel.g;
-          point->b = pixel.b;
-        }
-      }
-      this->viewer.removeVisualizationCallable("cloud");
-      this->viewer.showCloud(cloud);
-      std::cout << "displayed" << std::endl;
-      continue;
-      //      memcpy(cloud->points.data(), point_cloud.getPtr<sl::float4>(),
-      //             point_cloud.getPixelBytes() * default_image_size.area());
 
-      //pcl::VoxelGrid<pcl::PointXYZRGBA> sor;
-      //sor.setInputCloud(cloud);
-      //sor.setLeafSize(0.01f, 0.01f, 0.01f);
-      //sor.filter(*cloud);
+      memcpy(cloud->points.data(), point_cloud.getPtr<sl::float4>(),
+             sizeof(sl::float4) * default_image_size.area());
 
-      //std::stringstream encoded_cloud;
-      //_cloud_encoder->encodePointCloud(cloud, encoded_cloud);
+      pcl::PassThrough<pcl::PointXYZRGBA> pass;
+      pass.setInputCloud(cloud);
+      pass.setFilterFieldName("z");
+      pass.setFilterLimits(0.0, 10.0);
+      pass.filter(*cloud);
 
-      auto data = point_cloud.getPtr<uint8_t>();
-      //auto size = point_cloud.getPixelBytes() * default_image_size.area();
-      auto size = cloud->points.size() * sizeof(pcl::PointXYZRGBA);
-      //auto buffer = encoded_cloud.str();
-      msg.content.initData(size);
-      msg.content.setSize(size);
-      auto reader = ::capnp::Data::Reader(reinterpret_cast<unsigned char*>(cloud->points.data()), size);
+      std::stringstream encoded_cloud;
+      _cloud_encoder->encodePointCloud(cloud, encoded_cloud);
+
+      auto buffer = encoded_cloud.str();
+      msg.content.initData(buffer.size());
+      msg.content.setSize(buffer.size());
+      auto reader =
+          ::capnp::Data::Reader((unsigned char *)buffer.data(), buffer.size());
       msg.content.setData(reader);
       msg.publish();
-      std::cout << "publishing image" << std::endl;
     }
   }
 }
