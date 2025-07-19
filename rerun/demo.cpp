@@ -1,5 +1,5 @@
 #include "demo.hpp"
-#include <iterator>
+#include <iostream>
 #include <rerun.hpp>
 #include <rerun/recording_stream.hpp>
 
@@ -7,6 +7,9 @@ Demo::Demo(int argc, char **argv) : Core::Vertex(argc, argv) {
   this->_sub = this->create_subscriber<PointCloud>(
       "point_cloud",
       std::bind(&Demo::point_cloud_cb, this, std::placeholders::_1));
+
+  this->_point_cloud_decoder =
+      new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>();
 
   this->_rec = std::make_shared<rerun::RecordingStream>("rerun_demo");
 }
@@ -43,9 +46,16 @@ void Demo::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
   auto width = msg.content.getWidth();
   auto height = msg.content.getHeight();
 
+  //  pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
+  //      new pcl::PointCloud<pcl::PointXYZRGBA>());
+  //  std::stringstream buffer(
+  //      std::string((char *)data_reader.begin(), data_reader.size()));
+  //  _point_cloud_decoder->decodePointCloud(buffer, cloud);
+
   const float *float_data =
       reinterpret_cast<const float *>(data_reader.begin());
-  size_t num_points = data_reader.size() / (4 * sizeof(float));
+  size_t num_points = data_reader.size() / (sizeof(float) * 4);
+  std::cout << num_points << std::endl;
 
   std::vector<rerun::Position3D> positions;
   std::vector<rerun::Color> colors;
@@ -82,6 +92,8 @@ void Demo::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
     this->_rec->log("stats/image_dimensions",
                     rerun::TextLog("Dimensions: " + std::to_string(width) +
                                    "x" + std::to_string(height)));
+  }else{
+      std::cout << "empty"<< std::endl;
   }
 }
 
