@@ -12,7 +12,8 @@
     "--volume=/tmp/.X11-unix:/tmp/.X11-unix:rw",
     "--volume=/home/${localEnv:USER}/.ssh:/home/${localEnv:USER}/.ssh/",
     "--env=DISPLAY=${localEnv:DISPLAY}",
-    "--env=NVIDIA_DRIVER_CAPABILITIES=all"
+    "--env=NVIDIA_DRIVER_CAPABILITIES=all",
+    "--name=forerunner2"
   ],
   "initializeCommand": "xhost +si:localuser:$USER; REMOTE_UID=$(id -u $USER); REMOTE_GID=$(id -g $USER)",
   "updateContentCommand": "bash .devcontainer/install-dev-tools.sh",

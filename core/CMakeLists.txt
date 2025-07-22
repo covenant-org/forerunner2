@@ -10,12 +10,6 @@ add_definitions("-Wall -Wextra -Werror")
 find_package(cppzmq REQUIRED)
 find_package(capnp_schemas REQUIRED)
 
-add_executable(testing testing.cpp)
-target_link_libraries(testing PRIVATE cppzmq capnp capnp_schemas kj)
-
-add_executable(subtesting subtest.cpp)
-target_link_libraries(subtesting PRIVATE cppzmq capnp capnp_schemas kj)
-
 add_library(core INTERFACE)
 target_include_directories(core INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(core INTERFACE cppzmq capnp capnp_schemas kj)
