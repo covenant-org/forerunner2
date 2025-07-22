@@ -1,0 +1,64 @@
+{
+  "name": "Nuclea Gazebo Forerunner",
+  "image": "fairbrook/px4-cuda:px4v14-cuda12.8",
+  "runArgs": [
+    "--gpus=all",
+    "--privileged",
+    "--network=host",
+    "--ipc=host",
+    "--pid=host",
+    "--runtime=nvidia",
+    "--volume=/dev:/dev",
+    "--volume=/tmp/.X11-unix:/tmp/.X11-unix:rw",
+    "--volume=/home/${localEnv:USER}/.ssh:/home/${localEnv:USER}/.ssh/",
+    "--env=DISPLAY=${localEnv:DISPLAY}",
+    "--env=NVIDIA_DRIVER_CAPABILITIES=all"
+  ],
+  "initializeCommand": "xhost +si:localuser:$USER; REMOTE_UID=$(id -u $USER); REMOTE_GID=$(id -g $USER)",
+  "updateContentCommand": "bash .devcontainer/install-dev-tools.sh",
+  "remoteUser": "${localEnv:USER}",
+  "containerEnv": {
+    "USER": "${localEnv:USER}",
+    "DISPLAY": "${localEnv:DISPLAY}",
+    "NVIDIA_VISIBLE_DEVICES": "all",
+    "NVIDIA_DRIVER_CAPABILITIES": "all"
+  },
+  "remoteEnv": {
+    "PATH": "${containerEnv:PATH}:/usr/local/cuda/bin",
+    "LD_LIBRARY_PATH": "$LD_LIBRARY_PATH:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64",
+    "XLA_FLAGS": "--xla_gpu_cuda_data_dir=/usr/local/cuda"
+  },
+  "postCreateCommand": [
+    "nvidia-smi"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools"
+      ]
+    }
+  },
+  "mounts": [
+    "source=/dev/dri,target=/dev/dri,type=bind",
+    "source=/dev/bus/usb,target=/dev/bus/usb,type=bind"
+  ],
+  "features": {
+    "ghcr.io/georgofenbeck/features/lazygit-linuxbinary:1": {},
+    "ghcr.io/devcontainers-extra/features/fd:1": {},
+    "ghcr.io/devcontainers-extra/features/fzf:1": {},
+    "ghcr.io/devcontainers-extra/features/ripgrep:1": {},
+    "ghcr.io/devcontainers-extra/features/tmux-apt-get:1": {},
+    "ghcr.io/fairbrook/features/neovim:1": {},
+    "ghcr.io/devcontainers/features/github-cli:latest": {},
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "configureZshAsDefaultShell": false,
+      "installOhMyZsh": false,
+      "upgradePackages": false,
+      "installOhMyZshConfig": false,
+      "installZsh": false,
+      "username": "${localEnv:USER}",
+      "userUid": "${localEnv:REMOTE_UID}",
+      "userGid": "${localEnv:REMOTE_GID}"
+    }
+  }
+}
