@@ -1,11 +1,24 @@
 #include "gz.hpp"
+#include <cmath>
+#include <gz/msgs/pointcloud.pb.h>
 #include <gz/transport/MessageInfo.hh>
 #include <gz/transport/Node.hh>
 #include <iostream>
+#include <pcl/common/point_tests.h>
+#include <pcl/compression/compression_profiles.h>
+#include <pcl/compression/octree_pointcloud_compression.h>
+#include <pcl/conversions.h>
+#include <pcl/filters/passthrough.h>
+#include <pcl/filters/statistical_outlier_removal.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/impl/point_types.hpp>
+#include <pcl/io/pcd_io.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
 
 GZ::GZ(int argc, char **argv) : Core::Vertex(argc, argv) {
-  _point_cloud_publisher =
-      std::make_shared<Core::Publisher<PointCloud>>("point_cloud");
+  this->_point_cloud_publisher =
+      this->create_publisher<PointCloud>("point_cloud");
 
   _gz_node = std::make_shared<gz::transport::Node>();
   if (!_gz_node->Subscribe("/depth_camera/points", &GZ::on_point_cb, this)) {
@@ -21,11 +34,11 @@ GZ::GZ(int argc, char **argv) : Core::Vertex(argc, argv) {
                            &GZ::on_rmic_cb, this)) {
     throw std::runtime_error("Failed to subscribe to left mic");
   }
-}
 
-void GZ::on_point_cb(const gz::msgs::PointCloudPacked &pt,
-                     const gz::transport::MessageInfo &info) {
-  std::cout << "Received point cloud data." << info.Topic() << std::endl;
+  pcl::io::compression_Profiles_e compression_profile =
+      pcl::io::MED_RES_ONLINE_COMPRESSION_WITH_COLOR;
+  _cloud_encoder = new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>(
+      compression_profile, false);
 }
 
 void GZ::on_lmic_cb(const gz::msgs::Double &db,
@@ -45,6 +58,61 @@ void GZ::run() {
     std::cout << topic << std::endl;
   }
   gz::transport::waitForShutdown();
+}
+
+void GZ::on_point_cb(const gz::msgs::PointCloudPacked &pt) {
+  std::cout << pt.width() << std::endl;
+  auto msg = this->_point_cloud_publisher->new_msg();
+  msg.content.setHeight(pt.height());
+  msg.content.setWidth(pt.width());
+
+  pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
+      new pcl::PointCloud<pcl::PointXYZRGBA>());
+  cloud->width = pt.width();
+  cloud->height = pt.height();
+  cloud->is_dense = pt.is_dense();
+  cloud->points.resize(cloud->width * cloud->height);
+
+  // manually convert each point, in pcl each is represented by 16 bytes and in
+  // gazebo 24 bytes
+  // can run: gz topic -e -t /depth_camera/points
+  // field { name: "x" datatype: FLOAT32 count: 1 }
+  // field { name: "y" offset: 4 datatype: FLOAT32 count: 1 }
+  // field { name: "z" offset: 8 datatype: FLOAT32 count: 1 }
+  // field { name: "rgb" offset: 16 datatype: FLOAT32 count: 1 }
+  // height: 480 width: 640 point_step: 24
+  const uint8_t *data_ptr = reinterpret_cast<const uint8_t *>(pt.data().data());
+  for (size_t i = 0; i < cloud->points.size(); ++i) {
+    size_t point_offset = i * pt.point_step();
+
+    float x, y, z;
+    memcpy(&x, data_ptr + point_offset + 0, sizeof(float));
+    memcpy(&y, data_ptr + point_offset + 4, sizeof(float));
+    memcpy(&z, data_ptr + point_offset + 8, sizeof(float));
+
+    if (std::isfinite(x) && std::isfinite(y) && std::isfinite(z)) {
+      cloud->points[i].x = x;
+      cloud->points[i].y = y;
+      cloud->points[i].z = z;
+    }
+  }
+
+  pcl::PassThrough<pcl::PointXYZRGBA> pass;
+  pass.setInputCloud(cloud);
+  pass.setFilterFieldName("x");
+  pass.setFilterLimits(0.0f, 10.0f);
+  pass.filter(*cloud);
+
+  std::stringstream encoded_cloud;
+  _cloud_encoder->encodePointCloud(cloud, encoded_cloud);
+  auto buffer = encoded_cloud.str();
+  msg.content.initData(buffer.size());
+  msg.content.setSize(buffer.size());
+
+  auto reader =
+      ::capnp::Data::Reader((unsigned char *)buffer.data(), buffer.size());
+  msg.content.setData(reader);
+  msg.publish();
 }
 
 int main(int argc, char **argv) {
