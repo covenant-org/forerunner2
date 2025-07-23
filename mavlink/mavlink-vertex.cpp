@@ -2,6 +2,7 @@
 #include "message.hpp"
 #include <capnp_schemas/controller.capnp.h>
 #include <capnp_schemas/generics.capnp.h>
+#include <capnp_schemas/mavlink.capnp.h>
 #include <mavsdk/connection_result.h>
 #include <mavsdk/mavsdk.h>
 #include <mavsdk/plugins/action/action.h>
@@ -24,6 +25,7 @@ MavlinkVertex::MavlinkVertex(int argc, char **argv)
                               std::placeholders::_1, std::placeholders::_2));
   this->_home_position_publisher =
       this->create_publisher<HomePosition>("home_position");
+  this->_odometry_publisher = this->create_publisher<Odometry>("odometry");
 }
 
 void MavlinkVertex::command_cb(const Core::IncomingMessage<Command> &command,
@@ -94,16 +96,22 @@ void MavlinkVertex::command_cb(const Core::IncomingMessage<Command> &command,
     }
     case Command::WAYPOINT: {
       auto waypoint = command.content.getWaypoint();
-      auto res = this->_offboard->set_position_ned({.north_m = waypoint.getX(),
-                                                    .east_m = waypoint.getY(),
-                                                    .down_m = waypoint.getZ(),
-                                                    .yaw_deg = 0});
+      const auto waypoint_res =
+          this->_offboard->set_position_ned({.north_m = waypoint.getX(),
+                                             .east_m = waypoint.getY(),
+                                             .down_m = waypoint.getZ(),
+                                             .yaw_deg = 0});
+      if (waypoint_res != mavsdk::Offboard::Result::Success) {
+        res.setCode(500);
+        res.setMessage("Failed to set position");
+        return;
+      }
     }
+    default:
+      res.setCode(501);
+      res.setMessage("Not implemented");
   }
 }
-/*
-
-*/
 
 bool MavlinkVertex::init_mavlink_connection(const std::string &uri) {
   ConnectionResult result = this->_mavsdk.add_any_connection(uri);
@@ -125,6 +133,23 @@ bool MavlinkVertex::init_mavlink_connection(const std::string &uri) {
   return true;
 }
 
+void MavlinkVertex::odometry_cb(const mavsdk::Telemetry::Odometry &odom) {
+  auto msg = this->_odometry_publisher->new_msg();
+  auto angular = msg.content.initAngular();
+  auto pos = msg.content.initPosition();
+  auto vel = msg.content.initVelocity();
+  angular.setX(odom.angular_velocity_body.roll_rad_s);
+  angular.setY(odom.angular_velocity_body.yaw_rad_s);
+  angular.setZ(odom.angular_velocity_body.pitch_rad_s);
+  pos.setX(odom.position_body.x_m);
+  pos.setY(odom.position_body.y_m);
+  pos.setZ(odom.position_body.z_m);
+  vel.setX(odom.velocity_body.x_m_s);
+  vel.setY(odom.velocity_body.y_m_s);
+  vel.setZ(odom.velocity_body.z_m_s);
+  msg.publish();
+}
+
 void MavlinkVertex::run() {
   this->_passthrough->subscribe_message(
       HOME_POSITION_MESSAGE_ID, [this](const __mavlink_message &msg) {
@@ -137,6 +162,9 @@ void MavlinkVertex::run() {
             -this->_mavlink_home_position.z);
         home_position_msg.publish();
       });
+
+  this->_telemetry->subscribe_odometry(
+      std::bind(&MavlinkVertex::odometry_cb, this, std::placeholders::_1));
 
   while (true) {
     sleep(1);

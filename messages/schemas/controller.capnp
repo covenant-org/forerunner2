@@ -24,3 +24,11 @@ struct Command{
     }
 }
 }
+
+struct Goal{
+  union{
+    relative  @0 :PointYaw;
+    coords    @1 :PointYaw;
+    latlon    @2 :PointYaw;
+  }
+}

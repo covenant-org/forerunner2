@@ -16,7 +16,9 @@ struct Telemetry {
 
 
 struct Odometry {
-  pos @0 :Position;
+  position @0 :Position;
+  velocity @1 :Position;
+  angular  @2 :Position;
 }
 
 struct HomePosition {

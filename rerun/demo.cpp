@@ -1,10 +1,14 @@
 #include "demo.hpp"
 #include "message.hpp"
+#include "rerun/archetypes/arrows3d.hpp"
+#include "rerun/archetypes/boxes3d.hpp"
+#include <array>
 #include <exception>
 #include <iostream>
 #include <pcl/impl/point_types.hpp>
 #include <rerun.hpp>
 #include <rerun/recording_stream.hpp>
+#include <vector>
 
 Demo::Demo(int argc, char **argv) : Core::Vertex(argc, argv) {
   this->_point_cloud_decoder =
@@ -17,6 +21,8 @@ Demo::Demo(int argc, char **argv) : Core::Vertex(argc, argv) {
       std::bind(&Demo::point_cloud_cb, this, std::placeholders::_1));
   this->_mic_sub = this->create_subscriber<StereoMic>(
       "mic", std::bind(&Demo::mic_cb, this, std::placeholders::_1));
+  this->_odom_sub = this->create_subscriber<Odometry>(
+      "odometry", std::bind(&Demo::odom_cb, this, std::placeholders::_1));
 }
 
 rerun::Color Demo::distance_to_color(float distance) {
@@ -44,6 +50,16 @@ rerun::Color Demo::distance_to_color(float distance) {
     float t = (normalized - 0.66f) / 0.34f;
     return rerun::Color(255, static_cast<uint8_t>(255 * (1 - t)), 0);
   }
+}
+
+void Demo::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
+  auto content = msg.content;
+  auto position = content.getPosition();
+  auto velocity = content.getVelocity();
+  this->_rec->log("drone/position",
+                  rerun::Boxes3D::from_centers_and_sizes(
+                      {{position.getX(), position.getY(), position.getZ()}},
+                      {{0.3, 0.3, 0.3}}));
 }
 
 void Demo::mic_cb(const Core::IncomingMessage<StereoMic> &msg) {

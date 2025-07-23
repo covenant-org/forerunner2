@@ -1,7 +1,6 @@
 #ifndef PUBLISHER_HPP
 #define PUBLISHER_HPP
 
-#include "capnp_schemas/registry.capnp.h"
 #include "message.hpp"
 #include "utils.hpp"
 #include <capnp/common.h>
