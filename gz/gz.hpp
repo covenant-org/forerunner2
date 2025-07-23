@@ -2,8 +2,8 @@
 #include "vertex.hpp"
 #include <capnp_schemas/zed.capnp.h>
 #include <gz/msgs.hh>
-#include <gz/transport.hh>
 #include <gz/msgs/pointcloud.pb.h>
+#include <gz/transport.hh>
 #include <pcl/compression/octree_pointcloud_compression.h>
 #include <pcl/io/pcd_io.h>
 

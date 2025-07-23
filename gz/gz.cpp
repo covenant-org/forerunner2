@@ -90,6 +90,7 @@ void GZ::on_point_cb(const gz::msgs::PointCloudPacked &pt) {
     memcpy(&y, data_ptr + point_offset + 4, sizeof(float));
     memcpy(&z, data_ptr + point_offset + 8, sizeof(float));
 
+    // sometimes the points for some axis have a Inf value
     if (std::isfinite(x) && std::isfinite(y) && std::isfinite(z)) {
       cloud->points[i].x = x;
       cloud->points[i].y = y;
@@ -102,6 +103,12 @@ void GZ::on_point_cb(const gz::msgs::PointCloudPacked &pt) {
   pass.setFilterFieldName("x");
   pass.setFilterLimits(0.0f, 10.0f);
   pass.filter(*cloud);
+
+  pcl::VoxelGrid<pcl::PointXYZRGBA> voxel_filter;
+  voxel_filter.setInputCloud(cloud);
+  // this is 2.5cm
+  voxel_filter.setLeafSize(0.25f, 0.25f, 0.25f);
+  voxel_filter.filter(*cloud);
 
   std::stringstream encoded_cloud;
   _cloud_encoder->encodePointCloud(cloud, encoded_cloud);
