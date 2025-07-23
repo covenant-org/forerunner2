@@ -74,6 +74,11 @@ void GZ::run() {
 }
 
 void GZ::on_point_cb(const gz::msgs::PointCloudPacked &pt) {
+  if (is_processing) {
+    return;
+  }
+  is_processing = true;
+
   auto msg = this->_point_cloud_publisher->new_msg();
   msg.content.setHeight(pt.height());
   msg.content.setWidth(pt.width());
@@ -118,8 +123,8 @@ void GZ::on_point_cb(const gz::msgs::PointCloudPacked &pt) {
 
   pcl::VoxelGrid<pcl::PointXYZRGBA> voxel_filter;
   voxel_filter.setInputCloud(cloud);
-  // this is 2.5cm
-  voxel_filter.setLeafSize(0.25f, 0.25f, 0.25f);
+  // this is 5cm
+  voxel_filter.setLeafSize(0.5f, 0.5f, 0.5f);
   voxel_filter.filter(*cloud);
 
   std::stringstream encoded_cloud;
@@ -132,6 +137,7 @@ void GZ::on_point_cb(const gz::msgs::PointCloudPacked &pt) {
       ::capnp::Data::Reader((unsigned char *)buffer.data(), buffer.size());
   msg.content.setData(reader);
   msg.publish();
+  is_processing = false;
 }
 
 int main(int argc, char **argv) {

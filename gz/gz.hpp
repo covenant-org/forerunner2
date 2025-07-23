@@ -21,6 +21,7 @@ class GZ : public Core::Vertex {
   std::atomic<double> _last_lmic_value;
   std::atomic<double> _last_rmic_value;
   void publish_mic();
+  bool is_processing = false;
 
  public:
   GZ(int, char**);
