@@ -8,26 +8,18 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(cppzmq REQUIRED)
 find_package(capnp_schemas REQUIRED)
 find_package(MAVSDK REQUIRED)
-# find_package(PCL REQUIRED)
+find_package(PCL 1.15 REQUIRED)
+find_package(Eigen3 3.4 REQUIRED NO_MODULE)
 
-# include_directories(${PCL_INCLUDE_DIRS})
-# link_directories(${PCL_LIBRARY_DIRS})
-# add_definitions(${PCL_DEFINITIONS})
-
+add_executable(${PROJECT_NAME} planner.cpp kdtree.cpp utils.cpp theta-star.cpp)
 add_subdirectory(${CMAKE_SOURCE_DIR}/../core ${CMAKE_BINARY_DIR}/core)
 
-add_executable(planner planner.cpp)
-
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../vendor/eigen)
-
-target_include_directories(planner PUBLIC
-	${CMAKE_CURRENT_SOURCE_DIR}/../core)
-
-target_link_libraries(planner PRIVATE
+target_link_libraries(${PROJECT_NAME} PRIVATE
 	core
 	cppzmq 
 	capnp 
 	capnp_schemas 
 	kj 
 	MAVSDK::mavsdk
-)
+        Eigen3::Eigen
+	${PCL_LIBRARIES})
