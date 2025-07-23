@@ -1,7 +1,7 @@
 #include "gz.hpp"
+#include "logger.hpp"
 #include <cmath>
 #include <gz/msgs/pointcloud.pb.h>
-#include "logger.hpp"
 #include <gz/transport/MessageInfo.hh>
 #include <gz/transport/Node.hh>
 #include <iostream>
@@ -67,14 +67,13 @@ void GZ::run() {
   auto topics = this->_gz_node->SubscribedTopics();
   this->_logger.info("Subscribed to topics");
   for (const std::string &topic : topics) {
-    this->_logger.info("%s", topic.c_str());
+    this->_logger.info("  %s", topic.c_str());
   }
   this->_logger.info("Running");
   gz::transport::waitForShutdown();
 }
 
 void GZ::on_point_cb(const gz::msgs::PointCloudPacked &pt) {
-  std::cout << pt.width() << std::endl;
   auto msg = this->_point_cloud_publisher->new_msg();
   msg.content.setHeight(pt.height());
   msg.content.setWidth(pt.width());

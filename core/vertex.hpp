@@ -6,6 +6,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <variant>
 #ifndef VERTEX_HPP
 #define VERTEX_HPP
 
@@ -18,7 +19,14 @@ class Vertex {
  private:
   static std::map<std::string, std::string> _args;
 
-  void parse_args(int, char **) {}
+  void parse_args(int, char **argv) {
+    auto classname = std::string(argv[0]);
+    auto last_seg = classname.find_last_of('/');
+    if (last_seg != std::variant_npos) {
+      classname = std::string(classname.data() + last_seg + 1);
+    }
+    this->_logger.set_classname(classname);
+  }
 
  protected:
   std::string _registry;

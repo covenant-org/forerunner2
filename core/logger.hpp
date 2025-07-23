@@ -38,9 +38,9 @@ class Logger {
   std::string get_color(LogLevel level) const {
     switch (level) {
       case LogLevel::DEBUG:
-        return "\033[36m";  // Cyan
+        return "\033[37m";  // Light Gray
       case LogLevel::INFO:
-        return "\033[32m";  // Green
+        return "";  // Light Gray
       case LogLevel::WARN:
         return "\033[33m";  // Yellow
       case LogLevel::ERROR:
@@ -121,6 +121,10 @@ class Logger {
   void set_level(LogLevel level) { _current_level = level; }
 
   LogLevel get_level() const { return _current_level; }
+
+  void set_classname(const std::string& name) { this->_class_name = name; }
+
+  std::string get_classname() { return this->_class_name; }
 
   void debug(const std::string& message) { log(LogLevel::DEBUG, message); }
 
