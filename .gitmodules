@@ -19,3 +19,6 @@
 [submodule "vendor/flann"]
 	path = vendor/flann
 	url = https://github.com/flann-lib/flann.git
+[submodule "vendor/argparse"]
+	path = vendor/argparse
+	url = https://github.com/p-ranav/argparse
