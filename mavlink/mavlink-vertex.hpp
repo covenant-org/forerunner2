@@ -39,6 +39,14 @@ class MavlinkVertex : public Core::Vertex {
 
   bool init_mavlink_connection(const std::string &);
 
+ protected:
+  void setup_arguments() override {
+    _program.add_argument("--mavlink-uri")
+        .help("ip where the mavlink instance is running")
+        .nargs(1)
+        .default_value(MAVLINK_URI);
+  }
+
  public:
   MavlinkVertex(int, char **);
 

@@ -15,7 +15,9 @@ using namespace mavsdk;
 MavlinkVertex::MavlinkVertex(int argc, char **argv)
     : Core::Vertex(argc, argv),
       _mavsdk(Mavsdk::Configuration{ComponentType::GroundStation}) {
-  auto result = this->init_mavlink_connection(MAVLINK_URI);
+  initialize(argc, argv);
+  auto uri = _program.get<std::string>("--mavlink-uri");
+  auto result = this->init_mavlink_connection(uri);
   if (!result) {
     throw std::runtime_error("error initializing mavsdk");
   }

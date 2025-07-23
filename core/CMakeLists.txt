@@ -9,6 +9,7 @@ add_definitions("-Wall -Wextra -Werror")
 
 find_package(cppzmq REQUIRED)
 find_package(capnp_schemas REQUIRED)
+find_package(argparse REQUIRED)
 
 add_library(core INTERFACE)
 target_include_directories(core INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})

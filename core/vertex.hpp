@@ -3,6 +3,7 @@
 #include "message.hpp"
 #include "publisher.hpp"
 #include "subscriber.hpp"
+#include <argparse/argparse.hpp>
 #include <map>
 #include <memory>
 #include <string>
@@ -10,16 +11,21 @@
 #ifndef VERTEX_HPP
 #define VERTEX_HPP
 
-// TODO: We probably should make this a global define and allow it to change
-// when creating publishers
 #define DEFAULT_REGISTRY_URI "tcp://127.0.0.1:4020"
 
 namespace Core {
 class Vertex {
  private:
   static std::map<std::string, std::string> _args;
+  bool _parsed = false;
 
-  void parse_args(int, char **argv) {
+  void parse_args(int argc, char **argv) {
+    if (_parsed) return;
+
+    setup_arguments();
+    _program.parse_args(argc, argv);
+    _parsed = true;
+
     auto classname = std::string(argv[0]);
     auto last_seg = classname.find_last_of('/');
     if (last_seg != std::variant_npos) {
@@ -31,12 +37,23 @@ class Vertex {
  protected:
   std::string _registry;
   Logger _logger;
+  argparse::ArgumentParser _program;
+
+  virtual void setup_arguments() {}
 
  public:
   Vertex(int argc, char **argv)
       : _registry(DEFAULT_REGISTRY_URI),
         _logger(LogLevel::INFO, "app.log", typeid(this).name()) {
-    this->parse_args(argc, argv);
+    _program.add_argument("--registry-uri")
+        .default_value(DEFAULT_REGISTRY_URI)
+        .help("ip where the registry is running")
+        .nargs(1);
+  }
+
+  void initialize(int argc, char **argv) {
+    parse_args(argc, argv);
+    _registry = _program.get("--registry-uri");
   }
 
   template <typename T>

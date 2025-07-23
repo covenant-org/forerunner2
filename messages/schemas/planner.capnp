@@ -19,7 +19,7 @@ struct PlanResponse {
 struct ReplanRequest {
 	pose @0 :PoseStamped;
 	currentPathIndex @1 :UInt8;
-	pathSequencce @2 :UInt32;
+	pathSequence @2 :UInt32;
 }
 
 struct ReplanResponse {
