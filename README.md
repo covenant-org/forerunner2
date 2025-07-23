@@ -66,3 +66,15 @@ Compile messages:
 cd messages
 cmake -Bbuild && cd build && cmake --build . && sudo cmake --install .
 ```
+
+## Devcontainer
+
+In order to ease the development and standardize the development enviroment we created a devcontainer.
+
+### PX4
+
+PX4 firmware is preinstalled and prebuild in the /usr/local/share/px4 folder. For easy access there is an alias _px4_ to make the targets. For example:
+
+```
+PX4_GZ_WORLD=imav_indoor px4 px4_sitl gz_x500_depth_mic
+```
