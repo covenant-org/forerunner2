@@ -1,6 +1,7 @@
 #include "gz.hpp"
 #include <cmath>
 #include <gz/msgs/pointcloud.pb.h>
+#include "logger.hpp"
 #include <gz/transport/MessageInfo.hh>
 #include <gz/transport/Node.hh>
 #include <iostream>
@@ -17,8 +18,8 @@
 #include <pcl/point_types.h>
 
 GZ::GZ(int argc, char **argv) : Core::Vertex(argc, argv) {
-  this->_point_cloud_publisher =
-      this->create_publisher<PointCloud>("point_cloud");
+  _point_cloud_publisher = this->create_publisher<PointCloud>("point_cloud");
+  _mic_publisher = this->create_publisher<StereoMic>("mic");
 
   _gz_node = std::make_shared<gz::transport::Node>();
   if (!_gz_node->Subscribe("/depth_camera/points", &GZ::on_point_cb, this)) {
@@ -41,22 +42,34 @@ GZ::GZ(int argc, char **argv) : Core::Vertex(argc, argv) {
       compression_profile, false);
 }
 
-void GZ::on_lmic_cb(const gz::msgs::Double &db,
-                    const gz::transport::MessageInfo &info) {
-  std::cout << "Received mic 1: " << db.data() << std::endl;
+void GZ::publish_mic() {
+  auto out = this->_mic_publisher->new_msg();
+  out.content.setLeft(this->_last_lmic_value);
+  out.content.setRight(this->_last_rmic_value);
+  out.publish();
 }
 
-void GZ::on_rmic_cb(const gz::msgs::Double &db,
+void GZ::on_lmic_cb(const gz::msgs::Double &msg,
                     const gz::transport::MessageInfo &info) {
-  std::cout << "Received mic 2: " << db.data() << std::endl;
+  this->_last_lmic_value = msg.data();
+  this->_logger.debug("Received left mic");
+  this->publish_mic();
+}
+
+void GZ::on_rmic_cb(const gz::msgs::Double &msg,
+                    const gz::transport::MessageInfo &info) {
+  this->_last_rmic_value = msg.data();
+  this->_logger.debug("Received right mic");
+  this->publish_mic();
 }
 
 void GZ::run() {
-  std::cout << "running" << std::endl;
   auto topics = this->_gz_node->SubscribedTopics();
+  this->_logger.info("Subscribed to topics");
   for (const std::string &topic : topics) {
-    std::cout << topic << std::endl;
+    this->_logger.info("%s", topic.c_str());
   }
+  this->_logger.info("Running");
   gz::transport::waitForShutdown();
 }
 

@@ -1,4 +1,5 @@
 #include "action.hpp"
+#include "logger.hpp"
 #include "message.hpp"
 #include "publisher.hpp"
 #include "subscriber.hpp"
@@ -21,9 +22,12 @@ class Vertex {
 
  protected:
   std::string _registry;
+  Logger _logger;
 
  public:
-  Vertex(int argc, char **argv) : _registry(DEFAULT_REGISTRY_URI) {
+  Vertex(int argc, char **argv)
+      : _registry(DEFAULT_REGISTRY_URI),
+        _logger(LogLevel::INFO, "app.log", typeid(this).name()) {
     this->parse_args(argc, argv);
   }
 
@@ -62,5 +66,5 @@ class Vertex {
 
   virtual void run() = 0;
 };
-};      // namespace Core
+};  // namespace Core
 #endif  // VERTEX_HPP
