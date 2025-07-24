@@ -49,11 +49,21 @@ class Vertex {
         .default_value(DEFAULT_REGISTRY_URI)
         .help("ip where the registry is running")
         .nargs(1);
+    _program.add_argument("--log_level")
+        .default_value(LogLevel::INFO)
+        .help("The log lever for the logs")
+        .nargs(1);
+    _program.add_argument("--debug").default_value(false).help(
+        "Shortcut for --log_level 0");
+    this->initialize(argc, argv);
   }
 
   void initialize(int argc, char **argv) {
     parse_args(argc, argv);
     _registry = _program.get("--registry-uri");
+    if (_program.is_used("debug")) {
+      this->_logger.set_level(LogLevel::DEBUG);
+    }
   }
 
   template <typename T>
