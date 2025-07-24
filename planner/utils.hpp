@@ -5,6 +5,7 @@
 #include <capnp_schemas/nav_msgs.capnp.h>
 #include <capnp_schemas/geometry_msgs.capnp.h>
 #include <capnp_schemas/visualization_msgs.capnp.h>
+#include "logger.hpp"
 #include <Eigen/Dense>
 #include <Eigen/src/Core/Matrix.h>
 #include <cmath>
@@ -12,7 +13,6 @@
 #include <pcl/point_types.h>
 
 namespace SimplePlanner {
-using Logger = std::function<void(std::string)>;
 using ReplanAction = planner_interfaces::action::Replan;
 using ReplanGoalHandle = rclcpp_action::ServerGoalHandle<ReplanAction>;
 using Box = std::pair<Eigen::Vector3d, Eigen::Vector3d>;
@@ -61,7 +61,7 @@ enum RequestType { START, REPLAN };
 class Algorithm {
 public:
   virtual ~Algorithm() = default;
-  virtual void init(AlgorithmConfig, Logger) = 0;
+  virtual void init(AlgorithmConfig, Core::Logger) = 0;
   virtual void update_config(AlgorithmConfig) = 0;
   virtual void update_obstacles(std::vector<Box>) = 0;
   virtual void update_octree(std::vector<pcl::PointXYZ>) = 0;

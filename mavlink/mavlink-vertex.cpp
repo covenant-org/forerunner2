@@ -1,3 +1,4 @@
+#include "argument_parser.hpp"
 #include "mavlink-vertex.hpp"
 #include "message.hpp"
 #include <capnp_schemas/controller.capnp.h>
@@ -10,13 +11,10 @@
 #include <mavsdk/plugins/telemetry/telemetry.h>
 #include <plugins/mavlink_passthrough/mavlink_passthrough.h>
 
-MavlinkVertex::MavlinkVertex(int argc, char **argv)
-    : Core::Vertex(argc, argv),
-      _mavsdk(
-          mavsdk::Mavsdk::Configuration{mavsdk::ComponentType::GroundStation}) {
-  _program.add_argument("--mavlink-uri").default_value("udp://0.0.0.0:14540");
-  auto uri = _program.get<std::string>("--mavlink-uri");
-  initialize(argc, argv);
+MavlinkVertex::MavlinkVertex(Core::ArgumentParser parser)
+    : Core::Vertex(std::move(parser)),
+      _mavsdk(mavsdk::Mavsdk::Configuration{mavsdk::ComponentType::GroundStation}) {
+  auto uri = this->get_argument<std::string>("--mavlink-uri");
   auto result = this->init_mavlink_connection(uri);
   if (!result) {
     throw std::runtime_error("error initializing mavsdk");
@@ -216,8 +214,14 @@ void MavlinkVertex::run() {
 }
 
 int main(int argc, char **argv) {
+  Core::BaseArgumentParser base(argc, argv);
+  base.add_argument("--mavlink-uri")
+      .help("ip where the mavlink instance is running")
+      .nargs(1)
+      .default_value(MAVLINK_URI);
+
   std::shared_ptr<MavlinkVertex> mavlink =
-      std::make_shared<MavlinkVertex>(argc, argv);
+      std::make_shared<MavlinkVertex>(std::move(base));
   mavlink->run();
   return 0;
 }

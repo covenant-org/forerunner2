@@ -1,3 +1,4 @@
+#include "argument_parser.hpp"
 #include "publisher.hpp"
 #include "subscriber.hpp"
 #include "vertex.hpp"
@@ -46,17 +47,8 @@ class MavlinkVertex : public Core::Vertex {
     bool inar;
     std::string mode;
   } _telemetry_state;
-
- protected:
-  void setup_arguments() override {
-    _program.add_argument("--mavlink-uri")
-        .help("ip where the mavlink instance is running")
-        .nargs(1)
-        .default_value(MAVLINK_URI);
-  }
-
  public:
-  MavlinkVertex(int, char **);
+  MavlinkVertex(Core::ArgumentParser);
 
   void command_cb(const Core::IncomingMessage<Command> &,
                   GenericResponse::Builder &);

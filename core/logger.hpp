@@ -153,6 +153,20 @@ class Logger {
   void error(const std::string& format, Args... args) {
     log(LogLevel::ERROR, format_string(format, args...));
   }
+
+  static LogLevel parse_level(const std::string& value) {
+    if (value == "debug") {
+      return LogLevel::DEBUG;
+    } else if (value == "info") {
+      return LogLevel::INFO;
+    } else if (value == "warn") {
+      return LogLevel::WARN;
+    } else if (value == "error") {
+      return LogLevel::ERROR;
+    }
+
+    throw std::runtime_error("invalid value for --log-level");
+  }
 };
 
 }  // namespace Core
