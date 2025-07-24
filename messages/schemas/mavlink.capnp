@@ -12,6 +12,9 @@ struct BatteryLevel {
 
 struct Telemetry {
   battery @0 :BatteryLevel;
+  mode    @1 :Text;
+  inAir   @2 :Bool;
+  armed   @3 :Bool;
 }
 
 

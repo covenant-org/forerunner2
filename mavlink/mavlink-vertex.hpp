@@ -25,11 +25,12 @@ class MavlinkVertex : public Core::Vertex {
  private:
   std::shared_ptr<Core::Publisher<HomePosition>> _home_position_publisher;
   std::shared_ptr<Core::Publisher<Odometry>> _odometry_publisher;
+  std::shared_ptr<Core::Publisher<Telemetry>> _telemetry_publisher;
   std::shared_ptr<Core::ActionServer<Command, GenericResponse>>
       _command_action_server;
 
-  mavsdk::Mavsdk _mavsdk;
   std::optional<std::shared_ptr<mavsdk::System>> _system = std::nullopt;
+  mavsdk::Mavsdk _mavsdk;
   std::shared_ptr<mavsdk::Telemetry> _telemetry;
   std::shared_ptr<mavsdk::Action> _action;
   std::shared_ptr<mavsdk::Offboard> _offboard;
@@ -38,6 +39,13 @@ class MavlinkVertex : public Core::Vertex {
   mavlink_home_position_t _mavlink_home_position;
 
   bool init_mavlink_connection(const std::string &);
+
+  struct State {
+    float bat;
+    bool arm;
+    bool inar;
+    std::string mode;
+  } _telemetry_state;
 
  protected:
   void setup_arguments() override {
@@ -53,6 +61,7 @@ class MavlinkVertex : public Core::Vertex {
   void command_cb(const Core::IncomingMessage<Command> &,
                   GenericResponse::Builder &);
   void odometry_cb(const mavsdk::Telemetry::Odometry &);
+  void publish_telemtry();
 
   void run();
 };

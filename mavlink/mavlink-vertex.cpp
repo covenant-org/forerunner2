@@ -10,13 +10,13 @@
 #include <mavsdk/plugins/telemetry/telemetry.h>
 #include <plugins/mavlink_passthrough/mavlink_passthrough.h>
 
-using namespace mavsdk;
-
 MavlinkVertex::MavlinkVertex(int argc, char **argv)
     : Core::Vertex(argc, argv),
-      _mavsdk(Mavsdk::Configuration{ComponentType::GroundStation}) {
-  initialize(argc, argv);
+      _mavsdk(
+          mavsdk::Mavsdk::Configuration{mavsdk::ComponentType::GroundStation}) {
+  _program.add_argument("--mavlink-uri").default_value("udp://0.0.0.0:14540");
   auto uri = _program.get<std::string>("--mavlink-uri");
+  initialize(argc, argv);
   auto result = this->init_mavlink_connection(uri);
   if (!result) {
     throw std::runtime_error("error initializing mavsdk");
@@ -28,10 +28,12 @@ MavlinkVertex::MavlinkVertex(int argc, char **argv)
   this->_home_position_publisher =
       this->create_publisher<HomePosition>("home_position");
   this->_odometry_publisher = this->create_publisher<Odometry>("odometry");
+  this->_telemetry_publisher = this->create_publisher<Telemetry>("telemetry");
 }
 
 void MavlinkVertex::command_cb(const Core::IncomingMessage<Command> &command,
                                GenericResponse::Builder &res) {
+  this->_logger.debug("Requested command");
   res.setCode(200);
   res.setMessage("OK");
   switch (command.content.which()) {
@@ -81,8 +83,10 @@ void MavlinkVertex::command_cb(const Core::IncomingMessage<Command> &command,
         res.setCode(500);
         res.setMessage("Error while enabiling offboard");
       }
+      return;
     }
     case Command::ARM: {
+      this->_logger.debug("Requested arm");
       if (this->_telemetry->armed()) {
         res.setCode(304);
         res.setMessage("Already armed");
@@ -95,6 +99,8 @@ void MavlinkVertex::command_cb(const Core::IncomingMessage<Command> &command,
         res.setMessage("Failed to arm");
         return;
       }
+      this->_logger.info("Armed succesfully");
+      return;
     }
     case Command::WAYPOINT: {
       auto waypoint = command.content.getWaypoint();
@@ -108,6 +114,7 @@ void MavlinkVertex::command_cb(const Core::IncomingMessage<Command> &command,
         res.setMessage("Failed to set position");
         return;
       }
+      return;
     }
     default:
       res.setCode(501);
@@ -116,8 +123,8 @@ void MavlinkVertex::command_cb(const Core::IncomingMessage<Command> &command,
 }
 
 bool MavlinkVertex::init_mavlink_connection(const std::string &uri) {
-  ConnectionResult result = this->_mavsdk.add_any_connection(uri);
-  if (result != ConnectionResult::Success) {
+  mavsdk::ConnectionResult result = this->_mavsdk.add_any_connection(uri);
+  if (result != mavsdk::ConnectionResult::Success) {
     return false;
   }
 
@@ -135,14 +142,24 @@ bool MavlinkVertex::init_mavlink_connection(const std::string &uri) {
   return true;
 }
 
+void MavlinkVertex::publish_telemtry() {
+  auto msg = this->_telemetry_publisher->new_msg();
+  msg.content.setArmed(this->_telemetry_state.arm);
+  auto battery = msg.content.initBattery();
+  battery.setPercentage(this->_telemetry_state.bat);
+  msg.content.setInAir(this->_telemetry_state.inar);
+  msg.content.setMode(this->_telemetry_state.mode);
+  msg.publish();
+}
+
 void MavlinkVertex::odometry_cb(const mavsdk::Telemetry::Odometry &odom) {
   auto msg = this->_odometry_publisher->new_msg();
   auto angular = msg.content.initAngular();
   auto pos = msg.content.initPosition();
   auto vel = msg.content.initVelocity();
   angular.setX(odom.angular_velocity_body.roll_rad_s);
-  angular.setY(odom.angular_velocity_body.yaw_rad_s);
   angular.setZ(odom.angular_velocity_body.pitch_rad_s);
+  angular.setY(odom.angular_velocity_body.yaw_rad_s);
   pos.setX(odom.position_body.x_m);
   pos.setY(odom.position_body.y_m);
   pos.setZ(odom.position_body.z_m);
@@ -167,6 +184,31 @@ void MavlinkVertex::run() {
 
   this->_telemetry->subscribe_odometry(
       std::bind(&MavlinkVertex::odometry_cb, this, std::placeholders::_1));
+
+  this->_telemetry->subscribe_battery(
+      [this](const mavsdk::Telemetry::Battery &bat) {
+        this->_telemetry_state.bat = bat.remaining_percent;
+        this->publish_telemtry();
+      });
+
+  this->_telemetry->subscribe_armed([this](const bool &arm) {
+    this->_telemetry_state.arm = arm;
+    this->publish_telemtry();
+    this->_logger.debug("Armed %d", arm);
+  });
+
+  this->_telemetry->subscribe_in_air([this](const bool &inar) {
+    this->_telemetry_state.inar = inar;
+    this->publish_telemtry();
+  });
+
+  this->_telemetry->subscribe_flight_mode(
+      [this](const mavsdk::Telemetry::FlightMode &mode) {
+        std::stringstream ss;
+        ss << mode;
+        this->_telemetry_state.mode = ss.str();
+        this->publish_telemtry();
+      });
 
   while (true) {
     sleep(1);
