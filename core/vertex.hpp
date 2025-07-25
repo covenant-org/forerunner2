@@ -26,8 +26,10 @@ class BaseArgumentParser : public ArgumentParser {
             [](const std::string &value) { return Logger::parse_level(value); })
         .help("The log lever for the logs")
         .nargs(1);
-    this->add_argument("--debug").default_value(false).help(
-        "Shortcut for --log_level 0");
+    this->add_argument("--debug")
+        .default_value(false)
+        .implicit_value(true)
+        .help("Shortcut for --log_level 0");
   }
 };
 
@@ -47,7 +49,7 @@ class Vertex {
     _registry = _args.get_argument("--registry-uri");
     auto level = _args.get_argument<LogLevel>("--log-level");
     if (_args._program->is_used("debug")) level = LogLevel::DEBUG;
-    _logger.set_level(static_cast<LogLevel>(level));
+    _logger.set_level(level);
   }
 
   template <typename T>
