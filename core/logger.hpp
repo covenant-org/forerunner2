@@ -38,7 +38,7 @@ class Logger {
   std::string get_color(LogLevel level) const {
     switch (level) {
       case LogLevel::DEBUG:
-        return "\033[37m";  // Light Gray
+        return "\033[90m";  // Light Gray
       case LogLevel::INFO:
         return "";  // Light Gray
       case LogLevel::WARN:

@@ -6,6 +6,13 @@ struct Position {
   z @2 :Float32;
 }
 
+struct Quartenion{
+    x @0 :Float32;
+    y @1 :Float32;
+    z @2 :Float32;
+    w @3 :Float32;
+}
+
 struct BatteryLevel {
   percentage @0 :UInt8;
 }
@@ -22,6 +29,7 @@ struct Odometry {
   position @0 :Position;
   velocity @1 :Position;
   angular  @2 :Position;
+  q        @3 :Quartenion;
 }
 
 struct HomePosition {

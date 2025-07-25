@@ -155,6 +155,7 @@ void MavlinkVertex::odometry_cb(const mavsdk::Telemetry::Odometry &odom) {
   auto angular = msg.content.initAngular();
   auto pos = msg.content.initPosition();
   auto vel = msg.content.initVelocity();
+  auto q = msg.content.initQ();
   angular.setX(odom.angular_velocity_body.roll_rad_s);
   angular.setZ(odom.angular_velocity_body.pitch_rad_s);
   angular.setY(odom.angular_velocity_body.yaw_rad_s);
@@ -164,6 +165,10 @@ void MavlinkVertex::odometry_cb(const mavsdk::Telemetry::Odometry &odom) {
   vel.setX(odom.velocity_body.x_m_s);
   vel.setY(odom.velocity_body.y_m_s);
   vel.setZ(odom.velocity_body.z_m_s);
+  q.setX(odom.q.x);
+  q.setY(odom.q.y);
+  q.setZ(odom.q.z);
+  q.setW(odom.q.w);
   msg.publish();
 }
 
