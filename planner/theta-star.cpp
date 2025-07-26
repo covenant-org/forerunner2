@@ -9,9 +9,9 @@ namespace SimplePlanner {
 ThetaStar::ThetaStar() {}
 ThetaStar::~ThetaStar() {}
 
-void ThetaStar::init(AlgorithmConfig config, Logger logger) {
+void ThetaStar::init(AlgorithmConfig config, std::unique_ptr<Core::Logger> logger) {
   this->config = config;
-  this->logger = logger;
+  this->logger = std::move(logger);
   this->stop_thread = false;
   this->generate_travel_graph();
 }
@@ -21,14 +21,11 @@ void ThetaStar::init(AlgorithmConfig config, Logger logger) {
  * Each node represents a voxel in space
  * */
 void ThetaStar::generate_travel_graph() {
-  PROFILE_FUNCTION();
   double resolution = this->config.resolution;
   double max_distance = this->config.max_distance;
-  if (resolution == 0)
-    return;
+  if (resolution == 0) return;
   int total_layers = std::ceil(max_distance / resolution);
-  if (total_layers == 0)
-    return;
+  if (total_layers == 0) return;
 
   this->layers.reserve(total_layers);
 
@@ -45,8 +42,7 @@ void ThetaStar::generate_travel_graph() {
         y_max = max;
       }
       y_max = std::ceil(y_max / resolution) * resolution;
-      if (!isnormal(y_max))
-        y_max = max;
+      if (!isnormal(y_max)) y_max = max;
       for (double y = -y_max; y <= y_max || isEqualDouble(y, y_max);
            y += resolution) {
         for (double z = -y_max; z <= y_max || isEqualDouble(z, y_max);
@@ -72,17 +68,12 @@ void ThetaStar::generate_travel_graph() {
     layers.push_back(layer);
   }
   this->graph_head = layers[0][0];
-  this->logger("Finished generating layers");
-  {
-    PROFILE_SCOPE("KdTree Construction");
-    this->kdtree = std::make_unique<Kdtree::KdTree>(&kdtree_nodes);
-  }
+  this->logger.info("Finished generating layers");
+  this->kdtree = std::make_unique<Kdtree::KdTree>(&kdtree_nodes);
   Kdtree::KdNodeVector neighbors;
-  {
-    PROFILE_SCOPE("Graph Connectivity Setup");
-    for (Kdtree::KdNode &node : kdtree_nodes) {
-      this->kdtree->range_nearest_neighbors(node.point, resolution * 3.0,
-                                            &neighbors);
+  for (Kdtree::KdNode &node : kdtree_nodes) {
+    this->kdtree->range_nearest_neighbors(node.point, resolution * 3.0,
+                                          &neighbors);
     PathNode *path_node = (PathNode *)node.data;
     std::shared_ptr<PathNode> shared_node =
         layers[path_node->layer][path_node->internal_layer_index];
@@ -96,16 +87,14 @@ void ThetaStar::generate_travel_graph() {
             (shared_neighbor->coords - shared_node->coords).norm()));
       }
     }
-    }
   }
-  this->logger("Finished generating travel graph");
+  this->logger.info("Finished generating travel graph");
 }
 
 /*
  * Includes the obstacles from the cloud point into the graph
  * */
 void ThetaStar::add_octree_costs() {
-  PROFILE_FUNCTION();
   const double min_distance = this->config.min_distance;
   const double safe_distance = this->config.safe_distance;
   const double preferred_distance = this->config.preferred_distance;
@@ -114,11 +103,8 @@ void ThetaStar::add_octree_costs() {
   Eigen::Vector3d obstacle;
   for (const pcl::PointXYZ &point : this->octree_points) {
     Kdtree::CoordPoint point_coord{point.x, point.y, point.z};
-    {
-      PROFILE_SCOPE("KdTree Range Search");
-      this->kdtree->range_nearest_neighbors(point_coord, preferred_distance,
-                                            &results);
-    }
+    this->kdtree->range_nearest_neighbors(point_coord, preferred_distance,
+                                          &results);
     obstacle(0) = point.x;
     obstacle(1) = point.y;
     obstacle(2) = point.z;
@@ -126,8 +112,7 @@ void ThetaStar::add_octree_costs() {
       PathNode *path_node = (PathNode *)node.data;
       auto shared_node =
           this->layers[path_node->layer][path_node->internal_layer_index];
-      if (shared_node->coords.norm() <= min_distance)
-        continue;
+      if (shared_node->coords.norm() <= min_distance) continue;
       double distance = (obstacle - shared_node->coords).norm();
       double cost = 2.0 / distance;
       if (!isnormal(cost) || distance < safe_distance) {
@@ -150,7 +135,6 @@ void ThetaStar::add_costs() {
   this->add_synthetic_costs();
 }
 
-
 void ThetaStar::clear_nodes() {
   for (auto &node : this->kdtree->allnodes) {
     PathNode *path_node = (PathNode *)node.data;
@@ -163,7 +147,7 @@ void ThetaStar::clear_nodes() {
  * */
 void ThetaStar::run(std::function<void(const PlanRequest &)> executing,
                     std::function<void(PlanResponse)> res) {
-  this->logger("Running planner thread");
+  this->logger.info("Running planner thread");
   while (true) {
     try {
       std::unique_lock<std::mutex> qlock(this->queue_mutex);
@@ -181,44 +165,36 @@ void ThetaStar::run(std::function<void(const PlanRequest &)> executing,
       executing(request);
       qlock.unlock();
 
-      {
-        PROFILE_SCOPE("Clear Nodes");
-        this->clear_nodes();
-      }
-      {
-        PROFILE_SCOPE("Add Costs Total");
-        this->add_costs();
-      }
-      {
-        PROFILE_SCOPE("Add Heuristics");
-        this->add_heuristics();
-      }
+      this->clear_nodes();
+      this->add_costs();
+      this->add_heuristics();
       PathNodeVector result;
       bool valid = true;
       bool require_new_route =
           request.type == RequestType::START ||
           (request.type == RequestType::REPLAN &&
-           this->current_trajectory.poses.size() <=
+           this->current_trajectory.getPoses().size() <=
                request.body.value().current_index) ||
           (request.type == RequestType::REPLAN &&
            request.body.value().path_id != this->path_sequence);
 
       if (require_new_route) {
-          // If a nw route is required, update the sequence and plan normaly
+        // If a nw route is required, update the sequence and plan normaly
         this->path_sequence += 1;
         this->real_goal = request.goal;
         this->last_local_goal = nullptr;
-        this->logger("Finding local goal");
+        this->logger.info("Finding local goal");
         this->find_local_goal();
-        this->logger("Found local goal");
+        this->logger.info("Found local goal");
         if (eq(this->local_goal, pcl::PointXYZ(0, 0, 0))) {
           continue;
         }
         result = this->plan();
       } else {
         ReplanRequest replan = request.body.value();
-        // Most of the next code is the logic required to "snap" the current trajectory
-        // back to nodes in the graph, so the line of sight is able to be checked
+        // Most of the next code is the logic required to "snap" the current
+        // trajectory back to nodes in the graph, so the line of sight is able
+        // to be checked
         auto it = replan.path.begin();
         auto end = replan.path.end();
         double max_distance = this->config.max_distance;
@@ -292,9 +268,9 @@ void ThetaStar::run(std::function<void(const PlanRequest &)> executing,
     } catch (std::exception &e) {
       std::stringstream ss;
       ss << "Exception while planning: " << e.what();
-      this->logger(ss.str());
+      this->logger.error(ss.str());
     } catch (...) {
-      this->logger("Exception while planning");
+      this->logger.error("Exception while planning");
     }
   }
 }
@@ -302,8 +278,8 @@ void ThetaStar::run(std::function<void(const PlanRequest &)> executing,
 /*
  * Backtrace from the goal to the start
  * */
-PathNodeVector
-ThetaStar::recover_path(const std::shared_ptr<PathNode> &final_node) {
+PathNodeVector ThetaStar::recover_path(
+    const std::shared_ptr<PathNode> &final_node) {
   this->last_path.clear();
   std::shared_ptr<PathNode> current = final_node;
   while (current != NULL) {
@@ -319,7 +295,6 @@ ThetaStar::recover_path(const std::shared_ptr<PathNode> &final_node) {
 
 bool ThetaStar::line_of_sight(std::shared_ptr<PathNode> node1,
                               std::shared_ptr<PathNode> node2) {
-  PROFILE_FUNCTION();
   if (node1->isObstacle || node2->isObstacle) {
     return false;
   }
@@ -345,12 +320,10 @@ bool ThetaStar::line_of_sight(std::shared_ptr<PathNode> node1,
                           node->point[2] + resolution / 2.0);
       if (rayIntersects(ray, min, max)) {
         Eigen::Vector3d point(node->point[0], node->point[1], node->point[2]);
-        if ((point - node1->coords).norm() > distance)
-          continue;
+        if ((point - node1->coords).norm() > distance) continue;
         PathNode *pathNode =
             (PathNode *)this->kdtree->allnodes[node->dataindex].data;
-        if (pathNode->isObstacle)
-          return false;
+        if (pathNode->isObstacle) return false;
       }
     }
 
@@ -379,7 +352,6 @@ bool ThetaStar::line_of_sight(std::shared_ptr<PathNode> node1,
 }
 
 PathNodeVector ThetaStar::plan() {
-  PROFILE_FUNCTION();
   std::vector<std::shared_ptr<PathNode>> queue;
   std::vector<std::shared_ptr<PathNode>> visited;
   queue.push_back(this->graph_head);
@@ -393,7 +365,7 @@ PathNodeVector ThetaStar::plan() {
       std::stringstream ss;
       ss << "Goal found, after " << visited.size() << " nodes, cost "
          << current->score;
-      this->logger(ss.str());
+      this->logger.info(ss.str());
       return this->recover_path(current);
     }
 
@@ -403,8 +375,7 @@ PathNodeVector ThetaStar::plan() {
 
       // check if the node has been visited
       auto node_visited = std::find(visited.begin(), visited.end(), child);
-      if (node_visited != visited.end())
-        continue;
+      if (node_visited != visited.end()) continue;
 
       std::shared_ptr<PathNode> corrected_previous = current;
       if (current->previous_position != nullptr &&
@@ -419,8 +390,7 @@ PathNodeVector ThetaStar::plan() {
       if (child->cost < 0 || edge.second < 0 || current->score < 0) {
         throw std::runtime_error("Negative cost");
       }
-      if (!isnormal(new_score))
-        new_score = INF;
+      if (!isnormal(new_score)) new_score = INF;
       // If it's not in the queue push it
       auto found = std::find(queue.begin(), queue.end(), child);
       if (found == queue.end()) {
@@ -441,14 +411,11 @@ PathNodeVector ThetaStar::plan() {
     queue.erase(queue.begin());
 
     // Sort the queue based on score plus heuristic (lower is better)
-    {
-      PROFILE_SCOPE("Priority Queue Sort");
-      std::sort(queue.begin(), queue.end(), [](const auto &a, const auto &b) {
-        return (a->score + 2.0 * a->heuristic) < (b->score + 2.0 * b->heuristic);
-      });
-    }
+    std::sort(queue.begin(), queue.end(), [](const auto &a, const auto &b) {
+      return (a->score + 2.0 * a->heuristic) < (b->score + 2.0 * b->heuristic);
+    });
   }
-  this->logger("No path found");
+  this->logger.info("No path found");
   throw std::runtime_error("No path found");
 }
 
@@ -456,7 +423,7 @@ void ThetaStar::update_config(AlgorithmConfig config) { this->config = config; }
 
 bool ThetaStar::ready_to_plan() {
   if (this->graph_head == nullptr) {
-    this->logger("No graph head yet");
+    this->logger.info("No graph head yet");
   }
   return true;
 }
@@ -465,7 +432,6 @@ bool ThetaStar::ready_to_plan() {
  * Finds the most appropriate node from the graph that is closest to the goal
  * */
 void ThetaStar::find_local_goal() {
-  PROFILE_FUNCTION();
   Kdtree::KdNodeVector results;
   Kdtree::CoordPoint point_coord{this->real_goal(0), this->real_goal(1),
                                  this->real_goal(2)};
@@ -511,7 +477,6 @@ void ThetaStar::find_local_goal() {
 }
 
 void ThetaStar::add_heuristics() {
-  PROFILE_FUNCTION();
   // TODO: Just update the nodes in the distance from the origin to the goal?
   for (auto &node : this->kdtree_nodes) {
     PathNode *path_node = (PathNode *)node.data;
@@ -535,12 +500,11 @@ void ThetaStar::enqueue(PlanRequest request) {
     std::lock_guard<std::mutex> lock(this->queue_mutex);
     this->queue.push(std::move(request));
   }
-  this->logger("Goal queued");
+  this->logger.info("Goal queued");
   this->queue_cv.notify_one();
 }
 
 void ThetaStar::add_synthetic_costs() {
-  PROFILE_FUNCTION();
   const double min_distance = this->config.min_distance;
   const double safe_distance = this->config.safe_distance;
   const double preferred_distance = this->config.preferred_distance;
@@ -576,8 +540,7 @@ void ThetaStar::add_synthetic_costs() {
         }
       }
       Eigen::Vector3d point(node->point[0], node->point[1], node->point[2]);
-      if (point.norm() <= min_distance)
-        continue;
+      if (point.norm() <= min_distance) continue;
 
       // Check if the node point is inside the box
       if (isInsideBox(point, min, max)) {
@@ -607,11 +570,11 @@ void ThetaStar::stop() {
   this->queue_cv.notify_one();
 }
 
-void ThetaStar::update_current_trajectory(nav_msgs::msg::Path path) {
+void ThetaStar::update_current_trajectory(Path::Reader path) {
   this->current_trajectory = path;
 }
 
-nav_msgs::msg::Path ThetaStar::get_current_trajectory() {
+Path::Reader ThetaStar::get_current_trajectory() {
   return this->current_trajectory;
 }
 
@@ -619,5 +582,4 @@ std::vector<std::vector<std::shared_ptr<PathNode>>> ThetaStar::get_layers() {
   return this->layers;
 }
 
-} // namespace SimplePlanner
-
+}  // namespace SimplePlanner

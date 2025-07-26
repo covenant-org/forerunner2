@@ -10,6 +10,12 @@ struct Point {
   z @2 :Float64;
 }
 
+struct Vector3 {
+  x @0 :Float64;
+  y @1 :Float64;
+  z @2 :Float64;
+}
+
 # geometry_msgs/PointStamped
 struct PointStamped {
   header @0 :Header;
@@ -34,4 +40,14 @@ struct Pose {
 struct PoseStamped {
   header @0 :Header;
   pose   @1 :Pose;
+}
+
+struct Transform {
+  translation @0 :Vector3;
+  rotation    @1 :Quaternion;
+}
+
+struct TransformStamped {
+  header    @0 :Header;
+  transform @1 :Transform;
 }

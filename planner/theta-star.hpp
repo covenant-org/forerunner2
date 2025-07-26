@@ -2,18 +2,20 @@
 #define THETA_STAR_H
 
 #include "kdtree.hpp"
+#include "logger.hpp"
 #include "utils.hpp"
-#include "planner/profiler.hpp"
-#include <rclcpp/rclcpp.hpp>
-#include <rclcpp_action/server.hpp>
+#include <capnp_schemas/nav_msgs.capnp.h>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 
 namespace SimplePlanner {
 #define INF 1e15
 #define EPS 1e-6
 
 class ThetaStar : public SimplePlanner::Algorithm {
-private:
-  SimplePlanner::Logger logger;
+ private:
+  std::unique_ptr<Core::Logger> logger;
   AlgorithmConfig config;
   std::vector<pcl::PointXYZ> octree_points;
   std::vector<Box> obstacles;
@@ -21,7 +23,7 @@ private:
   Eigen::Vector3d real_goal;
   pcl::PointXYZ local_goal;
   std::string original_cloud_frame_id;
-  rclcpp::Time last_cloud_stamp;
+  // rclcpp::Time last_cloud_stamp;
   std::shared_ptr<PathNode> last_local_goal;
   size_t path_sequence;
 
@@ -36,10 +38,10 @@ private:
   std::queue<PlanRequest> queue;
 
   std::vector<std::shared_ptr<PathNode>> last_path;
-  nav_msgs::msg::Path current_trajectory;
+  Path::Reader current_trajectory;
 
   std::shared_ptr<PathNode> graph_head;
-  tf2::Transform last_base_to_map;
+  // tf2::Transform last_base_to_map;
   std::unique_ptr<Kdtree::KdTree> kdtree;
   Kdtree::KdNodeVector kdtree_nodes;
   std::vector<std::vector<std::shared_ptr<PathNode>>> layers;
@@ -60,22 +62,21 @@ private:
   void add_heuristics();
   void add_synthetic_costs();
 
-public:
-  void init(AlgorithmConfig, Logger);
+ public:
+  void init(AlgorithmConfig, std::unique_ptr<Core::Logger>);
   void run(std::function<void(const PlanRequest &)>,
            std::function<void(PlanResponse)>);
   void update_obstacles(std::vector<Box>);
   void update_octree(std::vector<pcl::PointXYZ>);
   void update_config(AlgorithmConfig);
   void enqueue(PlanRequest);
-  nav_msgs::msg::Path get_current_trajectory();
-  void update_current_trajectory(nav_msgs::msg::Path);
+  Path::Reader get_current_trajectory();
+  void update_current_trajectory(Path::Reader);
   std::vector<std::vector<std::shared_ptr<PathNode>>> get_layers();
   void stop();
   explicit ThetaStar();
   ~ThetaStar();
 };
 
-} // namespace SimplePlanner
+}  // namespace SimplePlanner
 #endif
-

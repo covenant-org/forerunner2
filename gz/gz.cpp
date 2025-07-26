@@ -38,7 +38,7 @@ GZ::GZ(Core::ArgumentParser args) : Core::Vertex(args) {
 
   pcl::io::compression_Profiles_e compression_profile =
       pcl::io::MED_RES_ONLINE_COMPRESSION_WITH_COLOR;
-  _cloud_encoder = new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>(
+  _cloud_encoder = new pcl::io::OctreePointCloudCompression<pcl::PointXYZ>(
       compression_profile, false);
 }
 
@@ -83,8 +83,8 @@ void GZ::on_point_cb(const gz::msgs::PointCloudPacked &pt) {
   msg.content.setHeight(pt.height());
   msg.content.setWidth(pt.width());
 
-  pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
-      new pcl::PointCloud<pcl::PointXYZRGBA>());
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(
+      new pcl::PointCloud<pcl::PointXYZ>());
   cloud->width = pt.width();
   cloud->height = pt.height();
   cloud->is_dense = pt.is_dense();
@@ -115,13 +115,13 @@ void GZ::on_point_cb(const gz::msgs::PointCloudPacked &pt) {
     }
   }
 
-  pcl::PassThrough<pcl::PointXYZRGBA> pass;
+  pcl::PassThrough<pcl::PointXYZ> pass;
   pass.setInputCloud(cloud);
   pass.setFilterFieldName("x");
   pass.setFilterLimits(0.0f, 10.0f);
   pass.filter(*cloud);
 
-  pcl::VoxelGrid<pcl::PointXYZRGBA> voxel_filter;
+  pcl::VoxelGrid<pcl::PointXYZ> voxel_filter;
   voxel_filter.setInputCloud(cloud);
   // this is 5cm
   voxel_filter.setLeafSize(0.5f, 0.5f, 0.5f);

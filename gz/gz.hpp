@@ -17,7 +17,7 @@ class GZ : public Core::Vertex {
  private:
   std::shared_ptr<Core::Publisher<PointCloud>> _point_cloud_publisher;
   std::shared_ptr<gz::transport::Node> _gz_node;
-  pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>* _cloud_encoder;
+  pcl::io::OctreePointCloudCompression<pcl::PointXYZ>* _cloud_encoder;
   std::shared_ptr<Core::Publisher<StereoMic>> _mic_publisher;
   std::atomic<double> _last_lmic_value;
   std::atomic<double> _last_rmic_value;

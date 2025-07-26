@@ -9,12 +9,13 @@
 #include <Eigen/Dense>
 #include <Eigen/src/Core/Matrix.h>
 #include <cmath>
+#include <optional>
 #include <pcl/octree/octree_search.h>
 #include <pcl/point_types.h>
 
 namespace SimplePlanner {
-using ReplanAction = planner_interfaces::action::Replan;
-using ReplanGoalHandle = rclcpp_action::ServerGoalHandle<ReplanAction>;
+// using ReplanAction = planner_interfaces::action::Replan;
+// using ReplanGoalHandle = rclcpp_action::ServerGoalHandle<ReplanAction>;
 using Box = std::pair<Eigen::Vector3d, Eigen::Vector3d>;
 using PCLOctree = pcl::octree::OctreePointCloudSearch<pcl::PointXYZ>;
 
@@ -58,10 +59,25 @@ using PathNodeVector = std::vector<std::shared_ptr<PathNode>>;
 
 enum RequestType { START, REPLAN };
 
+class PlanRequest {
+public:
+  RequestType type;
+  Eigen::Vector3d goal;
+  void *metadata;
+  std::optional<ReplanRequest> body;
+};
+
+class PlanResponse {
+public:
+  size_t path_id;
+  PlanRequest request;
+  PathNodeVector path;
+};
+
 class Algorithm {
 public:
   virtual ~Algorithm() = default;
-  virtual void init(AlgorithmConfig, Core::Logger) = 0;
+  virtual void init(AlgorithmConfig, std::unique_ptr<Core::Logger>) = 0;
   virtual void update_config(AlgorithmConfig) = 0;
   virtual void update_obstacles(std::vector<Box>) = 0;
   virtual void update_octree(std::vector<pcl::PointXYZ>) = 0;
@@ -69,8 +85,8 @@ public:
   virtual void run(std::function<void(const PlanRequest &)>,
                    std::function<void(PlanResponse)>) = 0;
   virtual void stop() = 0;
-  virtual Path get_current_trajectory() = 0;
-  virtual void update_current_trajectory(Path) = 0;
+  virtual Path::Reader get_current_trajectory() = 0;
+  virtual void update_current_trajectory(Path::Reader) = 0;
   virtual std::vector<std::vector<std::shared_ptr<PathNode>>> get_layers() = 0;
 };
 
@@ -95,7 +111,7 @@ bool eq(const PathNode &a, const std::vector<double> &b);
 bool eq(const pcl::PointXYZ &a, const pcl::PointXYZ &b);
 bool eq(const pcl::PointXYZ &a, const Eigen::Vector3d &b);
 
-tf2::Transform fromMsgToTF(TransformStamped &t);
+// tf2::Transform fromMsgToTF(TransformStamped &t);
 bool isEqualDouble(double a, double b);
 
 bool isInsideBox(const Eigen::Vector3d &point, const Eigen::Vector3d &min,

@@ -2,7 +2,7 @@
 
 namespace SimplePlanner {
 void pathToMsg(const std::vector<std::shared_ptr<PathNode>> &path,
-               nav_msgs::msg::Path &msg, std::string frame_id,
+               Path &msg, std::string frame_id,
                rclcpp::Time stamp, Eigen::Vector3d &goal, tf2::Transform &t) {
   msg.poses.clear();
   for (auto node = path.begin(); node != path.end(); node++) {
@@ -105,13 +105,13 @@ bool eq(const pcl::PointXYZ &a, const Eigen::Vector3d &b) {
   return a.x == b(0) && a.y == b(1) && a.z == b(2);
 }
 
-tf2::Transform fromMsgToTF(geometry_msgs::msg::TransformStamped &t) {
-  tf2::Quaternion tf_quat(t.transform.rotation.x, t.transform.rotation.y,
-                          t.transform.rotation.z, t.transform.rotation.w);
-  tf2::Vector3 tf_vec(t.transform.translation.x, t.transform.translation.y,
-                      t.transform.translation.z);
-  return tf2::Transform(tf_quat, tf_vec);
-}
+// tf2::Transform fromMsgToTF(geometry_msgs::msg::TransformStamped &t) {
+//   tf2::Quaternion tf_quat(t.transform.rotation.x, t.transform.rotation.y,
+//                           t.transform.rotation.z, t.transform.rotation.w);
+//   tf2::Vector3 tf_vec(t.transform.translation.x, t.transform.translation.y,
+//                       t.transform.translation.z);
+//   return tf2::Transform(tf_quat, tf_vec);
+// }
 
 bool isEqualDouble(double a, double b) { return fabs(a - b) < 1e-6; }
 
