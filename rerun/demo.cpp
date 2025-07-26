@@ -12,7 +12,7 @@
 
 Demo::Demo(Core::ArgumentParser args) : Core::Vertex(args) {
   this->_point_cloud_decoder =
-      new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>();
+      new pcl::io::OctreePointCloudCompression<pcl::PointXYZ>();
   this->_rec = std::make_shared<rerun::RecordingStream>("rerun_demo");
   this->_rec->spawn().exit_on_failure();
 
@@ -74,8 +74,8 @@ void Demo::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
   auto width = msg.content.getWidth();
   auto height = msg.content.getHeight();
 
-  pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
-      new pcl::PointCloud<pcl::PointXYZRGBA>());
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(
+      new pcl::PointCloud<pcl::PointXYZ>());
   std::stringstream buffer(
       std::string((char *)data_reader.begin(), data_reader.size()));
   try {

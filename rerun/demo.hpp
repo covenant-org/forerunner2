@@ -18,7 +18,7 @@ class Demo : Core::Vertex {
   std::shared_ptr<Core::Subscriber<StereoMic>> _mic_sub;
   std::shared_ptr<Core::Subscriber<Odometry>> _odom_sub;
   std::shared_ptr<rerun::RecordingStream> _rec;
-  pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA> *_point_cloud_decoder;
+  pcl::io::OctreePointCloudCompression<pcl::PointXYZ> *_point_cloud_decoder;
 
  public:
   void point_cloud_cb(const Core::IncomingMessage<PointCloud> &);
