@@ -1,13 +1,17 @@
 #include "argument_parser.hpp"
 #include "message.hpp"
 #include "sound-planner.hpp"
+#include <Eigen/src/Core/Matrix.h>
 #include <Eigen/src/Geometry/Quaternion.h>
 #include <cmath>
 #include <unistd.h>
 
 const Eigen::Quaternionf ROT_90DEG(std::cos(M_PI_4), 0, 0, std::sin(M_PI_4));
+const Eigen::Quaternionf N_ROT_90DEG(std::cos(-M_PI_4), 0, 0,
+                                     std::sin(-M_PI_4));
 
-SoundPlanner::SoundPlanner(Core::ArgumentParser args) : Core::Vertex(args) {
+SoundPlanner::SoundPlanner(Core::ArgumentParser args)
+    : Core::Vertex(args), quart(1, 0, 0, 0), position(0, 0, 0), goal(0, 0, 0) {
   this->_odmetry_sub = this->create_subscriber<Odometry>(
       "odometry",
       std::bind(&SoundPlanner::odometry_cb, this, std::placeholders::_1));
@@ -18,7 +22,17 @@ SoundPlanner::SoundPlanner(Core::ArgumentParser args) : Core::Vertex(args) {
       this->create_action_client<Command, GenericResponse>("controller");
   this->_mic_sub = this->create_subscriber<StereoMic>(
       "mic", std::bind(&SoundPlanner::mic_cb, this, std::placeholders::_1));
+  this->_altitude_sub = this->create_subscriber<Altitude>(
+      "altitude",
+      std::bind(&SoundPlanner::altitude_cb, this, std::placeholders::_1));
 
+  this->target_altitude = args.get_argument<float>("altitude");
+  if (target_altitude <= 0 || !std::isfinite(target_altitude)) {
+    target_altitude = 2;
+  }
+  if (target_altitude < 2) {
+    this->_logger.warn("Target altitude is less than 2m proceed with caution");
+  }
   this->_telemetry_count = 0;
   this->_is_armed = false;
   this->_is_in_air = false;
@@ -26,6 +40,12 @@ SoundPlanner::SoundPlanner(Core::ArgumentParser args) : Core::Vertex(args) {
   this->_takeoff_requested = false;
   this->_lmic = 0;
   this->_rmic = 0;
+  this->altitude = 0;
+}
+
+void SoundPlanner::altitude_cb(const Core::IncomingMessage<Altitude> &msg) {
+  altitude = msg.content.getAvg();
+  this->_logger.debug("Received altitude msg: %.3f", altitude);
 }
 
 void SoundPlanner::mic_cb(const Core::IncomingMessage<StereoMic> &msg) {
@@ -42,7 +62,7 @@ void SoundPlanner::odometry_cb(const Core::IncomingMessage<Odometry> &msg) {
   auto pos = odom.getPosition();
   auto q = odom.getQ();
   quart = Eigen::Quaternionf(q.getW(), q.getX(), q.getY(), q.getZ());
-  position = Eigen::Quaternionf(0, pos.getX(), pos.getY(), pos.getZ());
+  position = Eigen::Vector3f(pos.getX(), pos.getY(), pos.getZ());
   this->_logger.debug("Pos xyz: %.2f \t %.2f \t %.2f", position.x(),
                       position.y(), position.z());
 }
@@ -107,11 +127,15 @@ void SoundPlanner::run() {
       }
       this->_logger.info("Takeoff command sent successfully");
       this->_takeoff_requested = true;
-      usleep(200000);
+      sleep(5);
       continue;
     }
 
     usleep(200000);
+  }
+  while (altitude < target_altitude && (target_altitude - altitude) > 0.5) {
+    this->_logger.debug("Waiting for drone to reach altitude");
+    sleep(1);
   }
   this->_logger.info("Drone is now in the air");
   auto point_msg = this->_command_client->new_msg();
@@ -119,6 +143,7 @@ void SoundPlanner::run() {
   point.setX(position.x());
   point.setY(position.y());
   point.setZ(position.z());
+  goal = position;
   point_msg.send();
   auto offboard_msg = this->_command_client->new_msg();
   auto off = offboard_msg.content.initOffboard();
@@ -126,15 +151,34 @@ void SoundPlanner::run() {
   offboard_msg.send();
   float diff = this->calc_mic_diff();
   while (diff > 0.01) {
+    diff = this->calc_mic_diff();
+    while ((goal - position).norm() > 0.3) {
+      sleep(1);
+      continue;
+    }
     this->_logger.debug("Diff %f", diff);
     auto msg = this->_command_client->new_msg();
     auto point = msg.content.initWaypoint();
-    auto rotation = ROT_90DEG * quart;
-    Eigen::Quaternionf translation(0, 0, 3, 0);
+    auto orientation = ROT_90DEG;
+    Eigen::Quaternionf translation(0, 1, 0, 0);
+    if (_rmic > _lmic) {
+      orientation = N_ROT_90DEG;
+    }
+    auto rotation = orientation * quart;
     auto transrot = rotation * translation * rotation.conjugate();
-    point.setX(position.x() + transrot.x());
-    point.setY(position.y() + transrot.y());
-    point.setZ(position.z() + transrot.z());
+    goal = Eigen::Vector3f(position.x() + transrot.x(),
+                           position.y() + transrot.y(),
+                           position.z() + transrot.z());
+    point.setX(goal.x());
+    point.setY(goal.y());
+    point.setZ(goal.z());
+    auto deg = rotation.toRotationMatrix().eulerAngles(2, 1, 0)[0] * 180 / M_PI;
+    point.setR(deg);
+    this->_logger.info(
+        "Current position: %.2f, %.2f, %.2f. Target position: %.2f, %.2f, "
+        "%.2f. Target yaw: %.2f",
+        position.x(), position.y(), position.z(), goal.x(), goal.y(), goal.z(),
+        deg);
     msg.send();
     sleep(1);
   }
@@ -142,6 +186,10 @@ void SoundPlanner::run() {
 
 int main(int argc, char **argv) {
   Core::BaseArgumentParser args(argc, argv);
+  args.add_argument("--altitude")
+      .default_value(2.0f)
+      .nargs(1)
+      .help("Target altitude in meters");
   SoundPlanner planner(args);
   planner.run();
 }

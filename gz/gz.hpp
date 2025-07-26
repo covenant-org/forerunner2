@@ -1,3 +1,4 @@
+#include "argument_parser.hpp"
 #include "publisher.hpp"
 #include "vertex.hpp"
 #include <atomic>
@@ -24,7 +25,7 @@ class GZ : public Core::Vertex {
   bool is_processing = false;
 
  public:
-  GZ(int, char**);
+  GZ(Core::ArgumentParser);
   void on_lmic_cb(const gz::msgs::Double&, const gz::transport::MessageInfo&);
   void on_rmic_cb(const gz::msgs::Double&, const gz::transport::MessageInfo&);
   void on_point_cb(const gz::msgs::PointCloudPacked&);

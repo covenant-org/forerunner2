@@ -27,6 +27,7 @@ class MavlinkVertex : public Core::Vertex {
   std::shared_ptr<Core::Publisher<HomePosition>> _home_position_publisher;
   std::shared_ptr<Core::Publisher<Odometry>> _odometry_publisher;
   std::shared_ptr<Core::Publisher<Telemetry>> _telemetry_publisher;
+  std::shared_ptr<Core::Publisher<Altitude>> _altitude_publisher;
   std::shared_ptr<Core::ActionServer<Command, GenericResponse>>
       _command_action_server;
 
@@ -47,6 +48,7 @@ class MavlinkVertex : public Core::Vertex {
     bool inar;
     std::string mode;
   } _telemetry_state;
+
  public:
   MavlinkVertex(Core::ArgumentParser);
 

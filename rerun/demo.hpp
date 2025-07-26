@@ -1,3 +1,4 @@
+#include "argument_parser.hpp"
 #include "message.hpp"
 #include "subscriber.hpp"
 #include "vertex.hpp"
@@ -24,7 +25,7 @@ class Demo : Core::Vertex {
   void mic_cb(const Core::IncomingMessage<StereoMic> &);
   void odom_cb(const Core::IncomingMessage<Odometry> &);
   rerun::Color distance_to_color(float distance);
-  Demo(int, char **);
+  Demo(Core::ArgumentParser);
   void run();
 };
 

@@ -1,10 +1,10 @@
+#include "argument_parser.hpp"
 #include "gz.hpp"
 #include "logger.hpp"
 #include <cmath>
 #include <gz/msgs/pointcloud.pb.h>
 #include <gz/transport/MessageInfo.hh>
 #include <gz/transport/Node.hh>
-#include <iostream>
 #include <pcl/common/point_tests.h>
 #include <pcl/compression/compression_profiles.h>
 #include <pcl/compression/octree_pointcloud_compression.h>
@@ -17,7 +17,7 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 
-GZ::GZ(int argc, char **argv) : Core::Vertex(argc, argv) {
+GZ::GZ(Core::ArgumentParser args) : Core::Vertex(args) {
   _point_cloud_publisher = this->create_publisher<PointCloud>("point_cloud");
   _mic_publisher = this->create_publisher<StereoMic>("mic");
 
@@ -141,7 +141,8 @@ void GZ::on_point_cb(const gz::msgs::PointCloudPacked &pt) {
 }
 
 int main(int argc, char **argv) {
-  auto gz = std::make_shared<GZ>(argc, argv);
+  Core::BaseArgumentParser args(argc, argv);
+  auto gz = std::make_shared<GZ>(args);
   gz->run();
   return 0;
 }

@@ -1,9 +1,10 @@
 #ifndef SOUND_PLANNER_HPP
 #define SOUND_PLANNER_HPP
 
-#include "Eigen/Geometry"
+#include "Eigen/Dense"
 #include "argument_parser.hpp"
 #include "vertex.hpp"
+#include <Eigen/src/Core/Matrix.h>
 #include <Eigen/src/Geometry/Quaternion.h>
 #include <capnp_schemas/controller.capnp.h>
 #include <capnp_schemas/generics.capnp.h>
@@ -15,6 +16,7 @@ class SoundPlanner : public Core::Vertex {
   std::shared_ptr<Core::Subscriber<Odometry>> _odmetry_sub;
   std::shared_ptr<Core::Subscriber<Telemetry>> _telemetry_sub;
   std::shared_ptr<Core::Subscriber<StereoMic>> _mic_sub;
+  std::shared_ptr<Core::Subscriber<Altitude>> _altitude_sub;
   std::shared_ptr<Core::ActionClient<Command, GenericResponse>> _command_client;
 
   int _telemetry_count;
@@ -24,9 +26,12 @@ class SoundPlanner : public Core::Vertex {
   bool _takeoff_requested;
   float _lmic;
   float _rmic;
+  float altitude;
+  float target_altitude;
   float calc_mic_diff();
   Eigen::Quaternionf quart;
-  Eigen::Quaternionf position;
+  Eigen::Vector3f position;
+  Eigen::Vector3f goal;
 
  public:
   explicit SoundPlanner(Core::ArgumentParser);
@@ -34,6 +39,7 @@ class SoundPlanner : public Core::Vertex {
   void odometry_cb(const Core::IncomingMessage<Odometry>&);
   void telemetry_cb(const Core::IncomingMessage<Telemetry>&);
   void mic_cb(const Core::IncomingMessage<StereoMic>&);
+  void altitude_cb(const Core::IncomingMessage<Altitude>&);
 };
 
 #endif

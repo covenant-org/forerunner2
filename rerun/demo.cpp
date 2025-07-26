@@ -10,7 +10,7 @@
 #include <rerun/recording_stream.hpp>
 #include <vector>
 
-Demo::Demo(int argc, char **argv) : Core::Vertex(argc, argv) {
+Demo::Demo(Core::ArgumentParser args) : Core::Vertex(args) {
   this->_point_cloud_decoder =
       new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>();
   this->_rec = std::make_shared<rerun::RecordingStream>("rerun_demo");
@@ -130,7 +130,8 @@ void Demo::run() {
 }
 
 int main(int argc, char **argv) {
-  auto demo = Demo(argc, argv);
+  Core::BaseArgumentParser args(argc, argv);
+  auto demo = Demo(args);
   demo.run();
   return 0;
 }

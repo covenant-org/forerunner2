@@ -13,7 +13,8 @@
 
 MavlinkVertex::MavlinkVertex(Core::ArgumentParser parser)
     : Core::Vertex(std::move(parser)),
-      _mavsdk(mavsdk::Mavsdk::Configuration{mavsdk::ComponentType::GroundStation}) {
+      _mavsdk(
+          mavsdk::Mavsdk::Configuration{mavsdk::ComponentType::GroundStation}) {
   auto uri = this->get_argument<std::string>("--mavlink-uri");
   auto result = this->init_mavlink_connection(uri);
   if (!result) {
@@ -27,6 +28,7 @@ MavlinkVertex::MavlinkVertex(Core::ArgumentParser parser)
       this->create_publisher<HomePosition>("home_position");
   this->_odometry_publisher = this->create_publisher<Odometry>("odometry");
   this->_telemetry_publisher = this->create_publisher<Telemetry>("telemetry");
+  this->_altitude_publisher = this->create_publisher<Altitude>("altitude");
 }
 
 void MavlinkVertex::command_cb(const Core::IncomingMessage<Command> &command,
@@ -106,7 +108,7 @@ void MavlinkVertex::command_cb(const Core::IncomingMessage<Command> &command,
           this->_offboard->set_position_ned({.north_m = waypoint.getX(),
                                              .east_m = waypoint.getY(),
                                              .down_m = waypoint.getZ(),
-                                             .yaw_deg = 0});
+                                             .yaw_deg = waypoint.getR()});
       if (waypoint_res != mavsdk::Offboard::Result::Success) {
         res.setCode(500);
         res.setMessage("Failed to set position");
@@ -211,6 +213,18 @@ void MavlinkVertex::run() {
         ss << mode;
         this->_telemetry_state.mode = ss.str();
         this->publish_telemtry();
+      });
+
+  this->_telemetry->subscribe_altitude(
+      [this](const mavsdk::Telemetry::Altitude &altitude) {
+        auto msg = this->_altitude_publisher->new_msg();
+        auto alt = msg.content;
+        alt.setLocal(altitude.altitude_local_m);
+        alt.setRelative(altitude.altitude_relative_m);
+        alt.setMonotonic(altitude.altitude_monotonic_m);
+        alt.setAvg(
+            (altitude.altitude_monotonic_m + altitude.altitude_relative_m) / 2);
+        msg.publish();
       });
 
   while (true) {

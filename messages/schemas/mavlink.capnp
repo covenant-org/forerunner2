@@ -35,3 +35,10 @@ struct Odometry {
 struct HomePosition {
   pos @0 :Position;
 }
+
+struct Altitude{
+  local     @0 :Float32;
+  relative  @1 :Float32;
+  monotonic @2 :Float32;
+  avg       @3 :Float32;
+}
