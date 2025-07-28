@@ -5,9 +5,13 @@
 #include <map>
 #include <boost/process.hpp>
 #include <thread>
+#include "logger.hpp"
 
 
-class launch {
+class Launch {
+
+    protected:
+    Logger _logger;
 
     private:
     // Variables miembro de ejemplo
@@ -67,13 +71,12 @@ class launch {
     }
 
     public:
-    // Constructor parametrizado que realiza la lógica principal
     std::map<std::string, std::string> executables;
 
-    launch(
-        const std::vector<std::string>& exclude = {"vendor", ".git"},
-        const std::vector<std::string>& nodes = {}
-    ) : _exclude_folders(exclude) {
+    // Constructor principal SIN valores por defecto
+    launch(const std::vector<std::string>& exclude,
+           const std::vector<std::string>& nodes)
+        : _exclude_folders(exclude) {
         _root_path = find_root(".root", 10);
         if (_root_path.empty()) {
             std::cerr << "Root path not found." << std::endl; 
@@ -87,7 +90,7 @@ class launch {
 
     // Sobrecarga: solo recibe nodos
     launch(const std::vector<std::string>& nodes)
-        : launch({"vendor", ".git"}, nodes) {}
+        : launch(std::vector<std::string>{"vendor", ".git"}, nodes) {}
 
     std::map<std::string, std::string> get_executables() {
         return executables;
