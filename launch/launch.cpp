@@ -1,5 +1,59 @@
 #include "launch.hpp"
-#include <iostream>
+
+
+// Implementación de NodesYamlParser
+NodesYamlParser::NodesYamlParser(const std::string& filename) {
+    YAML::Node config = YAML::LoadFile(filename);
+    for (const auto& exe : config["executables"]) {
+        ExecutableArgs eargs;
+        eargs.name = exe["name"].as<std::string>();
+        const auto& args = exe["args"];
+        if (args["flags"]) {
+            for (const auto& flag : args["flags"]) {
+                eargs.flags.push_back(flag.as<std::string>());
+            }
+        }
+        if (args["options"]) {
+            for (const auto& opt : args["options"]) {
+                eargs.options[opt.first.as<std::string>()] = opt.second.as<std::string>();
+            }
+        }
+        if (args["positionals"]) {
+            for (const auto& pos : args["positionals"]) {
+                eargs.positionals.push_back(pos.as<std::string>());
+            }
+        }
+        executables.push_back(eargs);
+    }
+}
+
+std::string NodesYamlParser::yaml() const {
+    std::ostringstream oss;
+    for (const auto& exe : executables) {
+        oss << "Executable: " << exe.name << '\n';
+        if (!exe.flags.empty()) {
+            oss << "  Flags:";
+            for (const auto& flag : exe.flags) {
+                oss << " " << flag;
+            }
+            oss << '\n';
+        }
+        if (!exe.options.empty()) {
+            oss << "  Options:" << '\n';
+            for (const auto& opt : exe.options) {
+                oss << "    " << opt.first << ": " << opt.second << '\n';
+            }
+        }
+        if (!exe.positionals.empty()) {
+            oss << "  Positionals:";
+            for (const auto& pos : exe.positionals) {
+                oss << " " << pos;
+            }
+            oss << '\n';
+        }
+    }
+    return oss.str();
+}
 
 std::string launch::find_root(const std::string& filename, int max_levels) {
     std::filesystem::path current = std::filesystem::current_path();
@@ -56,22 +110,21 @@ void launch::set_log_level(Core::LogLevel level) {
     _logger.set_level(level);
 }
 
-launch::launch(const std::vector<std::string>& exclude,
-               const std::vector<std::string>& nodes)
-    : _exclude_folders(exclude),
-      _registry({.port = 4020, .threads = 5}) {
-    _args.parse();
-    _logger.set_classname(this->_args._program_name);
-    auto level = _args.get_argument<Core::LogLevel>("--log-level");
-    if (_args._program->is_used("debug")) level = Core::LogLevel::DEBUG;
-    _logger.set_level(level);
 
-    // Iniciar el registry
-    _registry.run();
+launch::launch(int argc, char** argv, const std::vector<std::string>& exclude, const std::vector<std::string>& nodes)
+    : _args(argc, argv), _exclude_folders(exclude) {
+    // Aquí deberías agregar argumentos a _args si es necesario
+    // _args.add_argument(...)
+    // _args.parse(); // parse es protected, así que solo puedes usar la API pública
+
+    // Configuración de logger (ajusta según tu API pública)
+    // _logger.set_classname(...); // Si tienes acceso público
+    // auto level = _args.get_argument<Core::LogLevel>("--log-level");
+    // _logger.set_level(level);
 
     _root_path = find_root(".root", 10);
     if (_root_path.empty()) {
-        std::cerr << "Root path not found." << std::endl; 
+        std::cerr << "Root path not found." << std::endl;
         return;
     }
     executables = find_executable_files(_root_path, _exclude_folders);
@@ -80,8 +133,8 @@ launch::launch(const std::vector<std::string>& exclude,
     }
 }
 
-launch::launch(const std::vector<std::string>& nodes)
-    : launch(std::vector<std::string>{"vendor", ".git"}, nodes) {}
+launch::launch(int argc, char** argv, const std::vector<std::string>& nodes)
+    : launch(argc, argv, std::vector<std::string>{"vendor", ".git"}, nodes) {}
 
 std::map<std::string, std::string> launch::get_executables() {
     return executables;
@@ -113,7 +166,7 @@ void launch::run_executables(const std::vector<std::string>& nombres) {
     for (auto& t : threads) t.join();
 }
 
-int main() {
-    launch launch_instance(std::vector<std::string>{"executable_test", "executable_test2"});
+int main(int argc, char** argv) {
+    launch launch_instance(argc, argv, std::vector<std::string>{"executable_test", "executable_test2"});
     return 0;
 }
