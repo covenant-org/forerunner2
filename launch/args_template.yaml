@@ -1,0 +1,12 @@
+executables:
+  - name: executable1
+    args:
+      flags:
+        - --verbose
+        - --log
+      options:
+        --input: file.txt
+        --threshold: "0.8"
+        --mode: fast
+      # positionals:
+      #   - output.txt
