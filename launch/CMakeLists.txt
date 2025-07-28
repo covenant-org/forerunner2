@@ -8,6 +8,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Boost REQUIRED COMPONENTS system filesystem program_options)
 include_directories(${Boost_INCLUDE_DIRS})
 
+include_directories(../core)
+include_directories(../registry)
+include_directories(../vendor/argparse/include)
+
 add_executable(launch launch.cpp)
 
 target_link_libraries(launch

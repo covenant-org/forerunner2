@@ -6,17 +6,22 @@
 #include <boost/process.hpp>
 #include <thread>
 #include "logger.hpp"
+#include <argparse/argparse.hpp>
+#include "registry.hpp"
+#include "vertex.hpp"
 
 
 class Launch {
 
     protected:
+    ArgumentParser _args;
     Logger _logger;
 
     private:
     // Variables miembro de ejemplo
     std::string _root_path;
     std::vector<std::string> _exclude_folders;
+    Core::Registry _registry;
 
     static std::string find_root(const std::string& filename, int max_levels) {
         std::filesystem::path current = std::filesystem::current_path();
@@ -73,10 +78,24 @@ class Launch {
     public:
     std::map<std::string, std::string> executables;
 
+    void set_log_level(LogLevel level) {
+        _logger.set_level(level);
+    }
+
     // Constructor principal SIN valores por defecto
     launch(const std::vector<std::string>& exclude,
            const std::vector<std::string>& nodes)
         : _exclude_folders(exclude) {
+        _args.parse();
+        _logger.set_classname(this->_args._program_name);
+        auto level = _args.get_argument<LogLevel>("--log-level");
+        if (_args._program->is_used("debug")) level = LogLevel::DEBUG;
+        _logger.set_level(level);
+
+        // Iniciar el registry
+        _registry = Core::Registry({.port = 4020, .threads = 5});
+        _registry.run();
+
         _root_path = find_root(".root", 10);
         if (_root_path.empty()) {
             std::cerr << "Root path not found." << std::endl; 
