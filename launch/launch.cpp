@@ -1,59 +1,6 @@
+
 #include "launch.hpp"
 
-
-// Implementación de NodesYamlParser
-NodesYamlParser::NodesYamlParser(const std::string& filename) {
-    YAML::Node config = YAML::LoadFile(filename);
-    for (const auto& exe : config["executables"]) {
-        ExecutableArgs eargs;
-        eargs.name = exe["name"].as<std::string>();
-        const auto& args = exe["args"];
-        if (args["flags"]) {
-            for (const auto& flag : args["flags"]) {
-                eargs.flags.push_back(flag.as<std::string>());
-            }
-        }
-        if (args["options"]) {
-            for (const auto& opt : args["options"]) {
-                eargs.options[opt.first.as<std::string>()] = opt.second.as<std::string>();
-            }
-        }
-        if (args["positionals"]) {
-            for (const auto& pos : args["positionals"]) {
-                eargs.positionals.push_back(pos.as<std::string>());
-            }
-        }
-        executables.push_back(eargs);
-    }
-}
-
-std::string NodesYamlParser::yaml() const {
-    std::ostringstream oss;
-    for (const auto& exe : executables) {
-        oss << "Executable: " << exe.name << '\n';
-        if (!exe.flags.empty()) {
-            oss << "  Flags:";
-            for (const auto& flag : exe.flags) {
-                oss << " " << flag;
-            }
-            oss << '\n';
-        }
-        if (!exe.options.empty()) {
-            oss << "  Options:" << '\n';
-            for (const auto& opt : exe.options) {
-                oss << "    " << opt.first << ": " << opt.second << '\n';
-            }
-        }
-        if (!exe.positionals.empty()) {
-            oss << "  Positionals:";
-            for (const auto& pos : exe.positionals) {
-                oss << " " << pos;
-            }
-            oss << '\n';
-        }
-    }
-    return oss.str();
-}
 
 std::string launch::find_root(const std::string& filename, int max_levels) {
     std::filesystem::path current = std::filesystem::current_path();
@@ -111,7 +58,8 @@ void launch::set_log_level(Core::LogLevel level) {
 }
 
 
-launch::launch(int argc, char** argv, const std::vector<std::string>& exclude, const std::vector<std::string>& nodes)
+
+launch::launch(int argc, char** argv, const std::vector<std::string>& exclude, const std::vector<std::string>& names, const std::vector<std::vector<std::string>>& args)
     : _args(argc, argv), _exclude_folders(exclude) {
     // Aquí deberías agregar argumentos a _args si es necesario
     // _args.add_argument(...)
@@ -128,45 +76,88 @@ launch::launch(int argc, char** argv, const std::vector<std::string>& exclude, c
         return;
     }
     executables = find_executable_files(_root_path, _exclude_folders);
-    if (!nodes.empty()) {
-        run_executables(nodes);
+    if (!names.empty()) {
+        run_executables(names, args);
     }
 }
 
-launch::launch(int argc, char** argv, const std::vector<std::string>& nodes)
-    : launch(argc, argv, std::vector<std::string>{"vendor", ".git"}, nodes) {}
+launch::launch(int argc, char** argv, const std::vector<std::string>& names, const std::vector<std::vector<std::string>>& args)
+    : launch(argc, argv, default_exclude_folders, names, args) {}
+
+// Constructor que recibe un NodesYamlParser
+launch::launch(int argc, char** argv, const NodesYamlParser& parser)
+    : launch(argc, argv, default_exclude_folders,
+        parser.get_executables(),
+        [&parser]() {
+            std::vector<std::vector<std::string>> args;
+            for (const auto& name : parser.get_executables()) {
+                args.push_back(parser.get_args_line(name));
+            }
+            return args;
+        }()) {}
+
+
 
 std::map<std::string, std::string> launch::get_executables() {
     return executables;
 }
 
-int launch::run_executable(const std::string& executable_path) {
-    int result = std::system(executable_path.c_str());
-    return result;
+int launch::run_executable(const std::string& name, const std::vector<std::string>& args) {
+    auto it = executables.find(name);
+    if (it == executables.end()) {
+        std::cout << "Executable not found: " << name << std::endl;
+        return -1;
+    }
+    try {
+        if (args.empty()) {
+            boost::process::child c(it->second);
+            c.wait();
+            std::cout << name << " finished with code: " << c.exit_code() << std::endl;
+            return c.exit_code();
+        } else {
+            boost::process::child c(it->second, boost::process::args(args));
+            c.wait();
+            std::cout << name << " finished with code: " << c.exit_code() << std::endl;
+            return c.exit_code();
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Error running " << name << ": " << e.what() << std::endl;
+        return -1;
+    }
 }
 
-void launch::run_executables(const std::vector<std::string>& nombres) {
+void launch::run_executables(const std::vector<std::string>& names, const std::vector<std::vector<std::string>>& arguments) {
     std::vector<std::thread> threads;
-    for (const auto& nombre : nombres) {
-        auto it = executables.find(nombre);
-        if (it != executables.end()) {
-            threads.emplace_back([nombre, path = it->second]() {
-                try {
-                    boost::process::child c(path);
-                    c.wait();
-                    std::cout << nombre << " terminó con código: " << c.exit_code() << std::endl;
-                } catch (const std::exception& e) {
-                    std::cerr << "Error ejecutando " << nombre << ": " << e.what() << std::endl;
-                }
-            });
-        } else {
-            std::cout << "No se encontró ejecutable: " << nombre << std::endl;
+    for (size_t i = 0; i < names.size(); ++i) {
+        std::vector<std::string> args;
+        if (i < arguments.size()) {
+            args = arguments[i];
         }
+        threads.emplace_back([this, name = names[i], args]() {
+            run_executable(name, args);
+        });
     }
     for (auto& t : threads) t.join();
 }
 
 int main(int argc, char** argv) {
-    launch launch_instance(argc, argv, std::vector<std::string>{"executable_test", "executable_test2"});
+    std::string yaml_path;
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--yaml-path" && i + 1 < argc) {
+            yaml_path = argv[i + 1];
+            break;
+        }
+    }
+    if (yaml_path.empty()) {
+        std::cerr << "You must specify --yaml-path <path>" << std::endl;
+        return 1;
+    }
+    NodesYamlParser parser(yaml_path);
+
+    launch launch_instance(argc, argv, parser);
+    // Si quieres seguir usando launch, puedes hacerlo aquí:
+    // launch launch_instance(argc, argv, std::vector<std::string>{"executable_test", "executable_test2"});
     return 0;
 }
+
