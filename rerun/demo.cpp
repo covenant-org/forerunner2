@@ -23,6 +23,8 @@ Demo::Demo(Core::ArgumentParser args) : Core::Vertex(args) {
       "mic", std::bind(&Demo::mic_cb, this, std::placeholders::_1));
   this->_odom_sub = this->create_subscriber<Odometry>(
       "odometry", std::bind(&Demo::odom_cb, this, std::placeholders::_1));
+  this->_octree_sub = this->create_subscriber<MarkerArray>(
+      "octree", std::bind(&Demo::octree_cb, this, std::placeholders::_1));
 }
 
 rerun::Color Demo::distance_to_color(float distance) {
@@ -58,8 +60,34 @@ void Demo::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
   auto velocity = content.getVelocity();
   this->_rec->log("drone/position",
                   rerun::Boxes3D::from_centers_and_sizes(
-                      {{position.getX(), position.getY(), position.getZ()}},
+                      {{position.getX(), position.getY(), -position.getZ()}},
                       {{0.3, 0.3, 0.3}}));
+}
+
+void Demo::octree_cb(const Core::IncomingMessage<MarkerArray> &msg) {
+  std::vector<rerun::Position3D> positions;
+  std::vector<rerun::Color> colors;
+
+  auto markers = msg.content.getMarkers();
+  for (auto marker : markers) {
+    auto position = marker.getPose().getPosition();
+    auto color = marker.getColor();
+    auto size = marker.getScale();
+
+    positions.emplace_back(position.getX(), position.getY(), -position.getZ());
+    colors.emplace_back(color.getR() * 255, color.getG() * 255,
+                        color.getB() * 255, color.getA() * 255);
+  }
+
+  this->_rec->log("octree/markers",
+                  rerun::Points3D(positions).with_colors(colors));
+
+  // Log statistics
+  this->_rec->log("stats/octree_count",
+                  rerun::Scalars(static_cast<double>(markers.size())));
+  this->_rec->log(
+      "stats/octree_dimensions",
+      rerun::TextLog("Octree markers: " + std::to_string(markers.size())));
 }
 
 void Demo::mic_cb(const Core::IncomingMessage<StereoMic> &msg) {

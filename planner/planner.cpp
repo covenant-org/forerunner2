@@ -13,12 +13,11 @@
 
 Planner::Planner(Core::ArgumentParser parser,
                  SimplePlanner::Algorithm *algorithm)
-    : Core::Vertex(parser) {
+    : Core::Vertex(parser), _algorithm(algorithm) {
   this->_point_cloud_decoder =
       new pcl::io::OctreePointCloudCompression<pcl::PointXYZ>();
 
-  this->_octree_pub =
-      this->create_publisher<MarkerArray>("octree_visualization");
+  this->_octree_pub = this->create_publisher<MarkerArray>("octree");
 
   this->_path_pub = this->create_publisher<Path>("planned_path");
 
@@ -26,21 +25,22 @@ Planner::Planner(Core::ArgumentParser parser,
       "point_cloud",
       std::bind(&Planner::cloud_point_cb, this, std::placeholders::_1));
 
-  this->_goal_sub = this->create_subscriber<Position>(
-      "input_goal", std::bind(&Planner::goal_cb, this, std::placeholders::_1));
+  // this->_goal_sub = this->create_subscriber<Position>(
+  //     "input_goal", std::bind(&Planner::goal_cb, this,
+  //     std::placeholders::_1));
 
   this->_odometry_sub = this->create_subscriber<Odometry>(
-      "input_goal",
+      "odometry",
       std::bind(&Planner::odometry_cb, this, std::placeholders::_1));
 
   SimplePlanner::AlgorithmConfig config;
-  config.resolution = this->get_argument<float>("--resolution");
-  config.min_distance = this->get_argument<float>("--min-distance");
-  config.max_distance = this->get_argument<float>("--max-distance");
-  config.safe_distance = this->get_argument<float>("--safe-distance");
-  config.preferred_distance = this->get_argument<float>("--preferred-distance");
+  config.resolution = this->get_argument<double>("--resolution");
+  config.min_distance = this->get_argument<double>("--min-distance");
+  config.max_distance = this->get_argument<double>("--max-distance");
+  config.safe_distance = this->get_argument<double>("--safe-distance");
+  config.preferred_distance =
+      this->get_argument<double>("--preferred-distance");
 
-  this->_algorithm = algorithm;
   this->_algorithm->init(config, std::make_unique<Core::Logger>());
   this->_planner_thread = std::thread([&] {
     this->_algorithm->run(
@@ -66,8 +66,10 @@ void Planner::stop() {
 }
 
 void Planner::publish_visualization() {
+  bool should_publish_octree = this->get_argument<bool>("--publish-octree");
+
   while (true) {
-    if (this->get_argument<bool>("--publish-octree")) {
+    if (should_publish_octree) {
       this->publish_octree();
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
@@ -82,11 +84,14 @@ void Planner::publish_octree() {
 
   std::vector<int> pointIdxSearch;
   std::vector<float> pointSquaredDistance;
-  float radious = this->get_argument<float>("--max-distance");
-  double resolution = this->get_argument<float>("--resolution");
-  pcl::PointXYZ searchPoint(0, 0, 0);
-  if (this->_octree_search->radiusSearch(searchPoint, radious, pointIdxSearch,
-                                         pointSquaredDistance)) {
+  double radius = this->get_argument<double>("--max-distance");
+  double resolution = this->get_argument<double>("--resolution");
+  pcl::PointXYZ searchPoint(_drone_pose.position.x(), _drone_pose.position.y(),
+                            _drone_pose.position.z());
+  this->_octree_search->radiusSearch(searchPoint, radius, pointIdxSearch,
+                                     pointSquaredDistance);
+
+  if (pointIdxSearch.size() > 0) {
     auto msg = this->_octree_pub->new_msg();
     auto markers = msg.content.initMarkers(pointIdxSearch.size());
     for (size_t i = 0; i < pointIdxSearch.size(); i++) {
@@ -157,7 +162,7 @@ void Planner::cloud_point_cb(const Core::IncomingMessage<PointCloud> &msg) {
   }
 
   this->_octree_search = std::make_shared<SimplePlanner::PCLOctree>(
-      this->get_argument<float>("--resolution"));
+      this->get_argument<double>("--resolution"));
   this->_octree_search->setInputCloud(cloud);
   this->_octree_search->addPointsFromInputCloud();
 
@@ -174,8 +179,9 @@ void Planner::cloud_point_cb(const Core::IncomingMessage<PointCloud> &msg) {
 std::vector<pcl::PointXYZ> Planner::recover_octree_points() {
   std::vector<int> pointIdxSearch;
   std::vector<float> pointSquaredDistance;
-  float max_distance = this->get_argument<float>("--max-distance");
-  pcl::PointXYZ searchPoint(0, 0, 0);
+  double max_distance = this->get_argument<double>("--max-distance");
+  pcl::PointXYZ searchPoint(_drone_pose.position.x(), _drone_pose.position.y(),
+                            _drone_pose.position.z());
   this->_octree_search->radiusSearch(searchPoint, max_distance, pointIdxSearch,
                                      pointSquaredDistance);
   if (pointIdxSearch.size() == 0) {
@@ -234,6 +240,9 @@ void Planner::odometry_cb(const Core::IncomingMessage<Odometry> &msg) {
   _drone_pose.orientation.y() = msg.content.getQ().getY();
   _drone_pose.orientation.z() = msg.content.getQ().getZ();
   _drone_pose.orientation.w() = msg.content.getQ().getW();
+
+  this->_logger.debug("drone position: (%f, %f, %f)", _drone_pose.position.x(),
+                      _drone_pose.position.y(), _drone_pose.position.z());
 }
 
 void Planner::run() {
@@ -246,23 +255,23 @@ int main(int argc, char **argv) {
   parser.add_argument("--resolution")
       .default_value(0.5)
       .help("spacing between points (number of overall points generated)")
-      .scan<'f', float>();
+      .scan<'g', double>();
   parser.add_argument("--min-distance")
       .default_value(0.5)
       .help("min distance to account from the cloud point")
-      .scan<'f', float>();
+      .scan<'g', double>();
   parser.add_argument("--safe-distance")
       .default_value(1.0)
       .help("min distance from the drone to any other object around")
-      .scan<'f', float>();
+      .scan<'g', double>();
   parser.add_argument("--preferred-distance")
       .default_value(3.0)
       .help("Ideal distance from the drone to any other object around")
-      .scan<'f', float>();
+      .scan<'g', double>();
   parser.add_argument("--max-distance")
       .default_value(5.0)
       .help("max distance to account from the cloud point")
-      .scan<'f', float>();
+      .scan<'g', double>();
   parser.add_argument("--publish-octree")
       .help("publish the octree as a visualization marker")
       .flag();

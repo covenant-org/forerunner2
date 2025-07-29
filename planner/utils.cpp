@@ -61,6 +61,7 @@ void create_marker(Marker::Builder &marker, const pcl::PointXYZ &point,
   marker.initColor();
   marker.initHeader();
   marker.initPose();
+  marker.initScale();
   marker.getPose().initOrientation();
   marker.getPose().initPosition();
 
