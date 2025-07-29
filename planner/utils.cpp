@@ -2,61 +2,60 @@
 #include <capnp_schemas/visualization_msgs.capnp.h>
 
 namespace SimplePlanner {
-void pathToMsg(const std::vector<std::shared_ptr<PathNode>> &path, Path &msg,
-               std::string frame_id, rclcpp::Time stamp, Eigen::Vector3d &goal,
-               tf2::Transform &t) {
-  msg.poses.clear();
-  for (auto node = path.begin(); node != path.end(); node++) {
-    auto next_node = std::next(node);
-    Eigen::Vector3d pos_next =
-        next_node == path.end() ? goal : (*next_node)->coords;
+void pathToMsg(const std::vector<std::shared_ptr<PathNode>> &path,
+               Path::Builder &msg, Eigen::Vector3d &goal) {
+  auto poses = msg.initPoses(path.size());
+  for (size_t i = 0; i < path.size(); ++i) {
+    auto node = path[i];
+    auto pose = poses[i];
 
-    geometry_msgs::msg::PoseStamped pose;
-    float currYaw = atan2((pos_next(1) - (*node)->coords(1)),
-                          (pos_next(0) - (*node)->coords(0)));
+    pose.getPose().initOrientation();
+    pose.getPose().initPosition();
+
+    Eigen::Vector3d pos_next =
+        (i + 1 < path.size()) ? path[i + 1]->coords : goal;
+
+    float currYaw =
+        atan2(pos_next.y() - node->coords.y(), pos_next.x() - node->coords.x());
     float qz = sin(currYaw / 2.0);
     float qw = cos(currYaw / 2.0);
-    tf2::Quaternion tf2_quat(0.0, 0.0, qz, qw);
-    tf2::Vector3 tf2_vec((*node)->coords(0), (*node)->coords(1),
-                         (*node)->coords(2));
-    tf2_quat = t * tf2_quat;
-    tf2_vec = t * tf2_vec;
-    pose.header.frame_id = frame_id;
-    pose.header.stamp = stamp;
-    pose.pose.position.x = tf2_vec.x();
-    pose.pose.position.y = tf2_vec.y();
-    pose.pose.position.z = tf2_vec.z();
-    pose.pose.orientation.x = tf2_quat.x();
-    pose.pose.orientation.y = tf2_quat.y();
-    pose.pose.orientation.z = tf2_quat.z();
-    pose.pose.orientation.w = tf2_quat.w();
-    msg.poses.push_back(pose);
-  }
-}
+    pose.getPose().getPosition().setX(node->coords.x());
+    pose.getPose().getPosition().setY(node->coords.y());
+    pose.getPose().getPosition().setZ(node->coords.z());
 
-void transform_path(nav_msgs::msg::Path &path, const tf2::Transform &transform,
-                    std::string frame_id, rclcpp::Time stamp) {
-  for (geometry_msgs::msg::PoseStamped &pose : path.poses) {
-    tf2::Vector3 tf2_vec(pose.pose.position.x, pose.pose.position.y,
-                         pose.pose.position.z);
-    tf2::Quaternion tf2_quat(pose.pose.orientation.x, pose.pose.orientation.y,
-                             pose.pose.orientation.z, pose.pose.orientation.w);
-    tf2_vec = transform * tf2_vec;
-    tf2_quat = transform * tf2_quat;
-    pose.header.frame_id = frame_id;
-    pose.header.stamp = stamp;
-    pose.pose.position.x = tf2_vec.x();
-    pose.pose.position.y = tf2_vec.y();
-    pose.pose.position.z = tf2_vec.z();
-    pose.pose.orientation.x = tf2_quat.x();
-    pose.pose.orientation.y = tf2_quat.y();
-    pose.pose.orientation.z = tf2_quat.z();
-    pose.pose.orientation.w = tf2_quat.w();
+    pose.getPose().getOrientation().setX(0.0);
+    pose.getPose().getOrientation().setY(0.0);
+    pose.getPose().getOrientation().setZ(qz);
+    pose.getPose().getOrientation().setW(qw);
   }
 }
+//
+// void transform_path(nav_msgs::msg::Path &path, const tf2::Transform
+// &transform,
+//                     std::string frame_id, rclcpp::Time stamp) {
+//   for (geometry_msgs::msg::PoseStamped &pose : path.poses) {
+//     tf2::Vector3 tf2_vec(pose.pose.position.x, pose.pose.position.y,
+//                          pose.pose.position.z);
+//     tf2::Quaternion tf2_quat(pose.pose.orientation.x,
+//     pose.pose.orientation.y,
+//                              pose.pose.orientation.z,
+//                              pose.pose.orientation.w);
+//     tf2_vec = transform * tf2_vec;
+//     tf2_quat = transform * tf2_quat;
+//     pose.header.frame_id = frame_id;
+//     pose.header.stamp = stamp;
+//     pose.pose.position.x = tf2_vec.x();
+//     pose.pose.position.y = tf2_vec.y();
+//     pose.pose.position.z = tf2_vec.z();
+//     pose.pose.orientation.x = tf2_quat.x();
+//     pose.pose.orientation.y = tf2_quat.y();
+//     pose.pose.orientation.z = tf2_quat.z();
+//     pose.pose.orientation.w = tf2_quat.w();
+//   }
+// }
 
 void create_marker(Marker::Builder &marker, const pcl::PointXYZ &point,
-                   float scale = 3.0) {
+                   float scale) {
   marker.setShape(MarkerShape::CUBE);
 
   marker.initColor();

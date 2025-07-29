@@ -18,11 +18,17 @@
 
 class Planner : Core::Vertex {
  private:
+  struct DronePose {
+    Eigen::Vector3d position;
+    Eigen::Quaterniond orientation;
+  } _drone_pose;
+  size_t _path_sequence = 0;
   // cloudpoint
   std::shared_ptr<Core::Subscriber<PointCloud>> _cloud_sub;
   std::shared_ptr<Core::Subscriber<Position>> _goal_sub;
   std::shared_ptr<Core::Subscriber<Odometry>> _odometry_sub;
   std::shared_ptr<Core::Publisher<MarkerArray>> _octree_pub;
+  std::shared_ptr<Core::Publisher<Path>> _path_pub;
   Odometry::Reader _last_odometry;
   pcl::io::OctreePointCloudCompression<pcl::PointXYZ> *_point_cloud_decoder;
 
@@ -32,6 +38,7 @@ class Planner : Core::Vertex {
   std::thread _publish_visualization_thread;
   SimplePlanner::Algorithm *_algorithm;
   pcl::PointCloud<pcl::PointXYZ>::Ptr _cloud;
+  Eigen::Vector3d _goal_msg;
 
   void cloud_point_cb(const Core::IncomingMessage<PointCloud> &);
   void goal_cb(const Core::IncomingMessage<Position> &);

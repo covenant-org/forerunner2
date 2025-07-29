@@ -1,13 +1,13 @@
 #ifndef UTILS_HPP
 #define UTILS_HPP
 
-#include <capnp_schemas/planner.capnp.h>
-#include <capnp_schemas/nav_msgs.capnp.h>
-#include <capnp_schemas/geometry_msgs.capnp.h>
-#include <capnp_schemas/visualization_msgs.capnp.h>
 #include "logger.hpp"
 #include <Eigen/Dense>
 #include <Eigen/src/Core/Matrix.h>
+#include <capnp_schemas/geometry_msgs.capnp.h>
+#include <capnp_schemas/nav_msgs.capnp.h>
+#include <capnp_schemas/planner.capnp.h>
+#include <capnp_schemas/visualization_msgs.capnp.h>
 #include <cmath>
 #include <optional>
 #include <pcl/octree/octree_search.h>
@@ -20,7 +20,7 @@ using Box = std::pair<Eigen::Vector3d, Eigen::Vector3d>;
 using PCLOctree = pcl::octree::OctreePointCloudSearch<pcl::PointXYZ>;
 
 class AlgorithmConfig {
-public:
+ public:
   double max_distance;
   double resolution;
   double min_distance;
@@ -29,7 +29,7 @@ public:
 };
 
 class PathNode {
-public:
+ public:
   PathNode(double x, double y, double z) : coords(x, y, z), cost(0) {}
   PathNode(Eigen::Vector3d coords) : coords(coords), cost(0) {}
   void clear() {
@@ -56,11 +56,17 @@ public:
 };
 using PathNodeVector = std::vector<std::shared_ptr<PathNode>>;
 
-
 enum RequestType { START, REPLAN };
 
+class ReplanRequest {
+ public:
+  size_t path_id;
+  std::vector<Pose::Reader> path;
+  size_t current_index;
+};
+
 class PlanRequest {
-public:
+ public:
   RequestType type;
   Eigen::Vector3d goal;
   void *metadata;
@@ -68,14 +74,14 @@ public:
 };
 
 class PlanResponse {
-public:
+ public:
   size_t path_id;
   PlanRequest request;
   PathNodeVector path;
 };
 
 class Algorithm {
-public:
+ public:
   virtual ~Algorithm() = default;
   virtual void init(AlgorithmConfig, std::unique_ptr<Core::Logger>) = 0;
   virtual void update_config(AlgorithmConfig) = 0;
@@ -91,13 +97,13 @@ public:
 };
 
 void pathToMsg(const std::vector<std::shared_ptr<PathNode>> &path,
-               Path &msg, std::string frame_id,
-               rclcpp::Time stamp, Eigen::Vector3d &goal, tf2::Transform &t);
+               Path::Builder &msg, Eigen::Vector3d &goal);
+//
+// void transform_path(Path::Reader &path, const tf2::Transform &transform,
+//                     std::string frame_id, rclcpp::Time stamp);
 
-void transform_path(Path::Reader &path, const tf2::Transform &transform,
-                    std::string frame_id, rclcpp::Time stamp);
-
-void create_marker(Marker::Builder &marker, const pcl::PointXYZ &point, float scale = 0.3);
+void create_marker(Marker::Builder &marker, const pcl::PointXYZ &point,
+                   float scale = 0.3);
 
 bool eq(const PathNode &a, const PathNode &b);
 bool eq(const PathNode &a, const std::vector<double> &b);
@@ -111,7 +117,7 @@ bool isInsideBox(const Eigen::Vector3d &point, const Eigen::Vector3d &min,
                  const Eigen::Vector3d &max);
 
 class Ray {
-public:
+ public:
   ~Ray(){};
   Ray(Eigen::Vector3d origin, Eigen::Vector3d dir)
       : origin(origin), dir(dir), inv_dir(1 / dir(0), 1 / dir(1), 1 / dir(2)){};
@@ -130,6 +136,6 @@ bool boxIntersects(Eigen::Vector3d minA, Eigen::Vector3d maxA,
 double distanceToBox(Eigen::Vector3d point, Eigen::Vector3d min,
                      Eigen::Vector3d max);
 
-} // namespace SimplePlanner
+}  // namespace SimplePlanner
 
 #endif

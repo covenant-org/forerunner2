@@ -9,9 +9,9 @@
 //
 
 #include "kdtree.hpp"
-#include <math.h>
 #include <algorithm>
 #include <limits>
+#include <math.h>
 #include <stdexcept>
 
 namespace Kdtree {
@@ -252,8 +252,9 @@ void KdTree::k_nearest_neighbors(const CoordPoint& point, size_t k,
         "kdtree");
 
   // collect result of k values in neighborheap
-  //std::priority_queue<nn4heap, std::vector<nn4heap>, compare_nn4heap>*
-  //neighborheap = new std::priority_queue<nn4heap, std::vector<nn4heap>, compare_nn4heap>();
+  // std::priority_queue<nn4heap, std::vector<nn4heap>, compare_nn4heap>*
+  // neighborheap = new std::priority_queue<nn4heap, std::vector<nn4heap>,
+  // compare_nn4heap>();
   SearchQueue* neighborheap = new SearchQueue();
   if (k > allnodes.size()) {
     // when more neighbors asked than nodes in tree, return everything
@@ -367,8 +368,8 @@ bool KdTree::neighbor_search(const CoordPoint& point, kdtree_node* node,
 // recursive function for range search in subtree under *node*.
 // Stores result in *range_result*.
 //--------------------------------------------------------------
-void KdTree::range_search(const CoordPoint& point, kdtree_node* node,
-                          double r, std::vector<size_t>* range_result) {
+void KdTree::range_search(const CoordPoint& point, kdtree_node* node, double r,
+                          std::vector<size_t>* range_result) {
   double curdist = distance->distance(point, node->point);
   if (curdist <= r) {
     range_result->push_back(node->dataindex);
@@ -398,17 +399,19 @@ bool KdTree::bounds_overlap_ball(const CoordPoint& point, double dist,
       }
     }
     return true;
-  } else { // maximum distance needs different treatment
+  } else {  // maximum distance needs different treatment
     double max_dist = 0.0;
     double curr_dist = 0.0;
     size_t i;
     for (i = 0; i < dimension; i++) {
       if (point[i] < node->lobound[i]) {  // lower than low boundary
-        curr_dist = distance->coordinate_distance(point[i], node->lobound[i], i);
+        curr_dist =
+            distance->coordinate_distance(point[i], node->lobound[i], i);
       } else if (point[i] > node->upbound[i]) {  // higher than high boundary
-        curr_dist = distance->coordinate_distance(point[i], node->upbound[i], i);
+        curr_dist =
+            distance->coordinate_distance(point[i], node->upbound[i], i);
       }
-      if(curr_dist > max_dist) {
+      if (curr_dist > max_dist) {
         max_dist = curr_dist;
       }
       if (max_dist > dist) return false;

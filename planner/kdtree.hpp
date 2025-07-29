@@ -70,7 +70,6 @@ class kdtree_node {
   CoordPoint lobound, upbound;
 };
 
-
 //--------------------------------------------------------
 // private helper classes used internally by KdTree
 //
@@ -94,7 +93,8 @@ class compare_nn4heap {
     return (n.distance < m.distance);
   }
 };
-  typedef std::priority_queue<nn4heap, std::vector<nn4heap>, compare_nn4heap> SearchQueue;
+typedef std::priority_queue<nn4heap, std::vector<nn4heap>, compare_nn4heap>
+    SearchQueue;
 //--------------------------------------------------------
 
 // kdtree class
@@ -106,8 +106,10 @@ class KdTree {
   CoordPoint lobound, upbound;
   // helper variable to check the distance method
   int distance_type;
-  bool neighbor_search(const CoordPoint& point, kdtree_node* node, size_t k, SearchQueue* neighborheap);
-  void range_search(const CoordPoint& point, kdtree_node* node, double r, std::vector<size_t>* range_result);
+  bool neighbor_search(const CoordPoint& point, kdtree_node* node, size_t k,
+                       SearchQueue* neighborheap);
+  void range_search(const CoordPoint& point, kdtree_node* node, double r,
+                    std::vector<size_t>* range_result);
   bool bounds_overlap_ball(const CoordPoint& point, double dist,
                            kdtree_node* node);
   bool ball_within_bounds(const CoordPoint& point, double dist,

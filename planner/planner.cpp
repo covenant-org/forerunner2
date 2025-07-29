@@ -20,6 +20,8 @@ Planner::Planner(Core::ArgumentParser parser,
   this->_octree_pub =
       this->create_publisher<MarkerArray>("octree_visualization");
 
+  this->_path_pub = this->create_publisher<Path>("planned_path");
+
   this->_cloud_sub = this->create_subscriber<PointCloud>(
       "point_cloud",
       std::bind(&Planner::cloud_point_cb, this, std::placeholders::_1));
@@ -51,6 +53,8 @@ Planner::Planner(Core::ArgumentParser parser,
 
   this->_logger.info("Planner initialized");
 }
+
+Planner::~Planner() { this->stop(); }
 
 void Planner::stop() {
   this->_algorithm->stop();
@@ -139,12 +143,11 @@ void Planner::cloud_point_cb(const Core::IncomingMessage<PointCloud> &msg) {
   // Maybe implement a buffer to be able to extract at a specific time
   // also include the header in the mavlink pub
   Eigen::Affine3d eigen_transform(Eigen::Isometry3d(
-      Eigen::Translation3d(_last_odometry.getPosition().getX(),
-                           _last_odometry.getPosition().getY(),
-                           _last_odometry.getPosition().getZ()) *
+      Eigen::Translation3d(_drone_pose.position.x(), _drone_pose.position.y(),
+                           _drone_pose.position.z()) *
       Eigen::Quaterniond(
-          _last_odometry.getQ().getW(), _last_odometry.getQ().getX(),
-          _last_odometry.getQ().getY(), _last_odometry.getQ().getZ())));
+          _drone_pose.orientation.w(), _drone_pose.orientation.x(),
+          _drone_pose.orientation.y(), _drone_pose.orientation.z())));
   pcl::transformPointCloud(*cloud, *cloud, eigen_transform);
 
   if (cloud->points.size() == 0) {
@@ -190,10 +193,47 @@ void Planner::goal_cb(const Core::IncomingMessage<Position> &msg) {
   this->_logger.info("goal received");
   auto content = msg.content;
   Eigen::Vector3d goal(content.getX(), content.getY(), content.getZ());
+  Eigen::Vector3d current_goal(_goal_msg);
+
+  _goal_msg.x() = msg.content.getX();
+  _goal_msg.y() = msg.content.getY();
+  _goal_msg.z() = msg.content.getZ();
+
+  SimplePlanner::PlanRequest request;
+  request.type = SimplePlanner::RequestType::START;
+  request.goal << _goal_msg.x(), _goal_msg.y(), _goal_msg.z();
+
+  this->_algorithm->enqueue(std::move(request));
+}
+
+void Planner::result_cb(SimplePlanner::PlanResponse response) {
+  if (response.request.type == SimplePlanner::RequestType::START) {
+    // If request is a start request just recover path and do transformations
+    this->_logger.info("Received start request");
+    this->_path_sequence = response.path_id;
+
+    auto msg = this->_path_pub->new_msg();
+    SimplePlanner::pathToMsg(response.path, msg.content, _goal_msg);
+    msg.publish();
+    return;
+  }
+
+  if (this->_path_sequence != response.path_id) {
+    auto msg = this->_path_pub->new_msg();
+    SimplePlanner::pathToMsg(response.path, msg.content, _goal_msg);
+    this->_path_sequence = response.path_id;
+    msg.publish();
+  }
 }
 
 void Planner::odometry_cb(const Core::IncomingMessage<Odometry> &msg) {
-  _last_odometry = std::move(msg.content);
+  _drone_pose.position.x() = msg.content.getPosition().getX();
+  _drone_pose.position.y() = msg.content.getPosition().getY();
+  _drone_pose.position.z() = msg.content.getPosition().getZ();
+  _drone_pose.orientation.x() = msg.content.getQ().getX();
+  _drone_pose.orientation.y() = msg.content.getQ().getY();
+  _drone_pose.orientation.z() = msg.content.getQ().getZ();
+  _drone_pose.orientation.w() = msg.content.getQ().getW();
 }
 
 void Planner::run() {

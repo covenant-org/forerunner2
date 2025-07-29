@@ -9,7 +9,8 @@ namespace SimplePlanner {
 ThetaStar::ThetaStar() {}
 ThetaStar::~ThetaStar() {}
 
-void ThetaStar::init(AlgorithmConfig config, std::unique_ptr<Core::Logger> logger) {
+void ThetaStar::init(AlgorithmConfig config,
+                     std::unique_ptr<Core::Logger> logger) {
   this->config = config;
   this->logger = std::move(logger);
   this->stop_thread = false;
@@ -204,9 +205,10 @@ void ThetaStar::run(std::function<void(const PlanRequest &)> executing,
         std::shared_ptr<PathNode> next_node = nullptr;
         std::shared_ptr<PathNode> node = nullptr;
 
-        geometry_msgs::msg::Pose pose = *it;
-        Kdtree::CoordPoint point_coord{pose.position.x, pose.position.y,
-                                       pose.position.z};
+        Pose::Reader pose = *it;
+        auto position = pose.getPosition();
+        Kdtree::CoordPoint point_coord{position.getX(), position.getY(),
+                                       position.getZ()};
         this->kdtree->k_nearest_neighbors(point_coord, 1, &results);
         if (results.empty()) {
           valid = false;
