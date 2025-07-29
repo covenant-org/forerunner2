@@ -14,10 +14,9 @@ find_package(yaml-cpp REQUIRED)
 add_subdirectory(${CMAKE_SOURCE_DIR}/../core ${CMAKE_BINARY_DIR}/core)
 
 
-add_executable(launch launch.cpp)
-add_executable(executable_test executable_test.cpp)
-add_executable(executable_test2 executable_test2.cpp)
-add_executable(run_test test.cpp) # Experimental
+add_executable(launch launch.cpp nodes_yaml_parser.cpp)
+add_executable(executable_test test/executable_test.cpp)
+add_executable(executable_test2 test/executable_test2.cpp)
 
 # Solo enlaza launch con las librerías necesarias
 target_link_libraries(launch
@@ -29,9 +28,9 @@ target_link_libraries(launch
     yaml-cpp
 )
 
-target_link_libraries(run_test
-    yaml-cpp
-)
+# target_link_libraries(nodes_yaml_parser
+#     yaml-cpp
+# )
 
 
 
