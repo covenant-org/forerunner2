@@ -1,12 +1,13 @@
 executables:
-  - name: executable1
+  - name: executable_test #Ejecutable con argumentos
     args:
-      flags:
+      flags: # Banderas de verdadero o falso
         - --verbose
         - --log
-      options:
+      options: # Argumentos con valores
         --input: file.txt
         --threshold: "0.8"
         --mode: fast
-      # positionals:
-      #   - output.txt
+      positionals: # Argumentos posicionales
+        - output.txt
+  - name: executable_test2 # Ejecutable sin argumentos
