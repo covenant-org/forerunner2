@@ -3,12 +3,13 @@
 #include "sound-planner.hpp"
 #include <Eigen/src/Core/Matrix.h>
 #include <Eigen/src/Geometry/Quaternion.h>
+#include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <unistd.h>
+#include <utility>
 
-const Eigen::Quaternionf ROT_90DEG(std::cos(M_PI_4), 0, 0, std::sin(M_PI_4));
-const Eigen::Quaternionf N_ROT_90DEG(std::cos(-M_PI_4), 0, 0,
-                                     std::sin(-M_PI_4));
+#define M_3_PI_2 4.7123889803846896740 /* 3/pi/2 */
 
 SoundPlanner::SoundPlanner(Core::ArgumentParser args)
     : Core::Vertex(args), quart(1, 0, 0, 0), position(0, 0, 0), goal(0, 0, 0) {
@@ -86,6 +87,29 @@ float SoundPlanner::calc_mic_diff() {
   return diff / avg;
 }
 
+SoundPlanner::Waypoint SoundPlanner::next_waypoint(const int &forward_m = 20) {
+  Eigen::Matrix2f rotation;
+  float diff = _lmic - _rmic;
+  auto yaw = quart.toRotationMatrix().eulerAngles(0, 1, 2)[2];
+  this->_logger.info("dif: %f, yaw: %f", diff, yaw * 180 / M_PI);
+  yaw += diff > 0 ? -M_PI_2 : M_PI_2;
+  if (yaw > 2 * M_PI) {
+    yaw -= 2 * M_PI;
+  }
+  if (yaw < 0) {
+    yaw += 2 * M_PI;
+  }
+  rotation << std::cos(yaw), -std::sin(yaw), std::sin(yaw), std::cos(yaw);
+  Eigen::Vector2f movement(forward_m * std::abs(diff), 0);
+  movement = rotation * movement;
+  if (yaw > M_PI) {
+    yaw -= 2 * M_PI;
+  }
+  return {.point = Eigen::Vector3f(position.x() + movement.x(),
+                                   position.y() + movement.y(), position.z()),
+          .yaw_deg = static_cast<float>(yaw * 180 / M_PI)};
+}
+
 void SoundPlanner::run() {
   this->_logger.info("Running");
   this->_logger.debug("Waiting for 5 telemetry messages");
@@ -153,33 +177,26 @@ void SoundPlanner::run() {
   while (diff > 0.01) {
     diff = this->calc_mic_diff();
     while ((goal - position).norm() > 0.3) {
+      this->_logger.debug("Waiting for drone to reach goal");
       sleep(1);
       continue;
     }
     this->_logger.debug("Diff %f", diff);
-    auto msg = this->_command_client->new_msg();
-    auto point = msg.content.initWaypoint();
-    auto orientation = ROT_90DEG;
-    Eigen::Quaternionf translation(0, 1, 0, 0);
-    if (_rmic > _lmic) {
-      orientation = N_ROT_90DEG;
-    }
-    auto rotation = orientation * quart;
-    auto transrot = rotation * translation * rotation.conjugate();
-    goal = Eigen::Vector3f(position.x() + transrot.x(),
-                           position.y() + transrot.y(),
-                           position.z() + transrot.z());
-    point.setX(goal.x());
-    point.setY(goal.y());
-    point.setZ(goal.z());
-    auto deg = rotation.toRotationMatrix().eulerAngles(2, 1, 0)[0] * 180 / M_PI;
-    point.setR(deg);
+    auto waypoint = next_waypoint();
+    goal = waypoint.point;
     this->_logger.info(
         "Current position: %.2f, %.2f, %.2f. Target position: %.2f, %.2f, "
         "%.2f. Target yaw: %.2f",
         position.x(), position.y(), position.z(), goal.x(), goal.y(), goal.z(),
-        deg);
-    msg.send();
+        waypoint.yaw_deg);
+    auto goal_msg = this->_command_client->new_msg();
+    auto point = goal_msg.content.initWaypoint();
+    point.setX(goal.x());
+    point.setY(goal.y());
+    point.setZ(goal.z());
+    point.setR(waypoint.yaw_deg);
+    goal_msg.send();
+    getchar();
     sleep(1);
   }
 }

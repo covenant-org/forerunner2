@@ -33,13 +33,19 @@ class SoundPlanner : public Core::Vertex {
   Eigen::Vector3f position;
   Eigen::Vector3f goal;
 
+  struct Waypoint {
+    Eigen::Vector3f point;
+    float yaw_deg;
+  };
+  Waypoint next_waypoint(const int &);
+
  public:
   explicit SoundPlanner(Core::ArgumentParser);
   void run();
-  void odometry_cb(const Core::IncomingMessage<Odometry>&);
-  void telemetry_cb(const Core::IncomingMessage<Telemetry>&);
-  void mic_cb(const Core::IncomingMessage<StereoMic>&);
-  void altitude_cb(const Core::IncomingMessage<Altitude>&);
+  void odometry_cb(const Core::IncomingMessage<Odometry> &);
+  void telemetry_cb(const Core::IncomingMessage<Telemetry> &);
+  void mic_cb(const Core::IncomingMessage<StereoMic> &);
+  void altitude_cb(const Core::IncomingMessage<Altitude> &);
 };
 
 #endif
