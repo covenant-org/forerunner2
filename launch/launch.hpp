@@ -16,7 +16,7 @@
 #include "nodes_yaml_parser.hpp"
 
 
-class launch {
+class Launch {
 protected:
     Core::ArgumentParser _args;
     Core::Logger _logger;
@@ -24,6 +24,8 @@ protected:
 private:
     std::string _root_path;
     std::vector<std::string> _exclude_folders;
+    int registry_port_ = 0;
+    int registry_threads_ = 0;
     inline static const std::vector<std::string> default_exclude_folders = {"vendor", ".git"};
 
     static std::string find_root(const std::string& filename, int max_levels);
@@ -37,9 +39,9 @@ public:
 
     void set_log_level(Core::LogLevel level);
 
-    launch(int argc, char** argv, const std::vector<std::string>& exclude, const std::vector<std::string>& names, const std::vector<std::vector<std::string>>& args);
-    launch(int argc, char** argv, const std::vector<std::string>& names, const std::vector<std::vector<std::string>>& args);
-    launch(int argc, char** argv, const NodesYamlParser& parser);
+    Launch(int argc, char** argv, const std::vector<std::string>& exclude, const std::vector<std::string>& names, const std::vector<std::vector<std::string>>& args);
+    Launch(int argc, char** argv, const std::vector<std::string>& names, const std::vector<std::vector<std::string>>& args);
+    Launch(int argc, char** argv, const NodesYamlParser& parser);
 
     std::map<std::string, std::string> get_executables();
     int run_executable(const std::string& name, const std::vector<std::string>& args);

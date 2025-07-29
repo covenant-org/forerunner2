@@ -1,8 +1,7 @@
-
 #include "launch.hpp"
 
 
-std::string launch::find_root(const std::string& filename, int max_levels) {
+std::string Launch::find_root(const std::string& filename, int max_levels) {
     std::filesystem::path current = std::filesystem::current_path();
     for (int i = 0; i <= max_levels; ++i) {
         for (const auto& entry : std::filesystem::directory_iterator(current)) {
@@ -20,7 +19,7 @@ std::string launch::find_root(const std::string& filename, int max_levels) {
     return "";
 }
 
-std::map<std::string, std::string> launch::find_executable_files(
+std::map<std::string, std::string> Launch::find_executable_files(
     const std::filesystem::path& dir,
     const std::vector<std::string>& exclude_folders) {
     std::map<std::string, std::string> exe_map;
@@ -53,22 +52,25 @@ std::map<std::string, std::string> launch::find_executable_files(
     return exe_map;
 }
 
-void launch::set_log_level(Core::LogLevel level) {
+void Launch::set_log_level(Core::LogLevel level) {
     _logger.set_level(level);
 }
 
 
 
-launch::launch(int argc, char** argv, const std::vector<std::string>& exclude, const std::vector<std::string>& names, const std::vector<std::vector<std::string>>& args)
+Launch::Launch(int argc, char** argv, const std::vector<std::string>& exclude, const std::vector<std::string>& names, const std::vector<std::vector<std::string>>& args)
     : _args(argc, argv), _exclude_folders(exclude) {
-    // Aquí deberías agregar argumentos a _args si es necesario
-    // _args.add_argument(...)
-    // _args.parse(); // parse es protected, así que solo puedes usar la API pública
-
-    // Configuración de logger (ajusta según tu API pública)
-    // _logger.set_classname(...); // Si tienes acceso público
-    // auto level = _args.get_argument<Core::LogLevel>("--log-level");
-    // _logger.set_level(level);
+    registry_port_ = 0;
+    registry_threads_ = 0;
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--registry-port" && i + 1 < argc) {
+            registry_port_ = std::stoi(argv[i + 1]);
+        }
+        if (arg == "--registry-threads" && i + 1 < argc) {
+            registry_threads_ = std::stoi(argv[i + 1]);
+        }
+    }
 
     _root_path = find_root(".root", 10);
     if (_root_path.empty()) {
@@ -76,17 +78,27 @@ launch::launch(int argc, char** argv, const std::vector<std::string>& exclude, c
         return;
     }
     executables = find_executable_files(_root_path, _exclude_folders);
-    if (!names.empty()) {
-        run_executables(names, args);
+
+    std::vector<std::string> all_names = names;
+    std::vector<std::vector<std::string>> all_args = args;
+    std::vector<std::string> registry_args;
+    if (registry_port_ != 0 && registry_threads_ != 0) {
+        registry_args = {"--port", std::to_string(registry_port_), "--threads", std::to_string(registry_threads_)};
+    }
+    else { registry_args = {}; }
+    all_names.insert(all_names.begin(), "registry");
+    all_args.insert(all_args.begin(), registry_args);
+    if (!all_names.empty()) {
+        run_executables(all_names, all_args);
     }
 }
 
-launch::launch(int argc, char** argv, const std::vector<std::string>& names, const std::vector<std::vector<std::string>>& args)
-    : launch(argc, argv, default_exclude_folders, names, args) {}
+Launch::Launch(int argc, char** argv, const std::vector<std::string>& names, const std::vector<std::vector<std::string>>& args)
+    : Launch(argc, argv, default_exclude_folders, names, args) {}
 
 // Constructor que recibe un NodesYamlParser
-launch::launch(int argc, char** argv, const NodesYamlParser& parser)
-    : launch(argc, argv, default_exclude_folders,
+Launch::Launch(int argc, char** argv, const NodesYamlParser& parser)
+    : Launch(argc, argv, default_exclude_folders,
         parser.get_executables(),
         [&parser]() {
             std::vector<std::vector<std::string>> args;
@@ -98,11 +110,11 @@ launch::launch(int argc, char** argv, const NodesYamlParser& parser)
 
 
 
-std::map<std::string, std::string> launch::get_executables() {
+std::map<std::string, std::string> Launch::get_executables() {
     return executables;
 }
 
-int launch::run_executable(const std::string& name, const std::vector<std::string>& args) {
+int Launch::run_executable(const std::string& name, const std::vector<std::string>& args) {
     auto it = executables.find(name);
     if (it == executables.end()) {
         std::cout << "Executable not found: " << name << std::endl;
@@ -126,7 +138,7 @@ int launch::run_executable(const std::string& name, const std::vector<std::strin
     }
 }
 
-void launch::run_executables(const std::vector<std::string>& names, const std::vector<std::vector<std::string>>& arguments) {
+void Launch::run_executables(const std::vector<std::string>& names, const std::vector<std::vector<std::string>>& arguments) {
     std::vector<std::thread> threads;
     for (size_t i = 0; i < names.size(); ++i) {
         std::vector<std::string> args;
@@ -135,29 +147,67 @@ void launch::run_executables(const std::vector<std::string>& names, const std::v
         }
         threads.emplace_back([this, name = names[i], args]() {
             run_executable(name, args);
+            if (name == "registry") {
+                std::this_thread::sleep_for(std::chrono::seconds(2));
+            }
         });
     }
-    for (auto& t : threads) t.join();
+    for (auto& t : threads) {
+        if (t.joinable()) t.join();
+    }
+}
+
+void print_help() {
+    std::cout << "\nUsage: launch [options]\n"
+              << "  --yaml-path <path>         Path to the YAML configuration file (required)\n"
+              << "  --registry-port <port>     Registry port (optional, requires --registry-threads)\n"
+              << "  --registry-threads <n>     Number of threads for the registry (optional, requires --registry-port)\n"
+              << "  --help, -h                 Show this help message\n"
+              << "\nNotes:\n  - --yaml-path is required.\n  - If you use --registry-port you must also use --registry-threads, and vice versa.\n";
 }
 
 int main(int argc, char** argv) {
     std::string yaml_path;
+    int registry_port = 0;
+    int registry_threads = 0;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
+        if (arg == "--help" || arg == "-h") {
+            print_help();
+            return 0;
+        }
         if (arg == "--yaml-path" && i + 1 < argc) {
             yaml_path = argv[i + 1];
-            break;
+        }
+        if (arg == "--registry-port" && i + 1 < argc) {
+            registry_port = std::stoi(argv[i + 1]);
+        }
+        if (arg == "--registry-threads" && i + 1 < argc) {
+            registry_threads = std::stoi(argv[i + 1]);
         }
     }
-    if (yaml_path.empty()) {
-        std::cerr << "You must specify --yaml-path <path>" << std::endl;
+    // Validación de argumentos obligatorios y dependientes
+    if (yaml_path.empty() ||
+        ((registry_port != 0 && registry_threads == 0) || (registry_threads != 0 && registry_port == 0))) {
+        print_help();
         return 1;
     }
     NodesYamlParser parser(yaml_path);
-
-    launch launch_instance(argc, argv, parser);
-    // Si quieres seguir usando launch, puedes hacerlo aquí:
-    // launch launch_instance(argc, argv, std::vector<std::string>{"executable_test", "executable_test2"});
+    Launch launch_instance(argc, argv, parser);
     return 0;
 }
+
+// int main() {
+//     int argc = 1;
+//     char arg0[] = "dummy";
+//     char* argv_fake[] = {arg0, nullptr};
+//     Launch l(argc, argv_fake, std::vector<std::string>{}, std::vector<std::vector<std::string>>{});
+//     const auto& exes = l.get_executables();
+//     std::cout << "Executables encontrados:" << std::endl;
+//     for (const auto& exe : exes) {
+//         std::cout << "Nombre: " << exe.first << " | Ruta: " << exe.second << std::endl;
+//     }
+//     return 0;
+// }
+
 
