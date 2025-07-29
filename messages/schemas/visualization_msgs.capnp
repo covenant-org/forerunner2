@@ -6,6 +6,12 @@ using ColorRGBA = StdMsgs.ColorRGBA;
 
 using GeometryMsgs = import "geometry_msgs.capnp";
 using Pose = GeometryMsgs.Pose;
+using Vector3d = GeometryMsgs.Vector3d;
+
+enum MarkerType {
+  cube @0;
+  sphere @1;
+}
 
 # visualization_msgs/Marker (mínimo)
 struct Marker {
@@ -15,6 +21,8 @@ struct Marker {
   lifetime  @3 :Float64;    # seconds
   pose      @4 :Pose;
   color     @5 :ColorRGBA;
+  shape     @6 :MarkerType;
+  scale     @7 :Vector3d;    # size of the shape
 }
 
 # visualization_msgs/MarkerArray

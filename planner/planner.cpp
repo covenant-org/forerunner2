@@ -17,6 +17,9 @@ Planner::Planner(Core::ArgumentParser parser,
   this->_point_cloud_decoder =
       new pcl::io::OctreePointCloudCompression<pcl::PointXYZ>();
 
+  this->_octree_pub =
+      this->create_publisher<MarkerArray>("octree_visualization");
+
   this->_cloud_sub = this->create_subscriber<PointCloud>(
       "point_cloud",
       std::bind(&Planner::cloud_point_cb, this, std::placeholders::_1));
@@ -42,8 +45,59 @@ Planner::Planner(Core::ArgumentParser parser,
         std::bind(&Planner::executing_request_cb, this, std::placeholders::_1),
         std::bind(&Planner::result_cb, this, std::placeholders::_1));
   });
+
+  this->_publish_visualization_thread =
+      std::thread([&] { this->publish_visualization(); });
+
+  this->_logger.info("Planner initialized");
 }
 
+void Planner::stop() {
+  this->_algorithm->stop();
+  if (this->_planner_thread.joinable()) {
+    this->_planner_thread.join();
+  }
+  // TODO: properly stop the publisher
+  delete this->_point_cloud_decoder;
+}
+
+void Planner::publish_visualization() {
+  while (true) {
+    if (this->get_argument<bool>("--publish-octree")) {
+      this->publish_octree();
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  }
+}
+
+void Planner::publish_octree() {
+  if (this->_octree_search == nullptr || this->_cloud == nullptr ||
+      this->_octree_search->getLeafCount() == 0) {
+    return;
+  }
+
+  std::vector<int> pointIdxSearch;
+  std::vector<float> pointSquaredDistance;
+  float radious = this->get_argument<float>("--max-distance");
+  double resolution = this->get_argument<float>("--resolution");
+  pcl::PointXYZ searchPoint(0, 0, 0);
+  if (this->_octree_search->radiusSearch(searchPoint, radious, pointIdxSearch,
+                                         pointSquaredDistance)) {
+    auto msg = this->_octree_pub->new_msg();
+    auto markers = msg.content.initMarkers(pointIdxSearch.size());
+    for (size_t i = 0; i < pointIdxSearch.size(); i++) {
+      auto marker = markers[i];
+      auto point = (*this->_cloud)[pointIdxSearch[i]];
+      SimplePlanner::create_marker(marker, point, resolution);
+      marker.getColor().setR(0.0);
+      marker.getColor().setG(0.0);
+      marker.getColor().setB(1.0);
+      marker.getColor().setA(1.0);
+      marker.setNs("octree");
+    }
+    msg.publish();
+  }
+}
 /*
  * Called when a request was dequeued and is being executed
  * */
@@ -169,6 +223,9 @@ int main(int argc, char **argv) {
       .default_value(5.0)
       .help("max distance to account from the cloud point")
       .scan<'f', float>();
+  parser.add_argument("--publish-octree")
+      .help("publish the octree as a visualization marker")
+      .flag();
 
   SimplePlanner::ThetaStar algorithm;
   std::shared_ptr<Planner> planner =

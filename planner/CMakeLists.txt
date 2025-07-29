@@ -13,15 +13,15 @@ find_package(Eigen3 3.4 REQUIRED NO_MODULE)
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/../core ${CMAKE_BINARY_DIR}/core)
 
-# add_executable(${PROJECT_NAME} planner.cpp)
+# add_executable(${PROJECT_NAME} planner.cpp utils.cpp theta-star.cpp)
 # target_link_libraries(${PROJECT_NAME} PRIVATE
 # 	core
-# 	cppzmq 
-# 	capnp 
-# 	capnp_schemas 
-# 	kj 
+# 	cppzmq
+# 	capnp
+# 	capnp_schemas
+# 	kj
 # 	MAVSDK::mavsdk
-#        Eigen3::Eigen
+#        	Eigen3::Eigen
 # 	${PCL_LIBRARIES})
 
 add_executable(sound-${PROJECT_NAME} sound-planner.cpp)

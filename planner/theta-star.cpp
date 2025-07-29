@@ -42,7 +42,7 @@ void ThetaStar::generate_travel_graph() {
         y_max = max;
       }
       y_max = std::ceil(y_max / resolution) * resolution;
-      if (!isnormal(y_max)) y_max = max;
+      if (!std::isnormal(y_max)) y_max = max;
       for (double y = -y_max; y <= y_max || isEqualDouble(y, y_max);
            y += resolution) {
         for (double z = -y_max; z <= y_max || isEqualDouble(z, y_max);
@@ -68,7 +68,7 @@ void ThetaStar::generate_travel_graph() {
     layers.push_back(layer);
   }
   this->graph_head = layers[0][0];
-  this->logger.info("Finished generating layers");
+  this->logger->info("Finished generating layers");
   this->kdtree = std::make_unique<Kdtree::KdTree>(&kdtree_nodes);
   Kdtree::KdNodeVector neighbors;
   for (Kdtree::KdNode &node : kdtree_nodes) {
@@ -88,7 +88,7 @@ void ThetaStar::generate_travel_graph() {
       }
     }
   }
-  this->logger.info("Finished generating travel graph");
+  this->logger->info("Finished generating travel graph");
 }
 
 /*
@@ -115,7 +115,7 @@ void ThetaStar::add_octree_costs() {
       if (shared_node->coords.norm() <= min_distance) continue;
       double distance = (obstacle - shared_node->coords).norm();
       double cost = 2.0 / distance;
-      if (!isnormal(cost) || distance < safe_distance) {
+      if (!std::isnormal(cost) || distance < safe_distance) {
         shared_node->isObstacle = true;
         cost = INF;
       }
@@ -147,7 +147,7 @@ void ThetaStar::clear_nodes() {
  * */
 void ThetaStar::run(std::function<void(const PlanRequest &)> executing,
                     std::function<void(PlanResponse)> res) {
-  this->logger.info("Running planner thread");
+  this->logger->info("Running planner thread");
   while (true) {
     try {
       std::unique_lock<std::mutex> qlock(this->queue_mutex);
@@ -183,9 +183,9 @@ void ThetaStar::run(std::function<void(const PlanRequest &)> executing,
         this->path_sequence += 1;
         this->real_goal = request.goal;
         this->last_local_goal = nullptr;
-        this->logger.info("Finding local goal");
+        this->logger->info("Finding local goal");
         this->find_local_goal();
-        this->logger.info("Found local goal");
+        this->logger->info("Found local goal");
         if (eq(this->local_goal, pcl::PointXYZ(0, 0, 0))) {
           continue;
         }
@@ -268,9 +268,9 @@ void ThetaStar::run(std::function<void(const PlanRequest &)> executing,
     } catch (std::exception &e) {
       std::stringstream ss;
       ss << "Exception while planning: " << e.what();
-      this->logger.error(ss.str());
+      this->logger->error(ss.str());
     } catch (...) {
-      this->logger.error("Exception while planning");
+      this->logger->error("Exception while planning");
     }
   }
 }
@@ -365,7 +365,7 @@ PathNodeVector ThetaStar::plan() {
       std::stringstream ss;
       ss << "Goal found, after " << visited.size() << " nodes, cost "
          << current->score;
-      this->logger.info(ss.str());
+      this->logger->info(ss.str());
       return this->recover_path(current);
     }
 
@@ -390,7 +390,7 @@ PathNodeVector ThetaStar::plan() {
       if (child->cost < 0 || edge.second < 0 || current->score < 0) {
         throw std::runtime_error("Negative cost");
       }
-      if (!isnormal(new_score)) new_score = INF;
+      if (!std::isnormal(new_score)) new_score = INF;
       // If it's not in the queue push it
       auto found = std::find(queue.begin(), queue.end(), child);
       if (found == queue.end()) {
@@ -415,7 +415,7 @@ PathNodeVector ThetaStar::plan() {
       return (a->score + 2.0 * a->heuristic) < (b->score + 2.0 * b->heuristic);
     });
   }
-  this->logger.info("No path found");
+  this->logger->info("No path found");
   throw std::runtime_error("No path found");
 }
 
@@ -423,7 +423,7 @@ void ThetaStar::update_config(AlgorithmConfig config) { this->config = config; }
 
 bool ThetaStar::ready_to_plan() {
   if (this->graph_head == nullptr) {
-    this->logger.info("No graph head yet");
+    this->logger->info("No graph head yet");
   }
   return true;
 }
@@ -500,7 +500,7 @@ void ThetaStar::enqueue(PlanRequest request) {
     std::lock_guard<std::mutex> lock(this->queue_mutex);
     this->queue.push(std::move(request));
   }
-  this->logger.info("Goal queued");
+  this->logger->info("Goal queued");
   this->queue_cv.notify_one();
 }
 
@@ -548,7 +548,7 @@ void ThetaStar::add_synthetic_costs() {
             (PathNode *)this->kdtree->allnodes[node->dataindex].data;
         double distance = distanceToBox(point, bmin, bmax);
         double cost = 2.0 / distance;
-        if (!isnormal(cost) || distance < safe_distance) {
+        if (!std::isnormal(cost) || distance < safe_distance) {
           path_node->isObstacle = true;
           cost = INF;
         }

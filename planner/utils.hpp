@@ -94,17 +94,10 @@ void pathToMsg(const std::vector<std::shared_ptr<PathNode>> &path,
                Path &msg, std::string frame_id,
                rclcpp::Time stamp, Eigen::Vector3d &goal, tf2::Transform &t);
 
-void transform_path(Path &path, const tf2::Transform &transform,
+void transform_path(Path::Reader &path, const tf2::Transform &transform,
                     std::string frame_id, rclcpp::Time stamp);
 
-Marker create_marker(const pcl::PointXYZ &point, unsigned int id, rclcpp::Time stamp,
-              float scale = 0.3,
-              std::optional<std::string> frame_id = std::nullopt);
-
-Marker
-create_marker(Eigen::Vector3d &point, unsigned int id, rclcpp::Time stamp,
-              float scale = 0.3,
-              std::optional<std::string> frame_id = std::nullopt);
+void create_marker(Marker::Builder &marker, const pcl::PointXYZ &point, float scale = 0.3);
 
 bool eq(const PathNode &a, const PathNode &b);
 bool eq(const PathNode &a, const std::vector<double> &b);

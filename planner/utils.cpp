@@ -1,9 +1,10 @@
 #include "utils.hpp"
+#include <capnp_schemas/visualization_msgs.capnp.h>
 
 namespace SimplePlanner {
-void pathToMsg(const std::vector<std::shared_ptr<PathNode>> &path,
-               Path &msg, std::string frame_id,
-               rclcpp::Time stamp, Eigen::Vector3d &goal, tf2::Transform &t) {
+void pathToMsg(const std::vector<std::shared_ptr<PathNode>> &path, Path &msg,
+               std::string frame_id, rclcpp::Time stamp, Eigen::Vector3d &goal,
+               tf2::Transform &t) {
   msg.poses.clear();
   for (auto node = path.begin(); node != path.end(); node++) {
     auto next_node = std::next(node);
@@ -54,44 +55,33 @@ void transform_path(nav_msgs::msg::Path &path, const tf2::Transform &transform,
   }
 }
 
-visualization_msgs::msg::Marker
-create_marker(const pcl::PointXYZ &point, unsigned int id, rclcpp::Time stamp,
-              float scale, std::optional<std::string> frame_id) {
-  visualization_msgs::msg::Marker marker;
-  marker.header.frame_id = frame_id.value_or("map");
-  marker.header.stamp = stamp;
-  marker.ns = id;
-  marker.id = id;
-  marker.type = visualization_msgs::msg::Marker::CUBE;
-  marker.action = visualization_msgs::msg::Marker::ADD;
+void create_marker(Marker::Builder &marker, const pcl::PointXYZ &point,
+                   float scale = 3.0) {
+  marker.setShape(MarkerShape::CUBE);
 
-  marker.pose.position.x = point.x;
-  marker.pose.position.y = point.y;
-  marker.pose.position.z = point.z;
+  marker.initColor();
+  marker.initHeader();
+  marker.initPose();
+  marker.getPose().initOrientation();
+  marker.getPose().initPosition();
 
-  marker.pose.orientation.x = 0.0;
-  marker.pose.orientation.y = 0.0;
-  marker.pose.orientation.z = 0.0;
-  marker.pose.orientation.w = 1.0;
+  marker.getPose().getPosition().setX(point.x);
+  marker.getPose().getPosition().setY(point.y);
+  marker.getPose().getPosition().setZ(point.z);
 
-  marker.scale.x = scale;
-  marker.scale.y = scale;
-  marker.scale.z = scale;
+  marker.getPose().getOrientation().setX(0.0);
+  marker.getPose().getOrientation().setY(0.0);
+  marker.getPose().getOrientation().setZ(0.0);
+  marker.getPose().getOrientation().setW(1.0);
 
-  marker.color.r = 0.5;
-  marker.color.g = 0.5;
-  marker.color.b = 0.5;
-  marker.color.a = 0.5;
-  marker.lifetime = rclcpp::Duration::max();
+  marker.getScale().setX(scale);
+  marker.getScale().setY(scale);
+  marker.getScale().setZ(scale);
 
-  return marker;
-}
-
-visualization_msgs::msg::Marker
-create_marker(Eigen::Vector3d &point, unsigned int id, rclcpp::Time stamp,
-              float scale, std::optional<std::string> frame_id) {
-  pcl::PointXYZ point3d(point(0), point(1), point(2));
-  return create_marker(point3d, id, stamp, scale, frame_id);
+  marker.getColor().setR(0.5);
+  marker.getColor().setG(0.5);
+  marker.getColor().setB(0.5);
+  marker.getColor().setA(0.5);
 }
 
 bool eq(const PathNode &a, const PathNode &b) { return a.coords == b.coords; }
@@ -136,38 +126,28 @@ bool rayIntersects(const Ray &ray, const Eigen::Vector3d &min,
   double tmin = (min(0) - ray.origin(0)) * ray.inv_dir(0);
   double tmax = (max(0) - ray.origin(0)) * ray.inv_dir(0);
 
-  if (tmin > tmax)
-    std::swap(tmin, tmax);
+  if (tmin > tmax) std::swap(tmin, tmax);
 
   double tymin = (min(1) - ray.origin(1)) * ray.inv_dir(1);
   double tymax = (max(1) - ray.origin(1)) * ray.inv_dir(1);
 
-  if (tymin > tymax)
-    std::swap(tymin, tymax);
+  if (tymin > tymax) std::swap(tymin, tymax);
 
-  if ((tmin > tymax) || (tymin > tmax))
-    return false;
+  if ((tmin > tymax) || (tymin > tmax)) return false;
 
-  if (tymin > tmin)
-    tmin = tymin;
-  if (tymax < tmax)
-    tmax = tymax;
+  if (tymin > tmin) tmin = tymin;
+  if (tymax < tmax) tmax = tymax;
 
   double tzmin = (min(2) - ray.origin(2)) * ray.inv_dir(2);
   double tzmax = (max(2) - ray.origin(2)) * ray.inv_dir(2);
 
-  if (tzmin > tzmax)
-    std::swap(tzmin, tzmax);
+  if (tzmin > tzmax) std::swap(tzmin, tzmax);
 
-  if ((tmin > tzmax) || (tzmin > tmax))
-    return false;
+  if ((tmin > tzmax) || (tzmin > tmax)) return false;
 
-  if (tzmin > tmin)
-    tmin = tzmin;
-  if (tzmax < tmax)
-    tmax = tzmax;
-  if (tmin < 0)
-    return false;
+  if (tzmin > tmin) tmin = tzmin;
+  if (tzmax < tmax) tmax = tzmax;
+  if (tmin < 0) return false;
 
   return true;
 }
@@ -186,5 +166,4 @@ double distanceToBox(Eigen::Vector3d point, Eigen::Vector3d min,
   return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
 
-} // namespace SimplePlanner
-
+}  // namespace SimplePlanner
