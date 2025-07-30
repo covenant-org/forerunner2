@@ -64,6 +64,7 @@ void SoundPlanner::odometry_cb(const Core::IncomingMessage<Odometry> &msg) {
   auto q = odom.getQ();
   quart = Eigen::Quaternionf(q.getW(), q.getX(), q.getY(), q.getZ());
   position = Eigen::Vector3f(pos.getX(), pos.getY(), pos.getZ());
+  this->_heading = odom.getHeading();
   this->_logger.debug("Pos xyz: %.2f \t %.2f \t %.2f", position.x(),
                       position.y(), position.z());
 }
@@ -90,21 +91,15 @@ float SoundPlanner::calc_mic_diff() {
 SoundPlanner::Waypoint SoundPlanner::next_waypoint(const int &forward_m = 20) {
   Eigen::Matrix2f rotation;
   float diff = _lmic - _rmic;
-  auto yaw = quart.toRotationMatrix().eulerAngles(0, 1, 2)[2];
+  auto yaw = this->_heading * M_PI / 180;
   this->_logger.info("dif: %f, yaw: %f", diff, yaw * 180 / M_PI);
   yaw += diff > 0 ? -M_PI_2 : M_PI_2;
   if (yaw > 2 * M_PI) {
     yaw -= 2 * M_PI;
   }
-  if (yaw < 0) {
-    yaw += 2 * M_PI;
-  }
   rotation << std::cos(yaw), -std::sin(yaw), std::sin(yaw), std::cos(yaw);
   Eigen::Vector2f movement(forward_m * std::abs(diff), 0);
   movement = rotation * movement;
-  if (yaw > M_PI) {
-    yaw -= 2 * M_PI;
-  }
   return {.point = Eigen::Vector3f(position.x() + movement.x(),
                                    position.y() + movement.y(), position.z()),
           .yaw_deg = static_cast<float>(yaw * 180 / M_PI)};

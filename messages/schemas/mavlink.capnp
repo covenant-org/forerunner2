@@ -30,6 +30,7 @@ struct Odometry {
   velocity @1 :Position;
   angular  @2 :Position;
   q        @3 :Quartenion;
+  heading  @4 :Float32;
 }
 
 struct HomePosition {

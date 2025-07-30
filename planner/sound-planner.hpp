@@ -28,10 +28,12 @@ class SoundPlanner : public Core::Vertex {
   float _rmic;
   float altitude;
   float target_altitude;
-  float calc_mic_diff();
   Eigen::Quaternionf quart;
   Eigen::Vector3f position;
   Eigen::Vector3f goal;
+  float _heading;
+
+  float calc_mic_diff();
 
   struct Waypoint {
     Eigen::Vector3f point;

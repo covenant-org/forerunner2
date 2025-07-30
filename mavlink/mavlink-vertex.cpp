@@ -171,6 +171,7 @@ void MavlinkVertex::odometry_cb(const mavsdk::Telemetry::Odometry &odom) {
   q.setY(odom.q.y);
   q.setZ(odom.q.z);
   q.setW(odom.q.w);
+  msg.content.setHeading(this->heading);
   msg.publish();
 }
 
@@ -225,6 +226,11 @@ void MavlinkVertex::run() {
         alt.setAvg(
             (altitude.altitude_monotonic_m + altitude.altitude_relative_m) / 2);
         msg.publish();
+      });
+
+  this->_telemetry->subscribe_heading(
+      [this](const mavsdk::Telemetry::Heading &heading) {
+        this->heading = heading.heading_deg;
       });
 
   while (true) {

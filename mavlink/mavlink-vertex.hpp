@@ -48,6 +48,7 @@ class MavlinkVertex : public Core::Vertex {
     bool inar;
     std::string mode;
   } _telemetry_state;
+  float heading;
 
  public:
   MavlinkVertex(Core::ArgumentParser);
