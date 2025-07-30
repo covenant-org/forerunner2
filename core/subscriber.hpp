@@ -28,6 +28,7 @@ class Subscriber {
   char _pub_add[30];
   std::function<void(IncomingMessage<T>)> _callback;
   std::thread* _listener_thread;
+  std::string uri;
 
   // TODO: Should we make this in another thread so it won't block?
   bool query_registry(const std::string& registry_uri) {
@@ -38,6 +39,10 @@ class Subscriber {
   }
 
   void listen_to_new_messages() {
+    bool success = query_registry(uri);
+    if (!success) {
+      throw std::runtime_error("Error while querying registry");
+    }
     zmq::context_t ctx(1);
     zmq::socket_t socket(ctx, zmq::socket_type::sub);
     socket.connect(_pub_add);
@@ -58,10 +63,7 @@ class Subscriber {
       : _topic(std::move(topic)), _context(1), _callback(callback) {}
 
   void setup(const std::string& uri) {
-    bool success = query_registry(uri);
-    if (!success) {
-      throw std::runtime_error("Error while querying registry");
-    }
+    this->uri = uri;
     _listener_thread = new std::thread(
         std::bind(&Subscriber<T>::listen_to_new_messages, this));
   }

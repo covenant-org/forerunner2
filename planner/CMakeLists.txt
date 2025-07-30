@@ -34,3 +34,11 @@ target_link_libraries(sound-${PROJECT_NAME} PRIVATE
 	MAVSDK::mavsdk
         Eigen3::Eigen
 	${PCL_LIBRARIES})
+
+add_executable(${PROJECT_NAME}-input-goal input-goal.cpp)
+target_link_libraries(${PROJECT_NAME}-input-goal PRIVATE
+	core
+	cppzmq
+	capnp
+	capnp_schemas
+	kj)

@@ -25,9 +25,8 @@ Planner::Planner(Core::ArgumentParser parser,
       "point_cloud",
       std::bind(&Planner::cloud_point_cb, this, std::placeholders::_1));
 
-  // this->_goal_sub = this->create_subscriber<Position>(
-  //     "input_goal", std::bind(&Planner::goal_cb, this,
-  //     std::placeholders::_1));
+  this->_goal_sub = this->create_subscriber<Position>(
+      "input_goal", std::bind(&Planner::goal_cb, this, std::placeholders::_1));
 
   this->_odometry_sub = this->create_subscriber<Odometry>(
       "odometry",
@@ -123,7 +122,7 @@ void Planner::executing_request_cb(const SimplePlanner::PlanRequest &request) {
 }
 
 void Planner::cloud_point_cb(const Core::IncomingMessage<PointCloud> &msg) {
-  this->_logger.info("cloud point received");
+  this->_logger.debug("cloud point received");
   auto data_reader = msg.content.getData();
   auto width = msg.content.getWidth();
   auto height = msg.content.getHeight();
