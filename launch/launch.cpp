@@ -15,7 +15,7 @@ std::string Launch::find_root(const std::string& filename, int max_levels) {
             break;
         }
     }
-    std::cout << "Root not found" << std::endl;
+    _logger.error("Root not found");
     return "";
 }
 
@@ -57,24 +57,13 @@ void Launch::set_log_level(Core::LogLevel level) {
 }
 
 
-
-Launch::Launch(int argc, char** argv, const std::vector<std::string>& exclude, const std::vector<std::string>& names, const std::vector<std::vector<std::string>>& args)
-    : _args(argc, argv), _exclude_folders(exclude) {
-    registry_port_ = 0;
-    registry_threads_ = 0;
-    for (int i = 1; i < argc; ++i) {
-        std::string arg = argv[i];
-        if (arg == "--registry-port" && i + 1 < argc) {
-            registry_port_ = std::stoi(argv[i + 1]);
-        }
-        if (arg == "--registry-threads" && i + 1 < argc) {
-            registry_threads_ = std::stoi(argv[i + 1]);
-        }
-    }
-
+Launch::Launch(argparse::ArgumentParser& parser, const std::vector<std::string>& exclude, const std::vector<std::string>& names, const std::vector<std::vector<std::string>>& args)
+    : _exclude_folders(exclude) {
+    int registry_port = parser.get<int>("--registry-port");
+    int registry_threads = parser.get<int>("--registry-threads");
     _root_path = find_root(".root", 10);
     if (_root_path.empty()) {
-        std::cerr << "Root path not found." << std::endl;
+        _logger.error("Root path not found.");
         return;
     }
     executables = find_executable_files(_root_path, _exclude_folders);
@@ -82,10 +71,9 @@ Launch::Launch(int argc, char** argv, const std::vector<std::string>& exclude, c
     std::vector<std::string> all_names = names;
     std::vector<std::vector<std::string>> all_args = args;
     std::vector<std::string> registry_args;
-    if (registry_port_ != 0 && registry_threads_ != 0) {
-        registry_args = {"--port", std::to_string(registry_port_), "--threads", std::to_string(registry_threads_)};
+    if (registry_port != 0 && registry_threads != 0) {
+        registry_args = {"--port", std::to_string(registry_port), "--threads", std::to_string(registry_threads)};
     }
-    else { registry_args = {}; }
     all_names.insert(all_names.begin(), "registry");
     all_args.insert(all_args.begin(), registry_args);
     if (!all_names.empty()) {
@@ -93,20 +81,24 @@ Launch::Launch(int argc, char** argv, const std::vector<std::string>& exclude, c
     }
 }
 
-Launch::Launch(int argc, char** argv, const std::vector<std::string>& names, const std::vector<std::vector<std::string>>& args)
-    : Launch(argc, argv, default_exclude_folders, names, args) {}
+
+Launch::Launch(argparse::ArgumentParser& parser, const std::vector<std::string>& names, const std::vector<std::vector<std::string>>& args)
+    : Launch(parser, default_exclude_folders, names, args) {}
 
 // Constructor que recibe un NodesYamlParser
-Launch::Launch(int argc, char** argv, const NodesYamlParser& parser)
-    : Launch(argc, argv, default_exclude_folders,
-        parser.get_executables(),
-        [&parser]() {
-            std::vector<std::vector<std::string>> args;
-            for (const auto& name : parser.get_executables()) {
-                args.push_back(parser.get_args_line(name));
-            }
-            return args;
-        }()) {}
+
+Launch::Launch(argparse::ArgumentParser& parser, const NodesYamlParser& yaml_parser)
+    : Launch(parser, default_exclude_folders, yaml_parser.get_executables(), [&parser, &yaml_parser]() {
+        std::vector<std::vector<std::string>> args;
+        std::string log_level = parser.get<std::string>("--log-level");
+        for (const auto& name : yaml_parser.get_executables()) {
+            std::vector<std::string> exe_args = yaml_parser.get_args_line(name);
+            exe_args.insert(exe_args.begin(), log_level);
+            exe_args.insert(exe_args.begin(), "--log-level");
+            args.push_back(exe_args);
+        }
+        return args;
+    }()) {}
 
 
 
@@ -117,23 +109,23 @@ std::map<std::string, std::string> Launch::get_executables() {
 int Launch::run_executable(const std::string& name, const std::vector<std::string>& args) {
     auto it = executables.find(name);
     if (it == executables.end()) {
-        std::cout << "Executable not found: " << name << std::endl;
+        _logger.error("Executable not found: %s", name.c_str());
         return -1;
     }
     try {
         if (args.empty()) {
             boost::process::child c(it->second);
             c.wait();
-            std::cout << name << " finished with code: " << c.exit_code() << std::endl;
+            _logger.info("%s finished with code: %d", name.c_str(), c.exit_code());
             return c.exit_code();
         } else {
             boost::process::child c(it->second, boost::process::args(args));
             c.wait();
-            std::cout << name << " finished with code: " << c.exit_code() << std::endl;
+            _logger.info("%s finished with code: %d", name.c_str(), c.exit_code());
             return c.exit_code();
         }
     } catch (const std::exception& e) {
-        std::cerr << "Error running " << name << ": " << e.what() << std::endl;
+        _logger.error("Error running %s: %s", name.c_str(), e.what());
         return -1;
     }
 }
@@ -158,42 +150,56 @@ void Launch::run_executables(const std::vector<std::string>& names, const std::v
 }
 
 void print_help() {
-    std::cout << "\nUsage: launch [options]\n"
-              << "  --yaml-path <path>         Path to the YAML configuration file (required)\n"
-              << "  --registry-port <port>     Registry port (optional, requires --registry-threads)\n"
-              << "  --registry-threads <n>     Number of threads for the registry (optional, requires --registry-port)\n"
-              << "  --help, -h                 Show this help message\n"
-              << "\nNotes:\n  - --yaml-path is required.\n  - If you use --registry-port you must also use --registry-threads, and vice versa.\n";
+    Core::Logger logger(Core::LogLevel::INFO, "application.log", "launch");
+    logger.info("\nUsage: launch [options]\n"
+                "  --yaml-path <path>         Path to the YAML configuration file (required)\n"
+                "  --registry-port <port>     Registry port (optional, requires --registry-threads)\n"
+                "  --registry-threads <n>     Number of threads for the registry (optional, requires --registry-port)\n"
+                "  --help, -h                 Show this help message\n"
+                "\nNotes:\n  - --yaml-path is required.\n  - If you use --registry-port you must also use --registry-threads, and vice versa.\n");
 }
 
 int main(int argc, char** argv) {
-    std::string yaml_path;
-    int registry_port = 0;
-    int registry_threads = 0;
-    for (int i = 1; i < argc; ++i) {
-        std::string arg = argv[i];
-        if (arg == "--help" || arg == "-h") {
-            print_help();
-            return 0;
-        }
-        if (arg == "--yaml-path" && i + 1 < argc) {
-            yaml_path = argv[i + 1];
-        }
-        if (arg == "--registry-port" && i + 1 < argc) {
-            registry_port = std::stoi(argv[i + 1]);
-        }
-        if (arg == "--registry-threads" && i + 1 < argc) {
-            registry_threads = std::stoi(argv[i + 1]);
-        }
+    argparse::ArgumentParser parser;
+    parser.add_argument("--yaml-path")
+        .required()
+        .help("Path to the YAML configuration file (required)");
+    parser.add_argument("--registry-port")
+        .default_value(0)
+        .help("Registry port (optional, requires --registry-threads)")
+        .nargs(1);
+    parser.add_argument("--registry-threads")
+        .default_value(0)
+        .help("Number of threads for the registry (optional, requires --registry-port)")
+        .nargs(1);
+    parser.add_argument("--log-level")
+        .default_value("INFO")
+        .help("Log level (optional)")
+        .nargs(1);
+    parser.add_argument("--help", "-h")
+        .default_value(false)
+        .implicit_value(true)
+        .help("Show this help message");
+
+    parser.parse_args(argc, argv);
+
+    if (parser.get<bool>("--help")) {
+        print_help();
+        return 0;
     }
+
+    std::string yaml_path = parser.get<std::string>("--yaml-path");
+    int registry_port = parser.get<int>("--registry-port");
+    int registry_threads = parser.get<int>("--registry-threads");
+
     // Validación de argumentos obligatorios y dependientes
     if (yaml_path.empty() ||
         ((registry_port != 0 && registry_threads == 0) || (registry_threads != 0 && registry_port == 0))) {
         print_help();
         return 1;
     }
-    NodesYamlParser parser(yaml_path);
-    Launch launch_instance(argc, argv, parser);
+    NodesYamlParser yaml_parser(yaml_path);
+    Launch launch_instance(parser, yaml_parser);
     return 0;
 }
 
@@ -203,9 +209,9 @@ int main(int argc, char** argv) {
 //     char* argv_fake[] = {arg0, nullptr};
 //     Launch l(argc, argv_fake, std::vector<std::string>{}, std::vector<std::vector<std::string>>{});
 //     const auto& exes = l.get_executables();
-//     std::cout << "Executables encontrados:" << std::endl;
+//     _logger.info("Executables encontrados:");
 //     for (const auto& exe : exes) {
-//         std::cout << "Nombre: " << exe.first << " | Ruta: " << exe.second << std::endl;
+//         _logger.info("Nombre: {} | Ruta: {}", exe.first, exe.second);
 //     }
 //     return 0;
 // }

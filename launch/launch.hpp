@@ -18,30 +18,26 @@
 
 class Launch {
 protected:
-    Core::ArgumentParser _args;
     Core::Logger _logger;
 
 private:
     std::string _root_path;
     std::vector<std::string> _exclude_folders;
-    int registry_port_ = 0;
-    int registry_threads_ = 0;
     inline static const std::vector<std::string> default_exclude_folders = {"vendor", ".git"};
 
-    static std::string find_root(const std::string& filename, int max_levels);
+    std::string find_root(const std::string& filename, int max_levels);
     static std::map<std::string, std::string> find_executable_files(
         const std::filesystem::path& dir,
         const std::vector<std::string>& exclude_folders);
-
 
 public:
     std::map<std::string, std::string> executables;
 
     void set_log_level(Core::LogLevel level);
 
-    Launch(int argc, char** argv, const std::vector<std::string>& exclude, const std::vector<std::string>& names, const std::vector<std::vector<std::string>>& args);
-    Launch(int argc, char** argv, const std::vector<std::string>& names, const std::vector<std::vector<std::string>>& args);
-    Launch(int argc, char** argv, const NodesYamlParser& parser);
+    Launch(argparse::ArgumentParser& parser, const std::vector<std::string>& exclude, const std::vector<std::string>& names, const std::vector<std::vector<std::string>>& args);
+    Launch(argparse::ArgumentParser& parser, const std::vector<std::string>& names, const std::vector<std::vector<std::string>>& args);
+    Launch(argparse::ArgumentParser& parser, const NodesYamlParser& yaml_parser);
 
     std::map<std::string, std::string> get_executables();
     int run_executable(const std::string& name, const std::vector<std::string>& args);
