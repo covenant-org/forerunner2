@@ -12,7 +12,11 @@
 #define M_3_PI_2 4.7123889803846896740 /* 3/pi/2 */
 
 SoundPlanner::SoundPlanner(Core::ArgumentParser args)
-    : Core::Vertex(args), quart(1, 0, 0, 0), position(0, 0, 0), goal(0, 0, 0) {
+    : Core::Vertex(args),
+      quart(1, 0, 0, 0),
+      position(0, 0, 0),
+      goal(0, 0, 0),
+      _mic_stability() {
   this->_odmetry_sub = this->create_subscriber<Odometry>(
       "odometry",
       std::bind(&SoundPlanner::odometry_cb, this, std::placeholders::_1));
@@ -62,6 +66,8 @@ void SoundPlanner::odometry_cb(const Core::IncomingMessage<Odometry> &msg) {
   auto odom = msg.content;
   auto pos = odom.getPosition();
   auto q = odom.getQ();
+  auto angular = odom.getAngular();
+  this->_yaw_speed = angular.getZ();
   quart = Eigen::Quaternionf(q.getW(), q.getX(), q.getY(), q.getZ());
   position = Eigen::Vector3f(pos.getX(), pos.getY(), pos.getZ());
   this->_heading = odom.getHeading();
@@ -93,7 +99,7 @@ SoundPlanner::Waypoint SoundPlanner::next_waypoint(const int &forward_m = 20) {
   float diff = _lmic - _rmic;
   auto yaw = this->_heading * M_PI / 180;
   this->_logger.info("dif: %f, yaw: %f", diff, yaw * 180 / M_PI);
-  yaw += diff > 0 ? -M_PI_2 : M_PI_2;
+  yaw += diff < 0 ? -M_PI_2 : M_PI_2;
   if (yaw > 2 * M_PI) {
     yaw -= 2 * M_PI;
   }
@@ -162,6 +168,7 @@ void SoundPlanner::run() {
   point.setX(position.x());
   point.setY(position.y());
   point.setZ(position.z());
+  point.setR(_heading);
   goal = position;
   point_msg.send();
   auto offboard_msg = this->_command_client->new_msg();
@@ -169,12 +176,14 @@ void SoundPlanner::run() {
   off.setEnable(true);
   offboard_msg.send();
   float diff = this->calc_mic_diff();
-  while (diff > 0.01) {
+  while (std::abs(diff) > 0.01) {
     diff = this->calc_mic_diff();
-    while ((goal - position).norm() > 0.3) {
+    _mic_stability.add_value(this->calc_mic_diff() * 100);
+    while ((goal - position).norm() > 0.5 || this->_yaw_speed > 0.3 ||
+           !_mic_stability.is_stable(0.01)) {
       this->_logger.debug("Waiting for drone to reach goal");
+      _mic_stability.add_value(this->calc_mic_diff() * 100);
       sleep(1);
-      continue;
     }
     this->_logger.debug("Diff %f", diff);
     auto waypoint = next_waypoint();
@@ -191,8 +200,9 @@ void SoundPlanner::run() {
     point.setZ(goal.z());
     point.setR(waypoint.yaw_deg);
     goal_msg.send();
-    getchar();
-    sleep(1);
+    //    getchar();
+    sleep(6);
+    diff = this->calc_mic_diff();
   }
 }
 

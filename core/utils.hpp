@@ -3,6 +3,7 @@
 
 #include "capnp_schemas/registry.capnp.h"
 #include "message.hpp"
+#include <cmath>
 #include <cstdint>
 #include <iostream>
 #include <kj/common.h>
@@ -79,6 +80,53 @@ inline std::optional<uint32_t> query_topic(const std::string& topic,
     return std::nullopt;
   }
 }
+
+template <unsigned int N>
+class StabilityMonitor {
+ private:
+  float _values[N];
+  unsigned int _length;
+
+ public:
+  StabilityMonitor() {
+    _length = 0;
+    for (unsigned int i = 0; i < N; i++) {
+      _values[i] = 0;
+    }
+  }
+
+  void add_value(float value) {
+    for (unsigned int i = N - 1; i > 0; i--) {
+      _values[i] = _values[i - 1];
+    }
+    _values[0] = value;
+    _length++;
+    if (_length > N) {
+      _length = N;
+    }
+  }
+
+  bool is_stable(float threshold = 0.1) {
+    if (_length < N / 3) return false;
+
+    auto stdDev = calculate_std_dev();
+    return stdDev < threshold;  // Low std dev = stable
+  }
+
+  float calculate_std_dev() {
+    float mean = 0;
+    for (unsigned int i; i < _length; i++) {
+      mean += _values[i];
+    }
+    mean /= _length;
+    float variance = 0;
+    for (unsigned int i; i < _length; i++) {
+      variance += std::pow(_values[i] - mean, 2);
+    }
+    variance /= _length;
+    return std::sqrt(variance);
+  }
+};
 
 }  // namespace Core
 

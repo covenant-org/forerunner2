@@ -3,6 +3,7 @@
 
 #include "Eigen/Dense"
 #include "argument_parser.hpp"
+#include "utils.hpp"
 #include "vertex.hpp"
 #include <Eigen/src/Core/Matrix.h>
 #include <Eigen/src/Geometry/Quaternion.h>
@@ -32,6 +33,8 @@ class SoundPlanner : public Core::Vertex {
   Eigen::Vector3f position;
   Eigen::Vector3f goal;
   float _heading;
+  float _yaw_speed;
+  Core::StabilityMonitor<20> _mic_stability;
 
   float calc_mic_diff();
 
