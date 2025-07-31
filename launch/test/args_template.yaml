@@ -1,13 +1,14 @@
 executables:
-  - name: executable_test #Ejecutable con argumentos
-    args:
-      flags: # Banderas de verdadero o falso
-        - --verbose
-        - --log
-      options: # Argumentos con valores
-        --input: file.txt
-        --threshold: "0.8"
-        --mode: fast
-      positionals: # Argumentos posicionales
-        - output.txt
+  # - name: executable_test #Ejecutable con argumentos
+  #   args:
+  #     flags: # Banderas de verdadero o falso
+  #       - --verbose
+  #       - --log
+  #     options: # Argumentos con valores
+  #       --input: file.txt
+  #       --threshold: "0.8"
+  #       --mode: fast
+  #     positionals: # Argumentos posicionales
+  #       - output.txt
   - name: executable_test2 # Ejecutable sin argumentos
+  - name: planner-input-goal 
