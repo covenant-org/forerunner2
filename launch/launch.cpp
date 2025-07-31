@@ -138,10 +138,7 @@ void Launch::run_executables(const std::vector<std::string>& names, const std::v
             args = arguments[i];
         }
         threads.emplace_back([this, name = names[i], args]() {
-            run_executable(name, args);
-            if (name == "registry") {
-                std::this_thread::sleep_for(std::chrono::seconds(2));
-            }
+            run_executable(name, args)
         });
     }
     for (auto& t : threads) {
@@ -173,7 +170,7 @@ int main(int argc, char** argv) {
         .help("Number of threads for the registry (optional, requires --registry-port)")
         .nargs(1);
     parser.add_argument("--log-level")
-        .default_value("INFO")
+        .default_value("debug")
         .help("Log level (optional)")
         .nargs(1);
     parser.add_argument("--help", "-h")
