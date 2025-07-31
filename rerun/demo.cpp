@@ -2,6 +2,8 @@
 #include "message.hpp"
 #include "rerun/archetypes/arrows3d.hpp"
 #include "rerun/archetypes/boxes3d.hpp"
+#include "rerun/components/fill_mode.hpp"
+#include "rerun/components/pose_translation3d.hpp"
 #include <array>
 #include <exception>
 #include <iostream>
@@ -25,6 +27,9 @@ Demo::Demo(Core::ArgumentParser args) : Core::Vertex(args) {
       "odometry", std::bind(&Demo::odom_cb, this, std::placeholders::_1));
   this->_octree_sub = this->create_subscriber<MarkerArray>(
       "octree", std::bind(&Demo::octree_cb, this, std::placeholders::_1));
+  this->_planned_path_sub = this->create_subscriber<Path>(
+      "planned_path",
+      std::bind(&Demo::planned_path_cb, this, std::placeholders::_1));
 }
 
 rerun::Color Demo::distance_to_color(float distance) {
@@ -54,6 +59,71 @@ rerun::Color Demo::distance_to_color(float distance) {
   }
 }
 
+void Demo::planned_path_cb(const Core::IncomingMessage<Path> &msg) {
+  this->_logger.info("planned_path_cb was called");
+  auto poses = msg.content.getPoses();
+
+  std::vector<rerun::Position3D> points;
+  std::vector<rerun::Vec3D> vectors;
+  std::vector<rerun::Position3D> origins;
+  std::vector<rerun::Color> colors;
+
+  // Extract path points
+  for (auto pose : poses) {
+    auto pos = pose.getPose().getPosition();
+    points.emplace_back(pos.getX(), pos.getY(), pos.getZ());
+  }
+
+  // Create direction vectors between consecutive points
+  for (size_t i = 0; i < poses.size() - 1; ++i) {
+    auto current_pos = poses[i].getPose().getPosition();
+    auto next_pos = poses[i + 1].getPose().getPosition();
+
+    // Calculate direction vector
+    float dx = next_pos.getX() - current_pos.getX();
+    float dy = next_pos.getY() - current_pos.getY();
+    float dz = next_pos.getZ() - current_pos.getZ();
+
+    // Normalize and scale the vector
+    float length = std::sqrt(dx * dx + dy * dy + dz * dz);
+    if (length > 0.001f) {
+      float scale =
+          std::min(length * 0.8f, 0.3f);  // Scale arrow but cap max size
+      dx = (dx / length) * scale;
+      dy = (dy / length) * scale;
+      dz = (dz / length) * scale;
+
+      origins.emplace_back(current_pos.getX(), current_pos.getY(),
+                           current_pos.getZ());
+      vectors.emplace_back(dx, dy, dz);
+
+      // Color gradient from start (blue) to end (red)
+      float t = static_cast<float>(i) / (poses.size() - 1);
+      colors.emplace_back(static_cast<uint8_t>(255 * t),       // Red increases
+                          0,                                   // No green
+                          static_cast<uint8_t>(255 * (1 - t))  // Blue decreases
+      );
+    }
+  }
+
+  // Log the path as points
+  this->_rec->log(
+      "path/points",
+      rerun::Points3D(points).with_colors(colors).with_radii({0.05f}));
+
+  // Log direction arrows
+  if (!vectors.empty()) {
+    this->_rec->log("path/arrows", rerun::Arrows3D::from_vectors(vectors)
+                                       .with_origins(origins)
+                                       .with_colors(colors)
+                                       .with_radii({0.02f}));
+  }
+
+  // Log path statistics
+  this->_rec->log("stats/path_length",
+                  rerun::Scalars(static_cast<double>(poses.size())));
+}
+
 void Demo::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
   auto content = msg.content;
   auto position = content.getPosition();
@@ -65,22 +135,28 @@ void Demo::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
 }
 
 void Demo::octree_cb(const Core::IncomingMessage<MarkerArray> &msg) {
-  std::vector<rerun::Position3D> positions;
+  std::vector<rerun::components::PoseTranslation3D> centers;
+  std::vector<rerun::HalfSize3D> sizes;
   std::vector<rerun::Color> colors;
 
   auto markers = msg.content.getMarkers();
   for (auto marker : markers) {
     auto position = marker.getPose().getPosition();
     auto color = marker.getColor();
-    auto size = marker.getScale();
+    auto scale = marker.getScale();
 
-    positions.emplace_back(position.getX(), position.getY(), -position.getZ());
+    centers.emplace_back(position.getX(), position.getY(), position.getZ());
+    sizes.emplace_back(scale.getX() / 2, scale.getY() / 2, scale.getZ() / 2);
     colors.emplace_back(color.getR() * 255, color.getG() * 255,
                         color.getB() * 255, color.getA() * 255);
   }
-
   this->_rec->log("octree/markers",
-                  rerun::Points3D(positions).with_colors(colors));
+                  rerun::Boxes3D::from_centers_and_half_sizes(centers, sizes)
+                      .with_quaternions({
+                          rerun::Quaternion::IDENTITY,
+                      })
+                      .with_fill_mode(rerun::components::FillMode::Solid)
+                      .with_colors(colors));
 
   // Log statistics
   this->_rec->log("stats/octree_count",

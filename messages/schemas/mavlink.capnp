@@ -7,10 +7,10 @@ struct Position {
 }
 
 struct Quartenion{
-    x @0 :Float32;
-    y @1 :Float32;
-    z @2 :Float32;
-    w @3 :Float32;
+  x @0 :Float32;
+  y @1 :Float32;
+  z @2 :Float32;
+  w @3 :Float32;
 }
 
 struct BatteryLevel {
@@ -42,4 +42,15 @@ struct Altitude{
   relative  @1 :Float32;
   monotonic @2 :Float32;
   avg       @3 :Float32;
+}
+
+struct Takeoff {
+  desiredAltitude @0 :Float32;
+}
+
+struct MissionCommand {
+  union {
+    takeoff @0 :Takeoff;
+    land    @1 :Void;
+  }
 }

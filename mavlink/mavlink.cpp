@@ -1,5 +1,5 @@
 #include "argument_parser.hpp"
-#include "mavlink-vertex.hpp"
+#include "mavlink.hpp"
 #include "message.hpp"
 #include <capnp_schemas/controller.capnp.h>
 #include <capnp_schemas/generics.capnp.h>
@@ -11,7 +11,7 @@
 #include <mavsdk/plugins/telemetry/telemetry.h>
 #include <plugins/mavlink_passthrough/mavlink_passthrough.h>
 
-MavlinkVertex::MavlinkVertex(Core::ArgumentParser parser)
+Mavlink::Mavlink(Core::ArgumentParser parser)
     : Core::Vertex(std::move(parser)),
       _mavsdk(
           mavsdk::Mavsdk::Configuration{mavsdk::ComponentType::GroundStation}) {
@@ -22,7 +22,7 @@ MavlinkVertex::MavlinkVertex(Core::ArgumentParser parser)
   }
 
   _command_action_server = create_action_server<Command, GenericResponse>(
-      "controller", std::bind(&MavlinkVertex::command_cb, this,
+      "controller", std::bind(&Mavlink::command_cb, this,
                               std::placeholders::_1, std::placeholders::_2));
   this->_home_position_publisher =
       this->create_publisher<HomePosition>("home_position");
@@ -31,7 +31,7 @@ MavlinkVertex::MavlinkVertex(Core::ArgumentParser parser)
   this->_altitude_publisher = this->create_publisher<Altitude>("altitude");
 }
 
-void MavlinkVertex::command_cb(const Core::IncomingMessage<Command> &command,
+void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
                                GenericResponse::Builder &res) {
   this->_logger.debug("Requested command");
   res.setCode(200);
@@ -122,7 +122,7 @@ void MavlinkVertex::command_cb(const Core::IncomingMessage<Command> &command,
   }
 }
 
-bool MavlinkVertex::init_mavlink_connection(const std::string &uri) {
+bool Mavlink::init_mavlink_connection(const std::string &uri) {
   mavsdk::ConnectionResult result = this->_mavsdk.add_any_connection(uri);
   if (result != mavsdk::ConnectionResult::Success) {
     return false;
@@ -142,7 +142,7 @@ bool MavlinkVertex::init_mavlink_connection(const std::string &uri) {
   return true;
 }
 
-void MavlinkVertex::publish_telemtry() {
+void Mavlink::publish_telemtry() {
   auto msg = this->_telemetry_publisher->new_msg();
   msg.content.setArmed(this->_telemetry_state.arm);
   auto battery = msg.content.initBattery();
@@ -152,7 +152,7 @@ void MavlinkVertex::publish_telemtry() {
   msg.publish();
 }
 
-void MavlinkVertex::odometry_cb(const mavsdk::Telemetry::Odometry &odom) {
+void Mavlink::odometry_cb(const mavsdk::Telemetry::Odometry &odom) {
   auto msg = this->_odometry_publisher->new_msg();
   auto angular = msg.content.initAngular();
   auto pos = msg.content.initPosition();
@@ -175,7 +175,7 @@ void MavlinkVertex::odometry_cb(const mavsdk::Telemetry::Odometry &odom) {
   msg.publish();
 }
 
-void MavlinkVertex::run() {
+void Mavlink::run() {
   this->_passthrough->subscribe_message(
       HOME_POSITION_MESSAGE_ID, [this](const __mavlink_message &msg) {
         mavlink_msg_home_position_decode(&msg, &this->_mavlink_home_position);
@@ -189,7 +189,7 @@ void MavlinkVertex::run() {
       });
 
   this->_telemetry->subscribe_odometry(
-      std::bind(&MavlinkVertex::odometry_cb, this, std::placeholders::_1));
+      std::bind(&Mavlink::odometry_cb, this, std::placeholders::_1));
 
   this->_telemetry->subscribe_battery(
       [this](const mavsdk::Telemetry::Battery &bat) {
@@ -245,8 +245,8 @@ int main(int argc, char **argv) {
       .nargs(1)
       .default_value(MAVLINK_URI);
 
-  std::shared_ptr<MavlinkVertex> mavlink =
-      std::make_shared<MavlinkVertex>(std::move(base));
+  std::shared_ptr<Mavlink> mavlink =
+      std::make_shared<Mavlink>(std::move(base));
   mavlink->run();
   return 0;
 }

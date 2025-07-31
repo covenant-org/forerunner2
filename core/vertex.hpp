@@ -90,7 +90,7 @@ class Vertex {
     return this->_args.get_argument<T>(arg_name);
   }
 
-  virtual void run() = 0;
+  virtual void run() {}
 };
-};  // namespace Core
+};      // namespace Core
 #endif  // VERTEX_HPP

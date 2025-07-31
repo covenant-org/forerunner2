@@ -22,7 +22,7 @@
 #ifndef MAVLINK_HPP
 #define MAVLINK_HPP
 
-class MavlinkVertex : public Core::Vertex {
+class Mavlink : public Core::Vertex {
  private:
   std::shared_ptr<Core::Publisher<HomePosition>> _home_position_publisher;
   std::shared_ptr<Core::Publisher<Odometry>> _odometry_publisher;
@@ -51,7 +51,7 @@ class MavlinkVertex : public Core::Vertex {
   float heading;
 
  public:
-  MavlinkVertex(Core::ArgumentParser);
+  Mavlink(Core::ArgumentParser);
 
   void command_cb(const Core::IncomingMessage<Command> &,
                   GenericResponse::Builder &);

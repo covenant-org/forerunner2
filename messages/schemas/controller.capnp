@@ -22,7 +22,7 @@ struct Command{
     offboard   :group{
       enable  @8 :Bool;
     }
-}
+  }
 }
 
 struct Goal{

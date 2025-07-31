@@ -15,7 +15,7 @@ add_executable(${PROJECT_NAME} controller.cpp)
 target_link_libraries(${PROJECT_NAME} PRIVATE
 	core
 	cppzmq 
-	capnp 
-	capnp_schemas 
-	kj 
+	capnp
+	capnp_schemas
+	kj
        Eigen3::Eigen)

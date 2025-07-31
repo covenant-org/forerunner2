@@ -110,26 +110,27 @@ void Planner::run_planner(ReplanRequest::Start::Reader &msg) {
   request.type = SimplePlanner::RequestType::REPLAN;
 
   Eigen::Vector3d goal(pos.getX(), pos.getY(), pos.getZ());
-  Eigen::Affine3d drone_transform(Eigen::Isometry3d(
-      Eigen::Translation3d(_drone_pose.position.x(), _drone_pose.position.y(),
-                           _drone_pose.position.z()) *
-      Eigen::Quaterniond(
-          _drone_pose.orientation.w(), _drone_pose.orientation.x(),
-          _drone_pose.orientation.y(), _drone_pose.orientation.z())));
-  auto transformed_goal = drone_transform * goal;
-  request.goal << transformed_goal.x(), transformed_goal.y(),
-      transformed_goal.z();
+  // Eigen::Affine3d drone_transform(Eigen::Isometry3d(
+  //     Eigen::Translation3d(_drone_pose.position.x(),
+  //     _drone_pose.position.y(),
+  //                          _drone_pose.position.z()) *
+  //     Eigen::Quaterniond(
+  //         _drone_pose.orientation.w(), _drone_pose.orientation.x(),
+  //         _drone_pose.orientation.y(), _drone_pose.orientation.z())));
+  // auto transformed_goal = drone_transform * goal;
+  request.goal << goal.x(), goal.y(), goal.z();
 
   SimplePlanner::ReplanRequest replan;
   replan.current_index = msg.getCurrentPathIndex();
   replan.path_id = msg.getPathSequence();
   request.body = std::make_optional<SimplePlanner::ReplanRequest>(replan);
+  ::capnp::MallocMessageBuilder message;
   for (const auto &pose :
        this->_algorithm->get_current_trajectory().getPoses()) {
     auto pos = pose.getPose().getPosition();
     Eigen::Vector3d point(pos.getX(), pos.getY(), pos.getZ());
-    auto transformed_point = drone_transform * point;
-    ::capnp::MallocMessageBuilder message;
+    // auto transformed_point = drone_transform * point;
+    auto transformed_point = point;
 
     Pose::Builder p = message.initRoot<Pose>();
     p.initPosition();
@@ -161,8 +162,7 @@ void Planner::publish_octree() {
   std::vector<float> pointSquaredDistance;
   double radius = this->get_argument<double>("--max-distance");
   double resolution = this->get_argument<double>("--resolution");
-  pcl::PointXYZ searchPoint(_drone_pose.position.x(), _drone_pose.position.y(),
-                            _drone_pose.position.z());
+  pcl::PointXYZ searchPoint(0, 0, 0);
   this->_octree_search->radiusSearch(searchPoint, radius, pointIdxSearch,
                                      pointSquaredDistance);
 
@@ -173,10 +173,10 @@ void Planner::publish_octree() {
       auto marker = markers[i];
       auto point = (*this->_cloud)[pointIdxSearch[i]];
       SimplePlanner::create_marker(marker, point, resolution);
-      marker.getColor().setR(0.0);
+      marker.getColor().setR(0.8);
       marker.getColor().setG(0.0);
-      marker.getColor().setB(1.0);
-      marker.getColor().setA(1.0);
+      marker.getColor().setB(0.0);
+      marker.getColor().setA(0.75);
       marker.setNs("octree");
     }
     msg.publish();
@@ -222,13 +222,15 @@ void Planner::cloud_point_cb(const Core::IncomingMessage<PointCloud> &msg) {
 
   // Maybe implement a buffer to be able to extract at a specific time
   // also include the header in the mavlink pub
-  Eigen::Affine3d eigen_transform(Eigen::Isometry3d(
-      Eigen::Translation3d(_drone_pose.position.x(), _drone_pose.position.y(),
-                           _drone_pose.position.z()) *
-      Eigen::Quaterniond(
-          _drone_pose.orientation.w(), _drone_pose.orientation.x(),
-          _drone_pose.orientation.y(), _drone_pose.orientation.z())));
-  pcl::transformPointCloud(*cloud, *cloud, eigen_transform);
+  // In previous implementation this was against the frame of the drone
+  // Eigen::Affine3d eigen_transform(Eigen::Isometry3d(
+  //     Eigen::Translation3d(_drone_pose.position.x(),
+  //     _drone_pose.position.y(),
+  //                          _drone_pose.position.z()) *
+  //     Eigen::Quaterniond(
+  //         _drone_pose.orientation.w(), _drone_pose.orientation.x(),
+  //         _drone_pose.orientation.y(), _drone_pose.orientation.z())));
+  // pcl::transformPointCloud(*cloud, *cloud, eigen_transform);
 
   if (cloud->points.size() == 0) {
     this->_logger.info("empty cloud");
@@ -255,8 +257,7 @@ std::vector<pcl::PointXYZ> Planner::recover_octree_points() {
   std::vector<int> pointIdxSearch;
   std::vector<float> pointSquaredDistance;
   double max_distance = this->get_argument<double>("--max-distance");
-  pcl::PointXYZ searchPoint(_drone_pose.position.x(), _drone_pose.position.y(),
-                            _drone_pose.position.z());
+  pcl::PointXYZ searchPoint(0, 0, 0);
   this->_octree_search->radiusSearch(searchPoint, max_distance, pointIdxSearch,
                                      pointSquaredDistance);
   if (pointIdxSearch.size() == 0) {
@@ -280,31 +281,34 @@ void Planner::goal_cb(const Core::IncomingMessage<Position> &msg) {
   _goal_msg.y() = msg.content.getY();
   _goal_msg.z() = msg.content.getZ();
 
-  Eigen::Affine3d drone_transform(Eigen::Isometry3d(
+  auto *drone_transform = new Eigen::Affine3d(Eigen::Isometry3d(
       Eigen::Translation3d(_drone_pose.position.x(), _drone_pose.position.y(),
                            _drone_pose.position.z()) *
       Eigen::Quaterniond(
           _drone_pose.orientation.w(), _drone_pose.orientation.x(),
           _drone_pose.orientation.y(), _drone_pose.orientation.z())));
-
-  auto transformed_goal = drone_transform * goal;
+  // auto transformed_goal = drone_transform * goal;
 
   SimplePlanner::PlanRequest request;
   request.type = SimplePlanner::RequestType::START;
-  request.goal << transformed_goal.x(), transformed_goal.y(),
-      transformed_goal.z();
+  request.goal << goal.x(), goal.y(), goal.z();
+  request.metadata = static_cast<void *>(drone_transform);
 
   this->_algorithm->enqueue(std::move(request));
 }
 
 void Planner::result_cb(SimplePlanner::PlanResponse response) {
+  this->_logger.info("received result from planner");
   if (response.request.type == SimplePlanner::RequestType::START) {
     // If request is a start request just recover path and do transformations
-    this->_logger.info("Received start request");
+    this->_logger.info("received start request");
     this->_path_sequence = response.path_id;
-
+    // Eigen::Affine3d *t =
+    // static_cast<Eigen::Affine3d*>(response.request.metadata);
     auto msg = this->_path_pub->new_msg();
     SimplePlanner::pathToMsg(response.path, msg.content, _goal_msg);
+    this->_logger.info("publishing new message with %zu nodes",
+                       msg.content.getPoses().size());
     msg.publish();
     return;
   }

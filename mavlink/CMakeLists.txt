@@ -11,12 +11,12 @@ find_package(MAVSDK REQUIRED)
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/../core ${CMAKE_BINARY_DIR}/core)
 
-add_executable(mavlink-vertex mavlink-vertex.cpp)
+add_executable(${PROJECT_NAME} mavlink.cpp)
 
-target_include_directories(mavlink-vertex PUBLIC
+target_include_directories(${PROJECT_NAME} PUBLIC
 	${CMAKE_CURRENT_SOURCE_DIR}/../core)
 
-target_link_libraries(mavlink-vertex PRIVATE
+target_link_libraries(${PROJECT_NAME} PRIVATE
 	core
 	cppzmq 
 	capnp 
@@ -24,3 +24,25 @@ target_link_libraries(mavlink-vertex PRIVATE
 	kj 
 	MAVSDK::mavsdk
 )
+
+add_executable(${PROJECT_NAME}-mission mavlink-mission.cpp)
+target_include_directories(${PROJECT_NAME}-mission PUBLIC
+	${CMAKE_CURRENT_SOURCE_DIR}/../core)
+
+target_link_libraries(${PROJECT_NAME}-mission PRIVATE
+	core
+	cppzmq
+	capnp
+	capnp_schemas
+	kj)
+
+add_executable(${PROJECT_NAME}-commander commander.cpp)
+target_include_directories(${PROJECT_NAME}-commander PUBLIC
+	${CMAKE_CURRENT_SOURCE_DIR}/../core)
+
+target_link_libraries(${PROJECT_NAME}-commander PRIVATE
+	core
+	cppzmq
+	capnp
+	capnp_schemas
+	kj)
