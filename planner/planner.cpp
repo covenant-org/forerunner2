@@ -3,9 +3,11 @@
 #include "planner.hpp"
 #include "theta-star.hpp"
 #include "utils.hpp"
+#include <Eigen/src/Core/Matrix.h>
 #include <Eigen/src/Geometry/Transform.h>
 #include <capnp_schemas/controller.capnp.h>
 #include <capnp_schemas/generics.capnp.h>
+#include <capnp_schemas/planner.capnp.h>
 #include <memory>
 #include <pcl/common/transforms.h>
 #include <pcl/compression/octree_pointcloud_compression.h>
@@ -31,6 +33,10 @@ Planner::Planner(Core::ArgumentParser parser,
   this->_odometry_sub = this->create_subscriber<Odometry>(
       "odometry",
       std::bind(&Planner::odometry_cb, this, std::placeholders::_1));
+  this->_planner_server =
+      this->create_action_server<ReplanRequest, GenericResponse>(
+          "planner", std::bind(&Planner::planner_server_cb, this,
+                               std::placeholders::_1, std::placeholders::_2));
 
   SimplePlanner::AlgorithmConfig config;
   config.resolution = this->get_argument<double>("--resolution");
@@ -62,6 +68,76 @@ void Planner::stop() {
   }
   // TODO: properly stop the publisher
   delete this->_point_cloud_decoder;
+}
+
+void Planner::planner_server_cb(const Core::IncomingMessage<ReplanRequest> &req,
+                                GenericResponse::Builder &res) {
+  switch (req.content.which()) {
+    case ReplanRequest::START: {
+      auto start = req.content.getStart();
+      auto pos = start.getPose().getPose().getPosition();
+      this->_logger.debug("received goal request: %f, %f, %f", pos.getX(),
+                          pos.getY(), pos.getZ());
+
+      Eigen::Vector3d absolute_goal(_goal_msg.x(), _goal_msg.y(),
+                                    _goal_msg.z());
+      Eigen::Vector3d current_pose(pos.getX(), pos.getY(), pos.getZ());
+
+      if ((current_pose - absolute_goal).norm() < 1.0) {
+        this->_received_goal = false;
+        res.setCode(422);
+        res.setMessage("goal is too close");
+      } else if (!this->_planning) {
+        this->_planning = true;
+        this->run_planner(start);
+      }
+      break;
+    }
+  }
+}
+
+void Planner::run_planner(ReplanRequest::Start::Reader &msg) {
+  SimplePlanner::AlgorithmConfig config;
+  config.resolution = this->get_argument<double>("--resolution");
+  config.min_distance = this->get_argument<double>("--min-distance");
+  config.max_distance = this->get_argument<double>("--max-distance");
+  config.safe_distance = this->get_argument<double>("--safe-distance");
+  config.preferred_distance =
+      this->get_argument<double>("--preferred-distance");
+
+  auto pos = msg.getPose().getPose().getPosition();
+  SimplePlanner::PlanRequest request;
+  request.type = SimplePlanner::RequestType::REPLAN;
+
+  Eigen::Vector3d goal(pos.getX(), pos.getY(), pos.getZ());
+  Eigen::Affine3d drone_transform(Eigen::Isometry3d(
+      Eigen::Translation3d(_drone_pose.position.x(), _drone_pose.position.y(),
+                           _drone_pose.position.z()) *
+      Eigen::Quaterniond(
+          _drone_pose.orientation.w(), _drone_pose.orientation.x(),
+          _drone_pose.orientation.y(), _drone_pose.orientation.z())));
+  auto transformed_goal = drone_transform * goal;
+  request.goal << transformed_goal.x(), transformed_goal.y(),
+      transformed_goal.z();
+
+  SimplePlanner::ReplanRequest replan;
+  replan.current_index = msg.getCurrentPathIndex();
+  replan.path_id = msg.getPathSequence();
+  request.body = std::make_optional<SimplePlanner::ReplanRequest>(replan);
+  for (const auto &pose :
+       this->_algorithm->get_current_trajectory().getPoses()) {
+    auto pos = pose.getPose().getPosition();
+    Eigen::Vector3d point(pos.getX(), pos.getY(), pos.getZ());
+    auto transformed_point = drone_transform * point;
+    ::capnp::MallocMessageBuilder message;
+
+    Pose::Builder p = message.initRoot<Pose>();
+    p.initPosition();
+    p.getPosition().setX(transformed_point.x());
+    p.getPosition().setY(transformed_point.y());
+    p.getPosition().setZ(transformed_point.z());
+    request.body.value().path.push_back(p.asReader());
+  }
 }
 
 void Planner::publish_visualization() {
@@ -204,9 +280,19 @@ void Planner::goal_cb(const Core::IncomingMessage<Position> &msg) {
   _goal_msg.y() = msg.content.getY();
   _goal_msg.z() = msg.content.getZ();
 
+  Eigen::Affine3d drone_transform(Eigen::Isometry3d(
+      Eigen::Translation3d(_drone_pose.position.x(), _drone_pose.position.y(),
+                           _drone_pose.position.z()) *
+      Eigen::Quaterniond(
+          _drone_pose.orientation.w(), _drone_pose.orientation.x(),
+          _drone_pose.orientation.y(), _drone_pose.orientation.z())));
+
+  auto transformed_goal = drone_transform * goal;
+
   SimplePlanner::PlanRequest request;
   request.type = SimplePlanner::RequestType::START;
-  request.goal << _goal_msg.x(), _goal_msg.y(), _goal_msg.z();
+  request.goal << transformed_goal.x(), transformed_goal.y(),
+      transformed_goal.z();
 
   this->_algorithm->enqueue(std::move(request));
 }

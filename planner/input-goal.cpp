@@ -20,8 +20,8 @@ class InputGoal : public Core::Vertex {
       float x, y, z;
       std::cin >> x >> y >> z;
       msg.content.setX(x);
-      msg.content.setY(x);
-      msg.content.setZ(x);
+      msg.content.setY(y);
+      msg.content.setZ(z);
       std::this_thread::sleep_for(std::chrono::milliseconds(500));
       msg.publish();
     }

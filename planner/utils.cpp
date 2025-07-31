@@ -56,7 +56,7 @@ void pathToMsg(const std::vector<std::shared_ptr<PathNode>> &path,
 
 void create_marker(Marker::Builder &marker, const pcl::PointXYZ &point,
                    float scale) {
-  marker.setShape(MarkerShape::CUBE);
+  marker.setShape(MarkerType::CUBE);
 
   marker.initColor();
   marker.initHeader();

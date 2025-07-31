@@ -6,7 +6,7 @@ using ColorRGBA = StdMsgs.ColorRGBA;
 
 using GeometryMsgs = import "geometry_msgs.capnp";
 using Pose = GeometryMsgs.Pose;
-using Vector3d = GeometryMsgs.Vector3d;
+using Vector3 = GeometryMsgs.Vector3;
 
 enum MarkerType {
   cube @0;
@@ -22,7 +22,7 @@ struct Marker {
   pose      @4 :Pose;
   color     @5 :ColorRGBA;
   shape     @6 :MarkerType;
-  scale     @7 :Vector3d;    # size of the shape
+  scale     @7 :Vector3;    # size of the shape
 }
 
 # visualization_msgs/MarkerArray

@@ -6,6 +6,7 @@
 #include "utils.hpp"
 #include "vertex.hpp"
 #include <Eigen/Dense>
+#include <capnp_schemas/generics.capnp.h>
 #include <capnp_schemas/mavlink.capnp.h>
 #include <capnp_schemas/planner.capnp.h>
 #include <capnp_schemas/zed.capnp.h>
@@ -29,6 +30,8 @@ class Planner : Core::Vertex {
   std::shared_ptr<Core::Subscriber<Odometry>> _odometry_sub;
   std::shared_ptr<Core::Publisher<MarkerArray>> _octree_pub;
   std::shared_ptr<Core::Publisher<Path>> _path_pub;
+  std::shared_ptr<Core::ActionServer<ReplanRequest, GenericResponse>>
+      _planner_server;
   Odometry::Reader _last_odometry;
   pcl::io::OctreePointCloudCompression<pcl::PointXYZ> *_point_cloud_decoder;
 
@@ -39,12 +42,17 @@ class Planner : Core::Vertex {
   SimplePlanner::Algorithm *_algorithm;
   pcl::PointCloud<pcl::PointXYZ>::Ptr _cloud;
   Eigen::Vector3d _goal_msg;
+  bool _received_goal = false;
+  bool _planning = false;
 
+  void planner_server_cb(const Core::IncomingMessage<ReplanRequest> &,
+                         GenericResponse::Builder &);
   void cloud_point_cb(const Core::IncomingMessage<PointCloud> &);
   void goal_cb(const Core::IncomingMessage<Position> &);
   void odometry_cb(const Core::IncomingMessage<Odometry> &);
   void executing_request_cb(const SimplePlanner::PlanRequest &);
   void result_cb(SimplePlanner::PlanResponse);
+  void run_planner(ReplanRequest::Start::Reader &);
   std::vector<pcl::PointXYZ> recover_octree_points();
   void publish_visualization();
   void publish_octree();
