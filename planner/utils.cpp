@@ -1,9 +1,10 @@
 #include "utils.hpp"
+#include <Eigen/src/Geometry/Quaternion.h>
 #include <capnp_schemas/visualization_msgs.capnp.h>
 
 namespace SimplePlanner {
 void pathToMsg(const std::vector<std::shared_ptr<PathNode>> &path,
-               Path::Builder &msg, Eigen::Vector3d &goal) {
+               Path::Builder &msg, Eigen::Vector3d &goal, Eigen::Affine3d &t) {
   auto poses = msg.initPoses(path.size());
   for (size_t i = 0; i < path.size(); ++i) {
     auto node = path[i];
@@ -19,6 +20,14 @@ void pathToMsg(const std::vector<std::shared_ptr<PathNode>> &path,
         atan2(pos_next.y() - node->coords.y(), pos_next.x() - node->coords.x());
     float qz = sin(currYaw / 2.0);
     float qw = cos(currYaw / 2.0);
+
+    Eigen::Quaterniond quat(qw, 0.0, 0.0, qz);
+    Eigen::Vector3d translation(node->coords.x(), node->coords.y(),
+                                     node->coords.z());
+
+    quat = t.rotation() * quat;
+    translation = t * translation;
+
     pose.getPose().getPosition().setX(node->coords.x());
     pose.getPose().getPosition().setY(node->coords.y());
     pose.getPose().getPosition().setZ(node->coords.z());

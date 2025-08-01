@@ -96,8 +96,8 @@ class Algorithm {
   virtual std::vector<std::vector<std::shared_ptr<PathNode>>> get_layers() = 0;
 };
 
-void pathToMsg(const std::vector<std::shared_ptr<PathNode>> &path,
-               Path::Builder &msg, Eigen::Vector3d &goal);
+void pathToMsg(const std::vector<std::shared_ptr<PathNode>> &,
+               Path::Builder &, Eigen::Vector3d &, Eigen::Affine3d &);
 //
 // void transform_path(Path::Reader &path, const tf2::Transform &transform,
 //                     std::string frame_id, rclcpp::Time stamp);

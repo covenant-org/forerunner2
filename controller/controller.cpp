@@ -27,6 +27,9 @@ Controller::Controller(Core::ArgumentParser parser) : Core::Vertex(parser) {
       std::bind(&Controller::telemetry_cb, this, std::placeholders::_1));
   this->_controller_client =
       this->create_action_client<Command, GenericResponse>("controller");
+  this->_mission_client =
+      this->create_action_client<MissionCommand, GenericResponse>(
+          "mission_command");
   this->_planner_client =
       this->create_action_client<ReplanRequest, GenericResponse>("planner");
 
@@ -184,10 +187,23 @@ void Controller::control() {
   }
 
   if (sent_point == 10) {
-    this->arm();
+    auto request = this->_mission_client->new_msg();
+    request.content.initTakeoff();
+    request.content.getTakeoff().setDesiredAltitude(
+        this->get_argument<float>("--min-height"));
+    auto result = request.send();
+    auto response = result.value().content;
+    if (response.getCode() >= 300) {
+      this->_logger.error("error in takeoff");
+      return;
+    }
   }
 
-  // this->publish_offboard_control_mode();
+
+  auto offboard_msg = this->_controller_client->new_msg();
+  auto off = offboard_msg.content.initOffboard();
+  off.setEnable(true);
+  offboard_msg.send();
 
   if (sent_point < 10) {
     auto msg = this->_controller_client->new_msg();
@@ -195,7 +211,7 @@ void Controller::control() {
     wp.setX(this->_vehicle_initial_position.x());
     wp.setY(-this->_vehicle_initial_position.y());
     wp.setZ(-this->_vehicle_initial_position.z());
-    wp.setR(this->_heading * M_PI / 180);
+    wp.setR(this->_heading);
     auto result = msg.send();
     auto response = result.value().content;
     if (response.getCode() != 200) {

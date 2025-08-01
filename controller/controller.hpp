@@ -35,6 +35,8 @@ class Controller : public Core::Vertex {
   std::shared_ptr<Core::Subscriber<Telemetry>> _telemetry_sub;
   std::shared_ptr<Core::ActionClient<Command, GenericResponse>>
       _controller_client;
+  std::shared_ptr<Core::ActionClient<MissionCommand, GenericResponse>>
+      _mission_client;
   std::shared_ptr<Core::ActionClient<ReplanRequest, GenericResponse>>
       _planner_client;
   std::thread _control_thread;
