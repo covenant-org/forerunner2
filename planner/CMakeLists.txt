@@ -11,7 +11,7 @@ find_package(MAVSDK REQUIRED)
 find_package(PCL 1.15 REQUIRED)
 find_package(Eigen3 3.4 REQUIRED NO_MODULE)
 
-add_subdirectory(${CMAKE_SOURCE_DIR}/core)
+add_subdirectory(${CMAKE_SOURCE_DIR}/core ${CMAKE_BINARY_DIR}/core)
 
 add_executable(${PROJECT_NAME} planner.cpp theta-star.cpp kdtree.cpp utils.cpp)
 target_link_libraries(${PROJECT_NAME} PRIVATE
@@ -32,7 +32,7 @@ target_link_libraries(sound-${PROJECT_NAME} PRIVATE
 	capnp_schemas 
 	kj 
 	MAVSDK::mavsdk
-        Eigen3::Eigen
+		Eigen3::Eigen
 	${PCL_LIBRARIES})
 
 add_executable(${PROJECT_NAME}-input-goal input-goal.cpp)
