@@ -10,7 +10,7 @@ include_directories(${Boost_INCLUDE_DIRS})
 find_package(yaml-cpp REQUIRED)
 
 
-add_subdirectory(${CMAKE_SOURCE_DIR}/../core ${CMAKE_BINARY_DIR}/core)
+add_subdirectory(${CMAKE_SOURCE_DIR}/core)
 
 
 add_executable(${PROJECT_NAME} launch.cpp nodes_yaml_parser.cpp)

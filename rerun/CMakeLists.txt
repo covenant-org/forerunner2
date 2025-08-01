@@ -15,6 +15,6 @@ find_package(capnp_schemas REQUIRED)
 find_package(PCL 1.15 REQUIRED)
 
 add_executable(rerun demo.cpp)
-add_subdirectory(${CMAKE_SOURCE_DIR}/../core ${CMAKE_BINARY_DIR}/core)
+add_subdirectory(${CMAKE_SOURCE_DIR}/core)
 
 target_link_libraries(rerun rerun_sdk core cppzmq capnp capnp_schemas kj ${PCL_LIBRARIES})
