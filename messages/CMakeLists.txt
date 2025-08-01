@@ -14,6 +14,8 @@ set(CAPNP_SOURCES)
 set(CAPNP_HEADERS)
 
 # find all .capnp files
+set(GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
+file(MAKE_DIRECTORY ${GENERATED_DIR})
 file(GLOB CAPNP_FILES "schemas/*.capnp")
 foreach(file ${CAPNP_FILES}) 
     message(STATUS "Processing Cap'n Proto file: ${file}")
@@ -21,12 +23,12 @@ foreach(file ${CAPNP_FILES})
     # Extract the filename without the directory
     get_filename_component(file_name ${file} NAME)
 
-    # compile file with capnp
-    execute_process(COMMAND ${CAPNP_EXECUTABLE} compile -oc++ ${file} --src-prefix ${CMAKE_CURRENT_SOURCE_DIR}/schemas)
+    # compile file with capnp, output to generated dir
+    execute_process(COMMAND ${CAPNP_EXECUTABLE} compile -oc++:${GENERATED_DIR} ${file} --src-prefix ${CMAKE_CURRENT_SOURCE_DIR}/schemas)
 
     # append the generated source and header
-    list(APPEND CAPNP_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/${file_name}.c++)
-    list(APPEND CAPNP_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/${file_name}.h)
+    list(APPEND CAPNP_SOURCES ${GENERATED_DIR}/${file_name}.c++)
+    list(APPEND CAPNP_HEADERS ${GENERATED_DIR}/${file_name}.h)
 endforeach()
 
 # create a library from the generated files
