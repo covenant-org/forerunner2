@@ -18,7 +18,7 @@ link_directories(${CUDA_LIBRARY_DIRS})
 FILE(GLOB_RECURSE SRC_FILES *.cpp)
 FILE(GLOB_RECURSE HDR_FILES *.hpp)
 
-add_subdirectory(${CMAKE_SOURCE_DIR}/../core ${CMAKE_BINARY_DIR}/core)
+add_subdirectory(${CMAKE_SOURCE_DIR}/core)
 add_executable(${PROJECT_NAME} gz.cpp)
 
 target_link_libraries(${PROJECT_NAME} 
