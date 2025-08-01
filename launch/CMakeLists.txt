@@ -13,7 +13,7 @@ find_package(yaml-cpp REQUIRED)
 add_subdirectory(${CMAKE_SOURCE_DIR}/../core ${CMAKE_BINARY_DIR}/core)
 
 
-add_executable(launch launch.cpp nodes_yaml_parser.cpp)
+add_executable(${PROJECT_NAME} launch.cpp nodes_yaml_parser.cpp)
 add_executable(executable_test test/executable_test.cpp)
 add_executable(executable_test2 test/executable_test2.cpp)
 
