@@ -22,7 +22,9 @@ Registry::Registry(RegistryConfiguration config)
     : _config(config),
       _ctx(config.threads),
       _router(_ctx, ZMQ_ROUTER),
-      _last_free_port(config.port) {}
+      _last_free_port(config.port) {
+  this->_logger.set_classname("registry");
+}
 
 zmq::message_t Registry::message_from_builder(
     ::capnp::MallocMessageBuilder &message) {
@@ -85,6 +87,7 @@ void Registry::handle_request(RouterEvent event) {
         .port = free_port.value(),
     };
     _topic_to_endpoint.insert_or_assign(path, endpoint);
+    this->_logger.info("New Vertex: %s at %d", path.c_str(), endpoint.port);
     res.setCode(201);
     auto host = res.initHost();
     host.setAddress(endpoint.host);
@@ -96,8 +99,10 @@ void Registry::handle_request(RouterEvent event) {
 
   if (request.getType() == RequestType::QUERY_NODE) {
     auto path = request.getPath();
+    this->_logger.debug("querying topic: %s", request.getPath());
     try {
       Endpoint node = _topic_to_endpoint.at(path);
+      this->_logger.debug("querying topic [%s] found at %d", request.getPath().cStr(), node.port);
       ::capnp::MallocMessageBuilder message;
       RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
       res.setCode(200);
@@ -106,6 +111,7 @@ void Registry::handle_request(RouterEvent event) {
       host.setPort(node.port);
       respond_event(event, message_from_builder(message));
     } catch (std::out_of_range) {
+      this->_logger.debug("querying topic not found, pending to notify");
       _topic_to_waiters[path].emplace_back((char *)event.identity.data(),
                                            event.identity.size());
     }
@@ -123,6 +129,7 @@ void Registry::handle_request(RouterEvent event) {
         .port = obj.getPort(),
     };
     _topic_to_endpoint.insert_or_assign(request.getPath(), endpoint);
+    this->_logger.info("New Host: %s at %d", path.cStr(), endpoint.port);
     res.setCode(201);
     auto host = res.initHost();
     host.setAddress(endpoint.host);
@@ -144,7 +151,7 @@ std::optional<uint32_t> Registry::get_free_port() {
       _last_free_port += i;
       return _last_free_port;
     } catch (zmq::error_t error) {
-      printf("%s", error.what());
+      this->_logger.error("get_free_port failed due to: %s", error.what());
     }
   }
   return std::nullopt;
@@ -155,14 +162,14 @@ std::optional<RouterEvent> Registry::wait_for_message(zmq::socket_t &socket) {
   zmq::message_t identity(5);
   auto res = _router.recv(identity);
   if (res.value_or(0) == 0) {
+    this->_logger.error("Bad message while waiting for id");
     return std::nullopt;
-    std::cerr << "Bad message while waiting for id" << std::endl;
   }
 
   zmq::message_t empty;
   res = _router.recv(empty);
   if (res.value_or(0) != 0) {
-    std::cerr << "Bad message while waiting for package separator" << std::endl;
+    this->_logger.error("Bad message while waiting for package separator");
     return std::nullopt;
   }
 
@@ -179,7 +186,7 @@ void Registry::run() {
   char bind_dir[20];
   sprintf(bind_dir, "tcp://*:%d", _config.port);
   _router.bind(std::string(bind_dir));
-  printf("Listening to %s\n", bind_dir);
+  this->_logger.info("Listening to %s", bind_dir);
   while (true) {
     auto event = wait_for_message(_router);
     if (!event.has_value()) continue;

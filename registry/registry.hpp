@@ -1,6 +1,7 @@
 #ifndef REGISTRY_HPP
 #define REGISTRY_HPP
 
+#include "logger.hpp"
 #include <capnp/message.h>
 #include <cstdint>
 #include <map>
@@ -49,6 +50,7 @@ class Registry {
   void notify_waiters(std::string path);
 
  private:
+  Logger _logger;
   RegistryConfiguration _config;
   zmq::context_t _ctx;
   zmq::socket_t _router;
