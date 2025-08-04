@@ -13,6 +13,7 @@ void ThetaStar::init(AlgorithmConfig config,
                      std::unique_ptr<Core::Logger> logger) {
   this->config = config;
   this->logger = std::move(logger);
+  this->logger->set_classname("theta-star");
   this->stop_thread = false;
   this->generate_travel_graph();
 }

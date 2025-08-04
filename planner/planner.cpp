@@ -27,8 +27,11 @@ Planner::Planner(Core::ArgumentParser parser,
       "point_cloud",
       std::bind(&Planner::cloud_point_cb, this, std::placeholders::_1));
 
-  this->_goal_sub = this->create_subscriber<Position>(
-      "input_goal", std::bind(&Planner::goal_cb, this, std::placeholders::_1));
+  this->_goal_action_server =
+      this->create_action_server<Position, GenericResponse>(
+          "input_goal",
+          std::bind(&Planner::goal_server_cb, this, std::placeholders::_1,
+                    std::placeholders::_2));
 
   this->_odometry_sub = this->create_subscriber<Odometry>(
       "odometry",
@@ -271,7 +274,8 @@ std::vector<pcl::PointXYZ> Planner::recover_octree_points() {
   return octree_points;
 }
 
-void Planner::goal_cb(const Core::IncomingMessage<Position> &msg) {
+void Planner::goal_server_cb(const Core::IncomingMessage<Position> &msg,
+                             GenericResponse::Builder &res) {
   this->_logger.info("goal received");
   auto content = msg.content;
   Eigen::Vector3d goal(content.getX(), content.getY(), content.getZ());
@@ -295,6 +299,9 @@ void Planner::goal_cb(const Core::IncomingMessage<Position> &msg) {
   request.metadata = static_cast<void *>(drone_transform);
 
   this->_algorithm->enqueue(std::move(request));
+
+  res.setCode(200);
+  res.setMessage("ok");
 }
 
 void Planner::result_cb(SimplePlanner::PlanResponse response) {
@@ -303,10 +310,10 @@ void Planner::result_cb(SimplePlanner::PlanResponse response) {
     // If request is a start request just recover path and do transformations
     this->_logger.info("received start request");
     this->_path_sequence = response.path_id;
-    // Eigen::Affine3d *t =
-    // static_cast<Eigen::Affine3d*>(response.request.metadata);
+    Eigen::Affine3d *t =
+        static_cast<Eigen::Affine3d *>(response.request.metadata);
     auto msg = this->_path_pub->new_msg();
-    SimplePlanner::pathToMsg(response.path, msg.content, _goal_msg);
+    SimplePlanner::pathToMsg(response.path, msg.content, _goal_msg, *t);
     this->_logger.info("publishing new message with %zu nodes",
                        msg.content.getPoses().size());
     msg.publish();
@@ -314,10 +321,10 @@ void Planner::result_cb(SimplePlanner::PlanResponse response) {
   }
 
   if (this->_path_sequence != response.path_id) {
-    auto msg = this->_path_pub->new_msg();
-    SimplePlanner::pathToMsg(response.path, msg.content, _goal_msg);
-    this->_path_sequence = response.path_id;
-    msg.publish();
+    // auto msg = this->_path_pub->new_msg();
+    // SimplePlanner::pathToMsg(response.path, msg.content, _goal_msg);
+    // this->_path_sequence = response.path_id;
+    // msg.publish();
   }
 }
 
