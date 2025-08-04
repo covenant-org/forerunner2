@@ -27,6 +27,8 @@ Demo::Demo(Core::ArgumentParser args) : Core::Vertex(args) {
       "odometry", std::bind(&Demo::odom_cb, this, std::placeholders::_1));
   this->_octree_sub = this->create_subscriber<MarkerArray>(
       "octree", std::bind(&Demo::octree_cb, this, std::placeholders::_1));
+  this->_octree_layers_sub = this->create_subscriber<MarkerArray>(
+      "octree_layers", std::bind(&Demo::octree_layers_cb, this, std::placeholders::_1));
   this->_planned_path_sub = this->create_subscriber<Path>(
       "planned_path",
       std::bind(&Demo::planned_path_cb, this, std::placeholders::_1));
@@ -71,7 +73,7 @@ void Demo::planned_path_cb(const Core::IncomingMessage<Path> &msg) {
   // Extract path points
   for (auto pose : poses) {
     auto pos = pose.getPose().getPosition();
-    points.emplace_back(pos.getX(), pos.getY(), pos.getZ());
+    points.emplace_back(pos.getX(), pos.getY(), -pos.getZ());
   }
 
   // Create direction vectors between consecutive points
@@ -94,8 +96,8 @@ void Demo::planned_path_cb(const Core::IncomingMessage<Path> &msg) {
       dz = (dz / length) * scale;
 
       origins.emplace_back(current_pos.getX(), current_pos.getY(),
-                           current_pos.getZ());
-      vectors.emplace_back(dx, dy, dz);
+                           -current_pos.getZ());
+      vectors.emplace_back(dx, dy, -dz);
 
       // Color gradient from start (blue) to end (red)
       float t = static_cast<float>(i) / (poses.size() - 1);
@@ -163,6 +165,38 @@ void Demo::octree_cb(const Core::IncomingMessage<MarkerArray> &msg) {
                   rerun::Scalars(static_cast<double>(markers.size())));
   this->_rec->log(
       "stats/octree_dimensions",
+      rerun::TextLog("Octree markers: " + std::to_string(markers.size())));
+}
+
+void Demo::octree_layers_cb(const Core::IncomingMessage<MarkerArray> &msg) {
+  std::vector<rerun::components::PoseTranslation3D> centers;
+  std::vector<rerun::HalfSize3D> sizes;
+  std::vector<rerun::Color> colors;
+
+  auto markers = msg.content.getMarkers();
+  for (auto marker : markers) {
+    auto position = marker.getPose().getPosition();
+    auto color = marker.getColor();
+    auto scale = marker.getScale();
+
+    centers.emplace_back(position.getX(), position.getY(), position.getZ());
+    sizes.emplace_back(scale.getX() / 2, scale.getY() / 2, scale.getZ() / 2);
+    colors.emplace_back(color.getR() * 255, color.getG() * 255,
+                        color.getB() * 255, color.getA() * 255);
+  }
+  this->_rec->log("octree_layers/markers",
+                  rerun::Boxes3D::from_centers_and_half_sizes(centers, sizes)
+                      .with_quaternions({
+                          rerun::Quaternion::IDENTITY,
+                      })
+                      .with_fill_mode(rerun::components::FillMode::Solid)
+                      .with_colors(colors));
+
+  // Log statistics
+  // this->_rec->log("stats/octree_layers_count",
+  //                 rerun::Scalars(static_cast<double>(markers.size())));
+  this->_rec->log(
+      "stats/octree_layers_dimensions",
       rerun::TextLog("Octree markers: " + std::to_string(markers.size())));
 }
 

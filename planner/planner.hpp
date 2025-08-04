@@ -30,6 +30,7 @@ class Planner : Core::Vertex {
       _goal_action_server;
   std::shared_ptr<Core::Subscriber<Odometry>> _odometry_sub;
   std::shared_ptr<Core::Publisher<MarkerArray>> _octree_pub;
+  std::shared_ptr<Core::Publisher<MarkerArray>> _octree_layers_pub;
   std::shared_ptr<Core::Publisher<Path>> _path_pub;
   std::shared_ptr<Core::ActionServer<ReplanRequest, GenericResponse>>
       _planner_server;
@@ -58,6 +59,7 @@ class Planner : Core::Vertex {
   std::vector<pcl::PointXYZ> recover_octree_points();
   void publish_visualization();
   void publish_octree();
+  void publish_layers();
 
  public:
   Planner(Core::ArgumentParser, SimplePlanner::Algorithm *);

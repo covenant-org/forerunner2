@@ -4,6 +4,7 @@
 #include "logger.hpp"
 #include <Eigen/Dense>
 #include <Eigen/src/Core/Matrix.h>
+#include <Eigen/src/Geometry/Transform.h>
 #include <capnp_schemas/geometry_msgs.capnp.h>
 #include <capnp_schemas/nav_msgs.capnp.h>
 #include <capnp_schemas/planner.capnp.h>
@@ -98,9 +99,8 @@ class Algorithm {
 
 void pathToMsg(const std::vector<std::shared_ptr<PathNode>> &,
                Path::Builder &, Eigen::Vector3d &, Eigen::Affine3d &);
-//
-// void transform_path(Path::Reader &path, const tf2::Transform &transform,
-//                     std::string frame_id, rclcpp::Time stamp);
+
+void transform_path(Path::Builder &, Eigen::Affine3d &);
 
 void create_marker(Marker::Builder &marker, const pcl::PointXYZ &point,
                    float scale = 0.3);

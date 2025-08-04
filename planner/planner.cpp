@@ -8,6 +8,7 @@
 #include <capnp_schemas/controller.capnp.h>
 #include <capnp_schemas/generics.capnp.h>
 #include <capnp_schemas/planner.capnp.h>
+#include <cmath>
 #include <memory>
 #include <pcl/common/transforms.h>
 #include <pcl/compression/octree_pointcloud_compression.h>
@@ -20,6 +21,8 @@ Planner::Planner(Core::ArgumentParser parser,
       new pcl::io::OctreePointCloudCompression<pcl::PointXYZ>();
 
   this->_octree_pub = this->create_publisher<MarkerArray>("octree");
+  this->_octree_layers_pub =
+      this->create_publisher<MarkerArray>("octree_layers");
 
   this->_path_pub = this->create_publisher<Path>("planned_path");
 
@@ -146,10 +149,14 @@ void Planner::run_planner(ReplanRequest::Start::Reader &msg) {
 
 void Planner::publish_visualization() {
   bool should_publish_octree = this->get_argument<bool>("--publish-octree");
+  bool should_publish_layers = this->get_argument<bool>("--publish-layers");
 
   while (true) {
     if (should_publish_octree) {
       this->publish_octree();
+    }
+    if (should_publish_layers) {
+      this->publish_layers();
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
   }
@@ -164,7 +171,6 @@ void Planner::publish_octree() {
   std::vector<int> pointIdxSearch;
   std::vector<float> pointSquaredDistance;
   double radius = this->get_argument<double>("--max-distance");
-  double resolution = this->get_argument<double>("--resolution");
   pcl::PointXYZ searchPoint(0, 0, 0);
   this->_octree_search->radiusSearch(searchPoint, radius, pointIdxSearch,
                                      pointSquaredDistance);
@@ -175,7 +181,7 @@ void Planner::publish_octree() {
     for (size_t i = 0; i < pointIdxSearch.size(); i++) {
       auto marker = markers[i];
       auto point = (*this->_cloud)[pointIdxSearch[i]];
-      SimplePlanner::create_marker(marker, point, resolution);
+      SimplePlanner::create_marker(marker, point);
       marker.getColor().setR(0.8);
       marker.getColor().setG(0.0);
       marker.getColor().setB(0.0);
@@ -184,6 +190,39 @@ void Planner::publish_octree() {
     }
     msg.publish();
   }
+}
+
+void Planner::publish_layers() {
+  size_t index = 0;
+  size_t total = 0;
+  auto layers = this->_algorithm->get_layers();
+  size_t layer_index = 0;
+  for (auto &layer : layers) {
+    total += layer.size();
+  }
+  auto msg = this->_octree_layers_pub->new_msg();
+  auto markers = msg.content.initMarkers(total);
+  for (auto &layer : layers) {
+    for (auto &node : layer) {
+      auto marker = markers[index];
+      auto color = marker.getColor();
+      SimplePlanner::create_marker(
+          marker,
+          pcl::PointXYZ(node->coords.x(), node->coords.y(), node->coords.z()));
+      double distance = 1 / node->cost;
+      if (!std::isnormal(distance) || node->cost <= EPS) {
+        distance = INF;
+      }
+
+      color.setA(0.3);
+      color.setR((1 - distance / 10.0) * (1 - distance / 10.0));
+      color.setG(std::sqrt(std::sqrt(distance / 10.0)));
+      color.setB(1.0);
+      index++;
+    }
+    layer_index++;
+  }
+  msg.publish();
 }
 /*
  * Called when a request was dequeued and is being executed
@@ -313,8 +352,21 @@ void Planner::result_cb(SimplePlanner::PlanResponse response) {
     Eigen::Affine3d *t =
         static_cast<Eigen::Affine3d *>(response.request.metadata);
     auto msg = this->_path_pub->new_msg();
+    // convert to NED system at the time the plan was requested (t)
     SimplePlanner::pathToMsg(response.path, msg.content, _goal_msg, *t);
+    this->_algorithm->update_current_trajectory(msg.content.asReader());
+
+    auto drone_transform = Eigen::Affine3d(Eigen::Isometry3d(
+        Eigen::Translation3d(_drone_pose.position.x(), _drone_pose.position.y(),
+                             _drone_pose.position.z()) *
+        Eigen::Quaterniond(
+            _drone_pose.orientation.w(), _drone_pose.orientation.x(),
+            _drone_pose.orientation.y(), _drone_pose.orientation.z())));
+
+    // update with latest values
+    SimplePlanner::transform_path(msg.content, drone_transform);
     msg.publish();
+    delete t;
     this->_logger.info("published new message with %zu nodes",
                        msg.content.getPoses().size());
     return;
@@ -370,6 +422,9 @@ int main(int argc, char **argv) {
       .scan<'g', double>();
   parser.add_argument("--publish-octree")
       .help("publish the octree as a visualization marker")
+      .flag();
+  parser.add_argument("--publish-layers")
+      .help("publish the algorithm layers")
       .flag();
 
   SimplePlanner::ThetaStar algorithm;

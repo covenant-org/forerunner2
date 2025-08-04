@@ -33,40 +33,42 @@ void pathToMsg(const std::vector<std::shared_ptr<PathNode>> &path,
     quat = t.rotation() * quat;
     translation = t * translation;
 
-    position.setX(node->coords.x());
-    position.setY(node->coords.y());
-    position.setZ(node->coords.z());
+    position.setX(translation.x());
+    position.setY(translation.y());
+    position.setZ(translation.z());
 
-    orientation.setX(0.0);
-    orientation.setY(0.0);
-    orientation.setZ(qz);
-    orientation.setW(qw);
+    orientation.setX(quat.x());
+    orientation.setY(quat.y());
+    orientation.setZ(quat.z());
+    orientation.setW(quat.w());
   }
 }
-//
-// void transform_path(nav_msgs::msg::Path &path, const tf2::Transform
-// &transform,
-//                     std::string frame_id, rclcpp::Time stamp) {
-//   for (geometry_msgs::msg::PoseStamped &pose : path.poses) {
-//     tf2::Vector3 tf2_vec(pose.pose.position.x, pose.pose.position.y,
-//                          pose.pose.position.z);
-//     tf2::Quaternion tf2_quat(pose.pose.orientation.x,
-//     pose.pose.orientation.y,
-//                              pose.pose.orientation.z,
-//                              pose.pose.orientation.w);
-//     tf2_vec = transform * tf2_vec;
-//     tf2_quat = transform * tf2_quat;
-//     pose.header.frame_id = frame_id;
-//     pose.header.stamp = stamp;
-//     pose.pose.position.x = tf2_vec.x();
-//     pose.pose.position.y = tf2_vec.y();
-//     pose.pose.position.z = tf2_vec.z();
-//     pose.pose.orientation.x = tf2_quat.x();
-//     pose.pose.orientation.y = tf2_quat.y();
-//     pose.pose.orientation.z = tf2_quat.z();
-//     pose.pose.orientation.w = tf2_quat.w();
-//   }
-// }
+
+void transform_path(Path::Builder &path, Eigen::Affine3d &t) {
+  auto poses = path.getPoses();
+  for (size_t i = 0; i < poses.size(); ++i) {
+    auto pose = poses[i];
+    auto position = pose.getPose().getPosition();
+    auto orientation = pose.getPose().getOrientation();
+
+    Eigen::Quaterniond quat(orientation.getW(), orientation.getX(),
+                            orientation.getY(), orientation.getZ());
+    Eigen::Vector3d translation(position.getX(), position.getY(),
+                                position.getZ());
+
+    quat = t.rotation() * quat;
+    translation = t * translation;
+
+    position.setX(translation.x());
+    position.setY(translation.y());
+    position.setZ(translation.z());
+
+    orientation.setX(quat.x());
+    orientation.setY(quat.y());
+    orientation.setZ(quat.z());
+    orientation.setW(quat.w());
+  }
+}
 
 void create_marker(Marker::Builder &marker, const pcl::PointXYZ &point,
                    float scale) {
