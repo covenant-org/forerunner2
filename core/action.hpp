@@ -162,7 +162,7 @@ class ActionClient : public ITransaction<K> {
       throw std::runtime_error("error with registry");
     }
 
-    char buffer[20];
+    char buffer[30];
     sprintf(buffer, "tcp://127.0.0.1:%d", _port);
     _socket.connect(buffer);
   }

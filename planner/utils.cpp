@@ -10,8 +10,13 @@ void pathToMsg(const std::vector<std::shared_ptr<PathNode>> &path,
     auto node = path[i];
     auto pose = poses[i];
 
-    pose.getPose().initOrientation();
-    pose.getPose().initPosition();
+    auto orientation = pose.getPose().initOrientation();
+    auto position = pose.getPose().initPosition();
+    auto header = pose.initHeader();
+    header.setSeq(0);
+    header.setStampSec(0);
+    header.setStampNsec(0);
+    header.setFrameId("path");
 
     Eigen::Vector3d pos_next =
         (i + 1 < path.size()) ? path[i + 1]->coords : goal;
@@ -23,19 +28,19 @@ void pathToMsg(const std::vector<std::shared_ptr<PathNode>> &path,
 
     Eigen::Quaterniond quat(qw, 0.0, 0.0, qz);
     Eigen::Vector3d translation(node->coords.x(), node->coords.y(),
-                                     node->coords.z());
+                                node->coords.z());
 
     quat = t.rotation() * quat;
     translation = t * translation;
 
-    pose.getPose().getPosition().setX(node->coords.x());
-    pose.getPose().getPosition().setY(node->coords.y());
-    pose.getPose().getPosition().setZ(node->coords.z());
+    position.setX(node->coords.x());
+    position.setY(node->coords.y());
+    position.setZ(node->coords.z());
 
-    pose.getPose().getOrientation().setX(0.0);
-    pose.getPose().getOrientation().setY(0.0);
-    pose.getPose().getOrientation().setZ(qz);
-    pose.getPose().getOrientation().setW(qw);
+    orientation.setX(0.0);
+    orientation.setY(0.0);
+    orientation.setZ(qz);
+    orientation.setW(qw);
   }
 }
 //

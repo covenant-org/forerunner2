@@ -314,9 +314,9 @@ void Planner::result_cb(SimplePlanner::PlanResponse response) {
         static_cast<Eigen::Affine3d *>(response.request.metadata);
     auto msg = this->_path_pub->new_msg();
     SimplePlanner::pathToMsg(response.path, msg.content, _goal_msg, *t);
-    this->_logger.info("publishing new message with %zu nodes",
-                       msg.content.getPoses().size());
     msg.publish();
+    this->_logger.info("published new message with %zu nodes",
+                       msg.content.getPoses().size());
     return;
   }
 

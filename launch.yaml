@@ -8,8 +8,8 @@ executables:
   #       - --publish-octree
   #     options:
   #       --max-distance: 7.5
-  - name: controller
-    args:
-      flags:
-        - --debug
+  # - name: controller
+  #   args:
+  #     flags:
+  #       - --debug
   - name: rerun

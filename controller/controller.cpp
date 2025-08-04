@@ -162,6 +162,8 @@ void Controller::smooth_path() {
 }
 
 void Controller::planned_path_cb(const Core::IncomingMessage<Path> &msg) {
+  this->_logger.info("Path from planner with %zu",
+                     msg.content.getPoses().size());
   auto path = msg.content;
   this->waiting_reponse = false;
   if (path.getPoses().size() == 0) return;
@@ -190,7 +192,7 @@ void Controller::control() {
     auto request = this->_mission_client->new_msg();
     request.content.initTakeoff();
     request.content.getTakeoff().setDesiredAltitude(
-        this->get_argument<float>("--min-height"));
+        this->get_argument<double>("--min-height"));
     auto result = request.send();
     auto response = result.value().content;
     if (response.getCode() >= 300) {
@@ -198,7 +200,6 @@ void Controller::control() {
       return;
     }
   }
-
 
   auto offboard_msg = this->_controller_client->new_msg();
   auto off = offboard_msg.content.initOffboard();
@@ -402,7 +403,7 @@ int main(int argc, char **argv) {
   parser.add_argument("--min-height")
       .default_value(1.5)
       .help("minimum distance the drone will be above the ground level")
-      .scan<'g', float>();
+      .scan<'g', double>();
   parser.add_argument("--reached-subscription-topic")
       .default_value("reached_position")
       .help(

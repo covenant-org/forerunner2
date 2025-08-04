@@ -1044,3 +1044,5 @@ dkms.conf
 *.dis
 *.capnp.h
 *.capnp.c++
+
+perf.data*
