@@ -17,6 +17,12 @@
 #ifndef PLANNER_HPP
 #define PLANNER_HPP
 
+class RequestMetadata {
+ public:
+  RequestMetadata(Eigen::Affine3d t) : transform(t) {}
+  Eigen::Affine3d transform;
+};
+
 class Planner : Core::Vertex {
  private:
   struct DronePose {

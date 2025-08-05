@@ -21,8 +21,6 @@ class Controller : public Core::Vertex {
   Controller(Core::ArgumentParser parser);
   ~Controller(){};
   void control();
-  void arm();
-  void disarm();
   void run() override;
   void smooth_path();
 
