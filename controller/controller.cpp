@@ -1,5 +1,6 @@
 #include "controller.hpp"
 #include "message.hpp"
+#include <Eigen/src/Core/Matrix.h>
 #include <Eigen/src/Geometry/Quaternion.h>
 #include <Eigen/src/Geometry/Transform.h>
 #include <capnp_schemas/generics.capnp.h>
@@ -61,6 +62,11 @@ void Controller::odometry_cb(const Core::IncomingMessage<Odometry> &msg) {
   this->current_position = Eigen::Vector3f(
       o.getPosition().getX(), o.getPosition().getY(), o.getPosition().getZ());
 
+  this->_logger.debug(
+      "odometry_cb => waiting_response: %d, recived_path: %d, index: %d, size: "
+      "%zu",
+      this->waiting_reponse, this->recived_path, this->index,
+      this->_path.getPoses().size());
   if (!this->waiting_reponse && this->recived_path &&
       this->index < this->_path.getPoses().size()) {
     Eigen::Vector3d current_position(
@@ -77,6 +83,8 @@ void Controller::odometry_cb(const Core::IncomingMessage<Odometry> &msg) {
 
     bool autorequest = this->get_argument<bool>("--autorequest");
     double yaw_tolerance = this->get_argument<double>("--yaw-tolerance");
+    this->_logger.debug("autorequest: %d, yaw_tolerance: %f", autorequest,
+                        yaw_tolerance);
 
     if (autorequest && dist < tolerance && angular_dist < yaw_tolerance) {
       auto msg = this->_planner_client->new_msg();
@@ -92,6 +100,13 @@ void Controller::odometry_cb(const Core::IncomingMessage<Odometry> &msg) {
 
       this->waiting_reponse = true;
       auto res = msg.send();
+      auto response = res.value().content;
+      if (response.getCode() >= 300) {
+        this->_logger.error("Replan request failed with code %d due to %s",
+                            response.getCode(), response.getMessage());
+      } else {
+        this->_logger.info("requested plan");
+      }
     }
   }
 
@@ -169,17 +184,21 @@ void Controller::planned_path_cb(const Core::IncomingMessage<Path> &msg) {
   if (path.getPoses().size() == 0) return;
   auto poses = path.getPoses();
   auto first_pose = poses[0];
-  Eigen::Vector3d first_coord(first_pose.getPose().getPosition().getX(),
+  this->_path = msg.content;
+  Eigen::Vector3f first_coord(first_pose.getPose().getPosition().getX(),
                               first_pose.getPose().getPosition().getY(),
                               first_pose.getPose().getPosition().getZ());
-  // auto trajectory_msg = this->_trajectory_path_pub->new_msg();
-  // trajectory_msg.content.setPoses(poses);
-  // trajectory_msg.publish();
   this->index = std::min(1, int(path.getPoses().size() - 1));
+
+  this->_initial_transform = Eigen::Affine3f(
+      Eigen::Translation3f(_position.x(), _position.y(), _position.z()) *
+      Eigen::Quaternionf(_quat.w(), _quat.x(), _quat.y(), _quat.z()));
+  Eigen::Vector3f start_point(first_coord(0), first_coord(1), first_coord(2));
+  start_point = this->_initial_transform * start_point;
 
   auto pose = this->_path.getPoses()[this->index];
   this->_last_path_start_position =
-      Eigen::Vector3f(first_coord(0), first_coord(1), first_coord(2));
+      Eigen::Vector3f(start_point.x(), start_point.y(), start_point.z());
   this->recived_path = true;
 }
 
@@ -210,8 +229,8 @@ void Controller::control() {
     auto msg = this->_controller_client->new_msg();
     auto wp = msg.content.initWaypoint();
     wp.setX(this->_vehicle_initial_position.x());
-    wp.setY(-this->_vehicle_initial_position.y());
-    wp.setZ(-this->_vehicle_initial_position.z());
+    wp.setY(this->_vehicle_initial_position.y());
+    wp.setZ(this->_vehicle_initial_position.z());
     wp.setR(this->_heading);
     auto result = msg.send();
     auto response = result.value().content;
@@ -223,6 +242,9 @@ void Controller::control() {
   } else {
     // TODO: Check if path is not empty and pose is valid
     auto pose = _path.getPoses()[this->index];
+    auto pos = pose.getPose().getPosition();
+    // this->_logger.info("pose position: %.2f, %.2f, %.2f at index %d",
+    //                    pos.getX(), pos.getY(), pos.getZ(), this->index);
     this->publish_trajectory_setpoint(pose);
   }
   this->sent_point += 1;
@@ -284,15 +306,21 @@ void Controller::publish_trajectory_setpoint(PoseStamped::Reader &pose) {
   tf_quat = this->_quat * tf_quat;
   this->temp_orientation =
       Eigen::Quaterniond(tf_quat.w(), tf_quat.x(), tf_quat.y(), tf_quat.z());
-  Eigen::Quaterniond quat(tf_quat.w(), tf_quat.x(), -tf_quat.y(), -tf_quat.z());
+  Eigen::Quaterniond quat(tf_quat.w(), tf_quat.x(), tf_quat.y(), tf_quat.z());
 
   auto msg = this->_controller_client->new_msg();
   msg.content.initWaypoint();
   auto wp = msg.content.getWaypoint();
   wp.setX(transformed.x());
-  wp.setY(-transformed.y());
-  wp.setZ(-transformed.z());
-  wp.setR(this->_heading * M_PI / 180);
+  wp.setY(transformed.y());
+  wp.setZ(transformed.z());
+  auto q0 = quat.w();
+  auto q1 = quat.x();
+  auto q2 = quat.y();
+  auto q3 = quat.z();
+  auto yaw =
+      std::atan2(2. * (q0 * q3 + q1 * q2), 1. - 2. * (q2 * q2 + q3 * q3));
+  wp.setR(yaw);
   auto res = msg.send();
   auto response = res.value().content;
   if (response.getCode() != 200) {
@@ -301,81 +329,6 @@ void Controller::publish_trajectory_setpoint(PoseStamped::Reader &pose) {
         response.getCode(), response.getMessage().cStr());
   }
 }
-
-// void Controller::publish_vehicle_command(uint16_t command, float param1,
-//                                          float param2) {
-//   px4_msgs::msg::VehicleCommand command_msg{};
-//   command_msg.command = command;
-//   command_msg.param1 = param1;
-//   command_msg.param2 = param2;
-//   command_msg.target_system = 1;
-//   command_msg.target_component = 1;
-//   command_msg.source_system = 1;
-//   command_msg.source_component = 1;
-//   command_msg.from_external = true;
-//   command_msg.timestamp = this->get_clock()->now().nanoseconds() / 1000;
-//
-//   this->vehicle_command_pub_->publish(command_msg);
-// }
-
-// void Controller::publish_offboard_control_mode() {
-//   px4_msgs::msg::OffboardControlMode offboard_msg{};
-//   offboard_msg.timestamp = this->get_clock()->now().nanoseconds() / 1000;
-//   offboard_msg.position = true;
-//   offboard_msg.velocity = false;
-//   offboard_msg.acceleration = false;
-//   offboard_msg.attitude = false;
-//   offboard_msg.body_rate = false;
-//
-//   this->offboard_mode_pub_->publish(offboard_msg);
-// }
-
-void Controller::arm() {}
-
-void Controller::disarm() {}
-
-// void Controller::goal_response_callback(ReplanGoalHandle::SharedPtr future) {
-//   auto goal_handle = future.get();
-//   if (!goal_handle) {
-//     RCLCPP_ERROR(this->get_logger(), "Goal was rejected by server");
-//   } else {
-//     RCLCPP_INFO(this->get_logger(),
-//                 "Goal accepted by server, waiting for result");
-//   }
-// }
-
-// void Controller::feedback_callback(
-//     ReplanGoalHandle::SharedPtr,
-//     const std::shared_ptr<const ReplanAction::Feedback> feedback) {
-//   std::stringstream ss;
-//   ss << "Received: ";
-//   ss << feedback->state << " ";
-//   RCLCPP_INFO(this->get_logger(), ss.str().c_str());
-// }
-
-// void Controller::result_callback(
-//     const ReplanGoalHandle::WrappedResult &result) {
-//   switch (result.code) {
-//     case rclcpp_action::ResultCode::SUCCEEDED:
-//       break;
-//     case rclcpp_action::ResultCode::ABORTED:
-//       RCLCPP_ERROR(this->get_logger(), "Goal was aborted");
-//       return;
-//     case rclcpp_action::ResultCode::CANCELED:
-//       RCLCPP_ERROR(this->get_logger(), "Goal was canceled");
-//       return;
-//     default:
-//       RCLCPP_ERROR(this->get_logger(), "Unknown result code");
-//       return;
-//   }
-//   if (this->path_sequence == result.result->path_sequence) {
-//     RCLCPP_INFO(this->get_logger(), "Path is the same");
-//   }
-//   this->path_sequence = result.result->path_sequence;
-//   nav_msgs::msg::Path::SharedPtr path =
-//       std::make_shared<nav_msgs::msg::Path>(result.result->path);
-//   this->path_cb(path);
-// }
 
 void Controller::run() {
   while (true) {
@@ -425,7 +378,7 @@ int main(int argc, char **argv) {
           "whether the drone will autorequest a new plan in case the goal was "
           "not reached")
       .flag();
-  parser.add_argument("--yaw-tolerance").default_value(0.3).scan<'g', float>();
+  parser.add_argument("--yaw-tolerance").default_value(0.6).scan<'g', double>();
 
   std::shared_ptr<Controller> controller = std::make_shared<Controller>(parser);
   controller->run();

@@ -79,12 +79,13 @@ void Planner::stop() {
 
 void Planner::planner_server_cb(const Core::IncomingMessage<ReplanRequest> &req,
                                 GenericResponse::Builder &res) {
+  this->_logger.info("got new request: %zu", req.content.which());
   switch (req.content.which()) {
     case ReplanRequest::START: {
       auto start = req.content.getStart();
       auto pos = start.getPose().getPose().getPosition();
-      this->_logger.debug("received goal request: %f, %f, %f", pos.getX(),
-                          pos.getY(), pos.getZ());
+      this->_logger.info("received goal request: %f, %f, %f", pos.getX(),
+                         pos.getY(), pos.getZ());
 
       Eigen::Vector3d absolute_goal(_goal_msg.x(), _goal_msg.y(),
                                     _goal_msg.z());
@@ -97,6 +98,11 @@ void Planner::planner_server_cb(const Core::IncomingMessage<ReplanRequest> &req,
       } else if (!this->_planning) {
         this->_planning = true;
         this->run_planner(start);
+        res.setCode(200);
+        res.setMessage("ok");
+      } else {
+        res.setCode(301);
+        res.setMessage("planner is busy");
       }
       break;
     }
@@ -112,18 +118,19 @@ void Planner::run_planner(ReplanRequest::Start::Reader &msg) {
   config.preferred_distance =
       this->get_argument<double>("--preferred-distance");
 
+  Eigen::Affine3d drone_transform(Eigen::Isometry3d(
+      Eigen::Translation3d(_drone_pose.position.x(), _drone_pose.position.y(),
+                           _drone_pose.position.z()) *
+      Eigen::Quaterniond(
+          _drone_pose.orientation.w(), _drone_pose.orientation.x(),
+          _drone_pose.orientation.y(), _drone_pose.orientation.z())));
+
   auto pos = msg.getPose().getPose().getPosition();
   SimplePlanner::PlanRequest request;
   request.type = SimplePlanner::RequestType::REPLAN;
+  request.metadata = (void *)new RequestMetadata(drone_transform);
 
   Eigen::Vector3d goal(pos.getX(), pos.getY(), pos.getZ());
-  // Eigen::Affine3d drone_transform(Eigen::Isometry3d(
-  //     Eigen::Translation3d(_drone_pose.position.x(),
-  //     _drone_pose.position.y(),
-  //                          _drone_pose.position.z()) *
-  //     Eigen::Quaterniond(
-  //         _drone_pose.orientation.w(), _drone_pose.orientation.x(),
-  //         _drone_pose.orientation.y(), _drone_pose.orientation.z())));
   // auto transformed_goal = drone_transform * goal;
   request.goal << goal.x(), goal.y(), goal.z();
 
@@ -146,6 +153,7 @@ void Planner::run_planner(ReplanRequest::Start::Reader &msg) {
     p.getPosition().setZ(transformed_point.z());
     request.body.value().path.push_back(p.asReader());
   }
+  this->_algorithm->enqueue(std::move(request));
 }
 
 void Planner::publish_visualization() {
@@ -360,7 +368,8 @@ void Planner::result_cb(SimplePlanner::PlanResponse response) {
         static_cast<Eigen::Affine3d *>(response.request.metadata);
     auto msg = this->_path_pub->new_msg();
     // convert to NED system at the time the plan was requested (t)
-    SimplePlanner::pathToMsg(response.path, msg.content, _goal_msg, *saved_transform);
+    SimplePlanner::pathToMsg(response.path, msg.content, _goal_msg,
+                             *saved_transform);
     this->_algorithm->update_current_trajectory(msg.content.asReader());
 
     auto current_transform = Eigen::Affine3d(Eigen::Isometry3d(
@@ -380,12 +389,31 @@ void Planner::result_cb(SimplePlanner::PlanResponse response) {
     return;
   }
 
+  RequestMetadata *metadata = (RequestMetadata *)response.request.metadata;
+  Eigen::Affine3d saved_transform = metadata->transform;
+  auto current_transform = Eigen::Affine3d(Eigen::Isometry3d(
+      Eigen::Translation3d(_drone_pose.position.x(), _drone_pose.position.y(),
+                           _drone_pose.position.z()) *
+      Eigen::Quaterniond(
+          _drone_pose.orientation.w(), _drone_pose.orientation.x(),
+          _drone_pose.orientation.y(), _drone_pose.orientation.z())));
+
+  auto msg = this->_path_pub->new_msg();
   if (this->_path_sequence != response.path_id) {
-    // auto msg = this->_path_pub->new_msg();
-    // SimplePlanner::pathToMsg(response.path, msg.content, _goal_msg);
-    // this->_path_sequence = response.path_id;
-    // msg.publish();
+    SimplePlanner::pathToMsg(response.path, msg.content, _goal_msg,
+                             saved_transform);
+    this->_path_sequence = response.path_id;
+  } else {
+    auto poses = this->_algorithm->get_current_trajectory().getPoses();
+    msg.content.setPoses(poses);
   }
+
+  auto relative_transform = current_transform * saved_transform.inverse();
+  SimplePlanner::transform_path(msg.content, relative_transform);
+  this->_path_sequence = response.path_id;
+  msg.publish();
+  this->_logger.info("published new message with %zu nodes (replan)",
+                     msg.content.getPoses().size());
 }
 
 void Planner::odometry_cb(const Core::IncomingMessage<Odometry> &msg) {
