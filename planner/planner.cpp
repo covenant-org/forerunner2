@@ -25,6 +25,7 @@ Planner::Planner(Core::ArgumentParser parser,
       this->create_publisher<MarkerArray>("octree_layers");
 
   this->_path_pub = this->create_publisher<Path>("planned_path");
+  this->_local_path_pub = this->create_publisher<Path>("local_planned_path");
 
   this->_cloud_sub = this->create_subscriber<PointCloud>(
       "point_cloud",
@@ -349,24 +350,31 @@ void Planner::result_cb(SimplePlanner::PlanResponse response) {
     // If request is a start request just recover path and do transformations
     this->_logger.info("received start request");
     this->_path_sequence = response.path_id;
-    Eigen::Affine3d *t =
+    auto local_msg = this->_local_path_pub->new_msg();
+    Eigen::Affine3d identity = Eigen::Isometry3d::Identity();
+    SimplePlanner::pathToMsg(response.path, local_msg.content, _goal_msg,
+                             identity);
+    local_msg.publish();
+
+    Eigen::Affine3d *saved_transform =
         static_cast<Eigen::Affine3d *>(response.request.metadata);
     auto msg = this->_path_pub->new_msg();
     // convert to NED system at the time the plan was requested (t)
-    SimplePlanner::pathToMsg(response.path, msg.content, _goal_msg, *t);
+    SimplePlanner::pathToMsg(response.path, msg.content, _goal_msg, *saved_transform);
     this->_algorithm->update_current_trajectory(msg.content.asReader());
 
-    auto drone_transform = Eigen::Affine3d(Eigen::Isometry3d(
+    auto current_transform = Eigen::Affine3d(Eigen::Isometry3d(
         Eigen::Translation3d(_drone_pose.position.x(), _drone_pose.position.y(),
                              _drone_pose.position.z()) *
         Eigen::Quaterniond(
             _drone_pose.orientation.w(), _drone_pose.orientation.x(),
             _drone_pose.orientation.y(), _drone_pose.orientation.z())));
+    auto relative_transform = current_transform * saved_transform->inverse();
 
     // update with latest values
-    SimplePlanner::transform_path(msg.content, drone_transform);
+    SimplePlanner::transform_path(msg.content, relative_transform);
     msg.publish();
-    delete t;
+    delete saved_transform;
     this->_logger.info("published new message with %zu nodes",
                        msg.content.getPoses().size());
     return;

@@ -32,6 +32,7 @@ class Planner : Core::Vertex {
   std::shared_ptr<Core::Publisher<MarkerArray>> _octree_pub;
   std::shared_ptr<Core::Publisher<MarkerArray>> _octree_layers_pub;
   std::shared_ptr<Core::Publisher<Path>> _path_pub;
+  std::shared_ptr<Core::Publisher<Path>> _local_path_pub;
   std::shared_ptr<Core::ActionServer<ReplanRequest, GenericResponse>>
       _planner_server;
   Odometry::Reader _last_odometry;

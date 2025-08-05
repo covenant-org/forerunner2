@@ -22,6 +22,7 @@ class Demo : Core::Vertex {
   std::shared_ptr<Core::Subscriber<MarkerArray>> _octree_sub;
   std::shared_ptr<Core::Subscriber<MarkerArray>> _octree_layers_sub;
   std::shared_ptr<Core::Subscriber<Path>> _planned_path_sub;
+  std::shared_ptr<Core::Subscriber<Path>> _local_planned_path_sub;
   std::shared_ptr<rerun::RecordingStream> _rec;
   pcl::io::OctreePointCloudCompression<pcl::PointXYZ> *_point_cloud_decoder;
 
@@ -32,6 +33,9 @@ class Demo : Core::Vertex {
   void octree_cb(const Core::IncomingMessage<MarkerArray> &);
   void octree_layers_cb(const Core::IncomingMessage<MarkerArray> &);
   void planned_path_cb(const Core::IncomingMessage<Path> &);
+  void local_planned_path_cb(const Core::IncomingMessage<Path> &);
+  void render_path(const Core::IncomingMessage<Path> &, const std::string &,
+                   const std::string &);
   rerun::Color distance_to_color(float distance);
   Demo(Core::ArgumentParser);
   void run();

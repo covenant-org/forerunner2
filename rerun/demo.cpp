@@ -28,10 +28,14 @@ Demo::Demo(Core::ArgumentParser args) : Core::Vertex(args) {
   this->_octree_sub = this->create_subscriber<MarkerArray>(
       "octree", std::bind(&Demo::octree_cb, this, std::placeholders::_1));
   this->_octree_layers_sub = this->create_subscriber<MarkerArray>(
-      "octree_layers", std::bind(&Demo::octree_layers_cb, this, std::placeholders::_1));
+      "octree_layers",
+      std::bind(&Demo::octree_layers_cb, this, std::placeholders::_1));
   this->_planned_path_sub = this->create_subscriber<Path>(
       "planned_path",
       std::bind(&Demo::planned_path_cb, this, std::placeholders::_1));
+  this->_local_planned_path_sub = this->create_subscriber<Path>(
+      "local_planned_path",
+      std::bind(&Demo::local_planned_path_cb, this, std::placeholders::_1));
 }
 
 rerun::Color Demo::distance_to_color(float distance) {
@@ -61,8 +65,9 @@ rerun::Color Demo::distance_to_color(float distance) {
   }
 }
 
-void Demo::planned_path_cb(const Core::IncomingMessage<Path> &msg) {
-  this->_logger.info("planned_path_cb was called");
+void Demo::render_path(const Core::IncomingMessage<Path> &msg,
+                       const std::string &points_name,
+                       const std::string &path_arrows) {
   auto poses = msg.content.getPoses();
 
   std::vector<rerun::Position3D> points;
@@ -110,20 +115,26 @@ void Demo::planned_path_cb(const Core::IncomingMessage<Path> &msg) {
 
   // Log the path as points
   this->_rec->log(
-      "path/points",
+      points_name,
       rerun::Points3D(points).with_colors(colors).with_radii({0.05f}));
 
   // Log direction arrows
   if (!vectors.empty()) {
-    this->_rec->log("path/arrows", rerun::Arrows3D::from_vectors(vectors)
-                                       .with_origins(origins)
-                                       .with_colors(colors)
-                                       .with_radii({0.02f}));
+    this->_rec->log(path_arrows, rerun::Arrows3D::from_vectors(vectors)
+                                     .with_origins(origins)
+                                     .with_colors(colors)
+                                     .with_radii({0.02f}));
   }
+}
 
-  // Log path statistics
-  this->_rec->log("stats/path_length",
-                  rerun::Scalars(static_cast<double>(poses.size())));
+void Demo::planned_path_cb(const Core::IncomingMessage<Path> &msg) {
+  this->_logger.info("planned_path_cb was called");
+  this->render_path(msg, "path/points", "path/arrows");
+}
+
+void Demo::local_planned_path_cb(const Core::IncomingMessage<Path> &msg) {
+  this->_logger.info("local_planned_path_cb was called");
+  this->render_path(msg, "local_path/points", "local_path/arrows");
 }
 
 void Demo::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
