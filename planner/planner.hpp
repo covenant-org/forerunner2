@@ -34,11 +34,11 @@ class Planner : Core::Vertex {
   std::shared_ptr<Core::Subscriber<PointCloud>> _cloud_sub;
   std::shared_ptr<Core::ActionServer<Position, GenericResponse>>
       _goal_action_server;
+  std::shared_ptr<Core::Publisher<Position>> _goal_pub;
   std::shared_ptr<Core::Subscriber<Odometry>> _odometry_sub;
   std::shared_ptr<Core::Publisher<MarkerArray>> _octree_pub;
   std::shared_ptr<Core::Publisher<MarkerArray>> _octree_layers_pub;
   std::shared_ptr<Core::Publisher<Path>> _path_pub;
-  std::shared_ptr<Core::Publisher<Path>> _local_path_pub;
   std::shared_ptr<Core::ActionServer<ReplanRequest, GenericResponse>>
       _planner_server;
   Odometry::Reader _last_odometry;

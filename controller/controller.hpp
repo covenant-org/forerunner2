@@ -19,7 +19,7 @@ using namespace std::chrono_literals;
 class Controller : public Core::Vertex {
  public:
   Controller(Core::ArgumentParser parser);
-  ~Controller(){};
+  ~Controller() {};
   void control();
   void run() override;
   void smooth_path();
@@ -31,6 +31,7 @@ class Controller : public Core::Vertex {
   std::shared_ptr<Core::Subscriber<Path>> _path_sub;
   std::shared_ptr<Core::Subscriber<Odometry>> _odometry_sub;
   std::shared_ptr<Core::Subscriber<Telemetry>> _telemetry_sub;
+  std::shared_ptr<Core::Subscriber<Position>> _goal_sub;
   std::shared_ptr<Core::ActionClient<Command, GenericResponse>>
       _controller_client;
   std::shared_ptr<Core::ActionClient<MissionCommand, GenericResponse>>
@@ -54,6 +55,7 @@ class Controller : public Core::Vertex {
 
   void planned_path_cb(const Core::IncomingMessage<Path> &);
   void path_cb(const Core::IncomingMessage<Path> &);
+  void goal_cb(const Core::IncomingMessage<Position> &);
   void local_pose_cb(const Core::IncomingMessage<PoseStamped> &);
   void odometry_cb(const Core::IncomingMessage<Odometry> &);
   void telemetry_cb(const Core::IncomingMessage<Telemetry> &);
@@ -66,6 +68,9 @@ class Controller : public Core::Vertex {
   Eigen::Vector3f temp_goal;
   Eigen::Vector3f home_position;
   Eigen::Quaterniond temp_orientation;
+  Eigen::Vector3f _goal_target;
+  Eigen::Vector3f _local_pose;
+  bool _original_local_pose_stored;
 };
 //
 #endif

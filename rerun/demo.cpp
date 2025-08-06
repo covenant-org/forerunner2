@@ -30,6 +30,8 @@ Demo::Demo(Core::ArgumentParser args) : Core::Vertex(args) {
       std::bind(&Demo::point_cloud_cb, this, std::placeholders::_1));
   this->_map_sub = this->create_subscriber<PointCloud>(
       "map", std::bind(&Demo::map_cloud_cb, this, std::placeholders::_1));
+  this->_goal_sub = this->create_subscriber<Position>(
+      "goal", std::bind(&Demo::goal_cb, this, std::placeholders::_1));
   this->_mic_sub = this->create_subscriber<StereoMic>(
       "mic", std::bind(&Demo::mic_cb, this, std::placeholders::_1));
   this->_odom_sub = this->create_subscriber<Odometry>(
@@ -42,9 +44,6 @@ Demo::Demo(Core::ArgumentParser args) : Core::Vertex(args) {
   this->_planned_path_sub = this->create_subscriber<Path>(
       "planned_path",
       std::bind(&Demo::planned_path_cb, this, std::placeholders::_1));
-  this->_local_planned_path_sub = this->create_subscriber<Path>(
-      "local_planned_path",
-      std::bind(&Demo::local_planned_path_cb, this, std::placeholders::_1));
 }
 
 rerun::Color Demo::distance_to_color(float distance) {
@@ -141,11 +140,6 @@ void Demo::planned_path_cb(const Core::IncomingMessage<Path> &msg) {
   this->render_path(msg, "path/points", "path/arrows");
 }
 
-void Demo::local_planned_path_cb(const Core::IncomingMessage<Path> &msg) {
-  this->_logger.info("local_planned_path_cb was called");
-  this->render_path(msg, "local_path/points", "local_path/arrows");
-}
-
 void Demo::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
   auto content = msg.content;
   auto q = msg.content.getQ();
@@ -157,6 +151,31 @@ void Demo::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
                                            -position.getZ()}})
                       .with_quaternions({rerun::components::RotationQuat(
                           {q.getX(), q.getY(), q.getZ(), q.getW()})}));
+  this->_rec->log("drone/position",
+                  rerun::Boxes3D::from_centers_and_sizes(
+                      {{position.getX(), position.getY(), -position.getZ()}},
+                      {{0.3, 0.3, 0.3}}));
+
+  this->_rec->log("drone/coords_x",
+                  rerun::Scalars(static_cast<double>(position.getX())));
+  this->_rec->log("drone/coords_y",
+                  rerun::Scalars(static_cast<double>(position.getY())));
+  this->_rec->log("drone/coords_z",
+                  rerun::Scalars(static_cast<double>(position.getZ())));
+}
+
+void Demo::goal_cb(const Core::IncomingMessage<Position> &msg) {
+  auto content = msg.content;
+  this->_rec->log("goal/position",
+                  rerun::Boxes3D::from_centers_and_sizes(
+                      {{content.getX(), content.getY(), -content.getZ()}},
+                      {{0.3, 0.3, 0.3}}));
+  this->_rec->log("goal/coords_x",
+                  rerun::Scalars(static_cast<double>(content.getX())));
+  this->_rec->log("goal/coords_y",
+                  rerun::Scalars(static_cast<double>(content.getY())));
+  this->_rec->log("goal/coords_z",
+                  rerun::Scalars(static_cast<double>(content.getZ())));
 }
 
 void Demo::octree_cb(const Core::IncomingMessage<MarkerArray> &msg) {

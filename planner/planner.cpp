@@ -25,7 +25,7 @@ Planner::Planner(Core::ArgumentParser parser,
       this->create_publisher<MarkerArray>("octree_layers");
 
   this->_path_pub = this->create_publisher<Path>("planned_path");
-  this->_local_path_pub = this->create_publisher<Path>("local_planned_path");
+  this->_goal_pub = this->create_publisher<Position>("goal");
 
   this->_cloud_sub = this->create_subscriber<PointCloud>(
       "point_cloud",
@@ -95,14 +95,10 @@ void Planner::planner_server_cb(const Core::IncomingMessage<ReplanRequest> &req,
         this->_received_goal = false;
         res.setCode(422);
         res.setMessage("goal is too close");
-      } else if (!this->_planning) {
-        this->_planning = true;
+      } else {
         this->run_planner(start);
         res.setCode(200);
         res.setMessage("ok");
-      } else {
-        res.setCode(301);
-        res.setMessage("planner is busy");
       }
       break;
     }
@@ -333,13 +329,17 @@ void Planner::goal_server_cb(const Core::IncomingMessage<Position> &msg,
   _goal_msg.y() = msg.content.getY();
   _goal_msg.z() = msg.content.getZ();
 
-  auto *drone_transform = new Eigen::Affine3d(Eigen::Isometry3d(
-      Eigen::Translation3d(_drone_pose.position.x(), _drone_pose.position.y(),
+  auto *drone_transform = new Eigen::Affine3d(Eigen::Translation3d(_drone_pose.position.x(), _drone_pose.position.y(),
                            _drone_pose.position.z()) *
       Eigen::Quaterniond(
           _drone_pose.orientation.w(), _drone_pose.orientation.x(),
-          _drone_pose.orientation.y(), _drone_pose.orientation.z())));
-  // auto transformed_goal = drone_transform * goal;
+          _drone_pose.orientation.y(), _drone_pose.orientation.z()));
+  auto goal_msg = this->_goal_pub->new_msg();
+  auto transformed_goal = *drone_transform * goal;
+  goal_msg.content.setX(transformed_goal.x());
+  goal_msg.content.setY(transformed_goal.y());
+  goal_msg.content.setZ(transformed_goal.z());
+  goal_msg.publish();
 
   SimplePlanner::PlanRequest request;
   request.type = SimplePlanner::RequestType::START;
@@ -358,11 +358,6 @@ void Planner::result_cb(SimplePlanner::PlanResponse response) {
     // If request is a start request just recover path and do transformations
     this->_logger.info("received start request");
     this->_path_sequence = response.path_id;
-    auto local_msg = this->_local_path_pub->new_msg();
-    Eigen::Affine3d identity = Eigen::Isometry3d::Identity();
-    SimplePlanner::pathToMsg(response.path, local_msg.content, _goal_msg,
-                             identity);
-    local_msg.publish();
 
     Eigen::Affine3d *saved_transform =
         static_cast<Eigen::Affine3d *>(response.request.metadata);
@@ -378,7 +373,7 @@ void Planner::result_cb(SimplePlanner::PlanResponse response) {
         Eigen::Quaterniond(
             _drone_pose.orientation.w(), _drone_pose.orientation.x(),
             _drone_pose.orientation.y(), _drone_pose.orientation.z())));
-    auto relative_transform = current_transform * saved_transform->inverse();
+    auto relative_transform = saved_transform->inverse() * current_transform;
 
     // update with latest values
     SimplePlanner::transform_path(msg.content, relative_transform);
