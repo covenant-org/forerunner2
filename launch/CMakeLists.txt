@@ -1,16 +1,10 @@
 cmake_minimum_required(VERSION 3.10)
 project(launch)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
 find_package(Boost REQUIRED COMPONENTS system filesystem program_options)
 include_directories(${Boost_INCLUDE_DIRS})
 
 find_package(yaml-cpp REQUIRED)
-
-
-
 
 add_executable(${PROJECT_NAME} launch.cpp nodes_yaml_parser.cpp)
 add_executable(executable_test test/executable_test.cpp)
