@@ -16,7 +16,9 @@ class Zed : Core::Vertex {
  private:
   Camera _camera;
   std::shared_ptr<Core::Publisher<PointCloud>> _cloud_point_pub;
+  std::shared_ptr<Core::Publisher<PointCloud>> _map_pub;
   pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>* _cloud_encoder;
+  pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>* _map_encoder;
 
  public:
   Zed(const Core::ArgumentParser&);

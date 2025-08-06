@@ -36,17 +36,22 @@ Zed::Zed(const Core::ArgumentParser &parser) : Core::Vertex(parser) {
     throw std::runtime_error("zed camera can't start");
   }
 
-  sl::PositionalTrackingParameters ptp;
-  ptp.mode = sl::POSITIONAL_TRACKING_MODE::GEN_3;
-  returned_state = _camera.enablePositionalTracking(ptp);
-  if (returned_state > ERROR_CODE::SUCCESS) {
-    _camera.close();
-    throw std::runtime_error("zed camera can't enable positional tracking");
+  if (parser.get_argument<bool>("--map")) {
+    sl::PositionalTrackingParameters ptp;
+    ptp.mode = sl::POSITIONAL_TRACKING_MODE::GEN_3;
+    returned_state = _camera.enablePositionalTracking(ptp);
+    if (returned_state > ERROR_CODE::SUCCESS) {
+      _camera.close();
+      throw std::runtime_error("zed camera can't enable positional tracking");
+    }
+    this->_map_pub = this->create_publisher<PointCloud>("map");
   }
 
   pcl::io::compression_Profiles_e compressionProfile =
       pcl::io::MED_RES_ONLINE_COMPRESSION_WITH_COLOR;
   _cloud_encoder = new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>(
+      compressionProfile, false);
+  _map_encoder = new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>(
       compressionProfile, false);
 }
 
@@ -91,8 +96,8 @@ void Zed::run() {
 
       auto ptr = point_cloud.getPtr<float>();
       pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
-          new pcl::PointCloud<pcl::PointXYZRGBA>(default_image_size.height,
-                                                 default_image_size.width));
+          new pcl::PointCloud<pcl::PointXYZRGBA>(default_image_size.width,
+                                                 default_image_size.height));
       cloud->width = default_image_size.width;
       cloud->height = default_image_size.height;
 
@@ -115,6 +120,8 @@ void Zed::run() {
           ::capnp::Data::Reader((unsigned char *)buffer.data(), buffer.size());
       msg.content.setData(reader);
       msg.publish();
+
+      if (!parser.get_argument<bool>("--map")) continue;
 
       tracking_state = _camera.getPosition(pose);
       if (tracking_state == POSITIONAL_TRACKING_STATE::OK) {
@@ -142,6 +149,28 @@ void Zed::run() {
           request_new_mesh = true;
           ts_last = std::chrono::high_resolution_clock::now();
         }
+        auto points = map.getNumberOfPoints();
+        pcl::PointCloud<pcl::PointXYZRGBA>::Ptr map_cloud(
+            new pcl::PointCloud<pcl::PointXYZRGBA>(points, 1));
+        memcpy(map_cloud->points.data(), map.vertices.data(),
+               sizeof(sl::float4) * points);
+        pcl::PassThrough<pcl::PointXYZRGBA> pass;
+        pass.setInputCloud(map_cloud);
+        pass.setFilterFieldName("z");
+        pass.setFilterLimits(0.0, 10.0);
+        pass.filter(*map_cloud);
+        auto msg = this->_cloud_point_pub->new_msg();
+        msg.content.setWidth(points);
+        msg.content.setHeight(1);
+        std::stringstream encoded_cloud;
+        _map_encoder->encodePointCloud(map_cloud, encoded_cloud);
+        auto buffer = encoded_cloud.str();
+        msg.content.initData(buffer.size());
+        msg.content.setSize(buffer.size());
+        auto reader = ::capnp::Data::Reader((unsigned char *)buffer.data(),
+                                            buffer.size());
+        msg.content.setData(reader);
+        msg.publish();
       }
     }
   }
@@ -149,6 +178,10 @@ void Zed::run() {
 
 int main(int argc, char **argv) {
   Core::BaseArgumentParser arguments(argc, argv);
+  arguments.add_argument("--map")
+      .default_value(false)
+      .implicit_value(true)
+      .help("Start requesting maping feature from zed");
   auto zed = Zed(arguments);
   zed.run();
 
