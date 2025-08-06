@@ -1,3 +1,4 @@
+#include "argument_parser.hpp"
 #include "publisher.hpp"
 #include "vertex.hpp"
 #include <capnp_schemas/zed.capnp.h>
@@ -18,7 +19,7 @@ class Zed : Core::Vertex {
   pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>* _cloud_encoder;
 
  public:
-  Zed(int, char**);
+  Zed(const Core::ArgumentParser&);
   void run();
 };
 

@@ -1,3 +1,4 @@
+#include "argument_parser.hpp"
 #include "zed.hpp"
 #include <capnp_schemas/zed.capnp.h>
 #include <chrono>
@@ -18,7 +19,7 @@
 
 using namespace sl;
 
-Zed::Zed(int argc, char **argv) : Core::Vertex(argc, argv) {
+Zed::Zed(const Core::ArgumentParser &parser) : Core::Vertex(parser) {
   this->_cloud_point_pub = this->create_publisher<PointCloud>("point_cloud");
 
   _camera = Camera();
@@ -37,9 +38,8 @@ Zed::Zed(int argc, char **argv) : Core::Vertex(argc, argv) {
 
   sl::PositionalTrackingParameters ptp;
   ptp.mode = sl::POSITIONAL_TRACKING_MODE::GEN_3;
-  returned_state = zed.enablePositionalTracking(ptp);
+  returned_state = _camera.enablePositionalTracking(ptp);
   if (returned_state > ERROR_CODE::SUCCESS) {
-    print("Enabling positional tracking failed: ", returned_state);
     _camera.close();
     throw std::runtime_error("zed camera can't enable positional tracking");
   }
@@ -79,7 +79,7 @@ void Zed::run() {
   sl::Resolution default_image_size = _camera.getRetrieveMeasureResolution();
   sl::Mat point_cloud;
 
-  chrono::high_resolution_clock::time_point ts_last;
+  std::chrono::high_resolution_clock::time_point ts_last;
   while (true) {
     if (_camera.grab(runtime_parameters) == ERROR_CODE::SUCCESS) {
       // get cloud point image
@@ -136,7 +136,7 @@ void Zed::run() {
         }
 
         // If the point cloud is ready to be retrieved
-        if (zed.getSpatialMapRequestStatusAsync() == ERROR_CODE::SUCCESS &&
+        if (_camera.getSpatialMapRequestStatusAsync() == ERROR_CODE::SUCCESS &&
             !request_new_mesh) {
           _camera.retrieveSpatialMapAsync(map);
           request_new_mesh = true;
@@ -148,7 +148,8 @@ void Zed::run() {
 }
 
 int main(int argc, char **argv) {
-  auto zed = Zed(argc, argv);
+  Core::BaseArgumentParser arguments(argc, argv);
+  auto zed = Zed(arguments);
   zed.run();
 
   return 0;
