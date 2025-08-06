@@ -1,5 +1,6 @@
 #include "zed.hpp"
 #include <capnp_schemas/zed.capnp.h>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <pcl/common/point_tests.h>
@@ -34,6 +35,15 @@ Zed::Zed(int argc, char **argv) : Core::Vertex(argc, argv) {
     throw std::runtime_error("zed camera can't start");
   }
 
+  sl::PositionalTrackingParameters ptp;
+  ptp.mode = sl::POSITIONAL_TRACKING_MODE::GEN_3;
+  returned_state = zed.enablePositionalTracking(ptp);
+  if (returned_state > ERROR_CODE::SUCCESS) {
+    print("Enabling positional tracking failed: ", returned_state);
+    _camera.close();
+    throw std::runtime_error("zed camera can't enable positional tracking");
+  }
+
   pcl::io::compression_Profiles_e compressionProfile =
       pcl::io::MED_RES_ONLINE_COMPRESSION_WITH_COLOR;
   _cloud_encoder = new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>(
@@ -41,10 +51,37 @@ Zed::Zed(int argc, char **argv) : Core::Vertex(argc, argv) {
 }
 
 void Zed::run() {
+  Pose pose;
+  FusedPointCloud map;
+  RuntimeParameters runtime_parameters;
+  runtime_parameters.confidence_threshold = 30;
+  POSITIONAL_TRACKING_STATE tracking_state = POSITIONAL_TRACKING_STATE::OFF;
+  bool wait_for_mapping = true;
+  bool request_new_mesh = true;
+
+  SpatialMappingParameters spatial_mapping_parameters;
+  spatial_mapping_parameters.map_type =
+      SpatialMappingParameters::SPATIAL_MAP_TYPE::FUSED_POINT_CLOUD;
+  // Set mapping range, it will set the resolution accordingly (a higher range,
+  // a lower resolution)
+  spatial_mapping_parameters.set(
+      sl::SpatialMappingParameters::MAPPING_RESOLUTION::MEDIUM);
+  spatial_mapping_parameters.set(
+      sl::SpatialMappingParameters::MAPPING_RANGE::MEDIUM);
+  // Request partial updates only (only the last updated chunks need to be
+  // re-draw)
+  spatial_mapping_parameters.use_chunk_only = true;
+  // Stability counter defines how many times a stable 3D points should be seen
+  // before it is integrated into the spatial mapping
+  spatial_mapping_parameters.stability_counter = 10;
+  spatial_mapping_parameters.decay = 0.1;
+
   sl::Resolution default_image_size = _camera.getRetrieveMeasureResolution();
   sl::Mat point_cloud;
+
+  chrono::high_resolution_clock::time_point ts_last;
   while (true) {
-    if (_camera.grab() == ERROR_CODE::SUCCESS) {
+    if (_camera.grab(runtime_parameters) == ERROR_CODE::SUCCESS) {
       // get cloud point image
       _camera.retrieveMeasure(point_cloud, MEASURE::XYZRGBA, MEM::CPU,
                               default_image_size);
@@ -78,6 +115,34 @@ void Zed::run() {
           ::capnp::Data::Reader((unsigned char *)buffer.data(), buffer.size());
       msg.content.setData(reader);
       msg.publish();
+
+      tracking_state = _camera.getPosition(pose);
+      if (tracking_state == POSITIONAL_TRACKING_STATE::OK) {
+        if (wait_for_mapping) {
+          _camera.enableSpatialMapping(spatial_mapping_parameters);
+          wait_for_mapping = false;
+          continue;
+        }
+
+        if (request_new_mesh) {
+          auto duration =
+              std::chrono::duration_cast<std::chrono::milliseconds>(
+                  std::chrono::high_resolution_clock::now() - ts_last)
+                  .count();
+          if (duration > 100) {
+            _camera.requestSpatialMapAsync();
+            request_new_mesh = false;
+          }
+        }
+
+        // If the point cloud is ready to be retrieved
+        if (zed.getSpatialMapRequestStatusAsync() == ERROR_CODE::SUCCESS &&
+            !request_new_mesh) {
+          _camera.retrieveSpatialMapAsync(map);
+          request_new_mesh = true;
+          ts_last = std::chrono::high_resolution_clock::now();
+        }
+      }
     }
   }
 }
