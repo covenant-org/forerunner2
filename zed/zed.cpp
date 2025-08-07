@@ -121,7 +121,7 @@ void Zed::run() {
       msg.content.setData(reader);
       msg.publish();
 
-      if (!parser.get_argument<bool>("--map")) continue;
+      if (!_args.get_argument<bool>("--map")) continue;
 
       tracking_state = _camera.getPosition(pose);
       if (tracking_state == POSITIONAL_TRACKING_STATE::OK) {

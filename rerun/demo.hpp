@@ -17,6 +17,7 @@
 class Demo : Core::Vertex {
  private:
   std::shared_ptr<Core::Subscriber<PointCloud>> _sub;
+  std::shared_ptr<Core::Subscriber<PointCloud>> _map_sub;
   std::shared_ptr<Core::Subscriber<StereoMic>> _mic_sub;
   std::shared_ptr<Core::Subscriber<Odometry>> _odom_sub;
   std::shared_ptr<Core::Subscriber<MarkerArray>> _octree_sub;
@@ -28,6 +29,7 @@ class Demo : Core::Vertex {
 
  public:
   void point_cloud_cb(const Core::IncomingMessage<PointCloud> &);
+  void map_cloud_cb(const Core::IncomingMessage<PointCloud> &);
   void mic_cb(const Core::IncomingMessage<StereoMic> &);
   void odom_cb(const Core::IncomingMessage<Odometry> &);
   void octree_cb(const Core::IncomingMessage<MarkerArray> &);

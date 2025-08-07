@@ -21,6 +21,9 @@ Demo::Demo(Core::ArgumentParser args) : Core::Vertex(args) {
   this->_sub = this->create_subscriber<PointCloud>(
       "point_cloud",
       std::bind(&Demo::point_cloud_cb, this, std::placeholders::_1));
+  this->_map_sub = this->create_subscriber<PointCloud>(
+      "point_cloud",
+      std::bind(&Demo::map_cloud_cb, this, std::placeholders::_1));
   this->_mic_sub = this->create_subscriber<StereoMic>(
       "mic", std::bind(&Demo::mic_cb, this, std::placeholders::_1));
   this->_odom_sub = this->create_subscriber<Odometry>(
@@ -268,6 +271,61 @@ void Demo::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
     this->_rec->log("stats/total_received",
                     rerun::Scalars(static_cast<double>(num_points)));
     this->_rec->log("stats/image_dimensions",
+                    rerun::TextLog("Dimensions: " + std::to_string(width) +
+                                   "x" + std::to_string(height)));
+  }
+}
+
+void Demo::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
+  auto data_reader = msg.content.getData();
+  auto width = msg.content.getWidth();
+  auto height = msg.content.getHeight();
+
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(
+      new pcl::PointCloud<pcl::PointXYZ>());
+  std::stringstream buffer(
+      std::string((char *)data_reader.begin(), data_reader.size()));
+  try {
+    _point_cloud_decoder->decodePointCloud(buffer, cloud);
+  } catch (const std::exception &e) {
+    std::cerr << "Error while decoding: " << e.what() << std::endl;
+    return;
+  }
+
+  size_t num_points = cloud->points.size();
+
+  std::vector<rerun::Position3D> positions;
+  std::vector<rerun::Color> colors;
+
+  positions.reserve(num_points);
+
+  for (size_t i = 0; i < num_points; ++i) {
+    size_t idx = i * 4;
+    auto point = cloud->points[i];
+    float x = point.x;
+    float y = point.y;
+    float z = point.z;
+    // float_data[idx + 3] is typically confidence or unused
+
+    // Filter out invalid points (NaN or infinite values)
+    positions.emplace_back(x, y, z);
+
+    // Color based on distance for better visualization
+    float distance = sqrt(x * x + y * y + z * z);
+    auto color = distance_to_color(distance);
+    colors.push_back(color);
+  }
+  // Log to Rerun
+  if (!positions.empty()) {
+    this->_rec->log("map/points",
+                    rerun::Points3D(positions).with_colors(colors));
+
+    // Log statistics
+    this->_rec->log("stats/map/point_count",
+                    rerun::Scalars(static_cast<double>(positions.size())));
+    this->_rec->log("stats/map/total_received",
+                    rerun::Scalars(static_cast<double>(num_points)));
+    this->_rec->log("stats/map/image_dimensions",
                     rerun::TextLog("Dimensions: " + std::to_string(width) +
                                    "x" + std::to_string(height)));
   }
