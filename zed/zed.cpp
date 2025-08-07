@@ -107,7 +107,7 @@ void Zed::run() {
       pcl::PassThrough<pcl::PointXYZRGBA> pass;
       pass.setInputCloud(cloud);
       pass.setFilterFieldName("z");
-      pass.setFilterLimits(0.0, 10.0);
+      pass.setFilterLimits(0.0, 30.0);
       pass.filter(*cloud);
 
       std::stringstream encoded_cloud;
@@ -124,9 +124,11 @@ void Zed::run() {
       if (!_args.get_argument<bool>("--map")) continue;
 
       tracking_state = _camera.getPosition(pose);
+      _logger.debug("Got position");
       if (tracking_state == POSITIONAL_TRACKING_STATE::OK) {
         if (wait_for_mapping) {
           _camera.enableSpatialMapping(spatial_mapping_parameters);
+          _logger.debug("Enabled spatial mapping");
           wait_for_mapping = false;
           continue;
         }
@@ -136,8 +138,9 @@ void Zed::run() {
               std::chrono::duration_cast<std::chrono::milliseconds>(
                   std::chrono::high_resolution_clock::now() - ts_last)
                   .count();
-          if (duration > 100) {
+          if (duration > 1000) {
             _camera.requestSpatialMapAsync();
+            _logger.debug("Requested new mesh");
             request_new_mesh = false;
           }
         }
@@ -146,31 +149,35 @@ void Zed::run() {
         if (_camera.getSpatialMapRequestStatusAsync() == ERROR_CODE::SUCCESS &&
             !request_new_mesh) {
           _camera.retrieveSpatialMapAsync(map);
+          _logger.debug("Retrieved map");
           request_new_mesh = true;
           ts_last = std::chrono::high_resolution_clock::now();
+          auto points = map.getNumberOfPoints();
+          pcl::PointCloud<pcl::PointXYZRGBA>::Ptr map_cloud(
+              new pcl::PointCloud<pcl::PointXYZRGBA>(points, 1));
+          memcpy(map_cloud->points.data(), map.vertices.data(),
+                 sizeof(sl::float4) * points);
+          _logger.debug("Copied cloud");
+          pcl::PassThrough<pcl::PointXYZRGBA> pass;
+          pass.setInputCloud(map_cloud);
+          pass.setFilterFieldName("z");
+          pass.setFilterLimits(0.0, 1000.0);
+          pass.filter(*map_cloud);
+          _logger.debug("Filtered cloud");
+          auto msg = this->_map_pub->new_msg();
+          msg.content.setWidth(points);
+          msg.content.setHeight(1);
+          std::stringstream encoded_cloud;
+          _map_encoder->encodePointCloud(map_cloud, encoded_cloud);
+          auto buffer = encoded_cloud.str();
+          msg.content.initData(buffer.size());
+          msg.content.setSize(buffer.size());
+          auto reader = ::capnp::Data::Reader((unsigned char *)buffer.data(),
+                                              buffer.size());
+          msg.content.setData(reader);
+          msg.publish();
+          _logger.debug("Sent map");
         }
-        auto points = map.getNumberOfPoints();
-        pcl::PointCloud<pcl::PointXYZRGBA>::Ptr map_cloud(
-            new pcl::PointCloud<pcl::PointXYZRGBA>(points, 1));
-        memcpy(map_cloud->points.data(), map.vertices.data(),
-               sizeof(sl::float4) * points);
-        pcl::PassThrough<pcl::PointXYZRGBA> pass;
-        pass.setInputCloud(map_cloud);
-        pass.setFilterFieldName("z");
-        pass.setFilterLimits(0.0, 10.0);
-        pass.filter(*map_cloud);
-        auto msg = this->_cloud_point_pub->new_msg();
-        msg.content.setWidth(points);
-        msg.content.setHeight(1);
-        std::stringstream encoded_cloud;
-        _map_encoder->encodePointCloud(map_cloud, encoded_cloud);
-        auto buffer = encoded_cloud.str();
-        msg.content.initData(buffer.size());
-        msg.content.setSize(buffer.size());
-        auto reader = ::capnp::Data::Reader((unsigned char *)buffer.data(),
-                                            buffer.size());
-        msg.content.setData(reader);
-        msg.publish();
       }
     }
   }

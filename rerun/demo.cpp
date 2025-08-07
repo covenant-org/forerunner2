@@ -15,6 +15,8 @@
 Demo::Demo(Core::ArgumentParser args) : Core::Vertex(args) {
   this->_point_cloud_decoder =
       new pcl::io::OctreePointCloudCompression<pcl::PointXYZ>();
+  this->_map_decoder =
+      new pcl::io::OctreePointCloudCompression<pcl::PointXYZ>();
   this->_rec = std::make_shared<rerun::RecordingStream>("rerun_demo");
   this->_rec->spawn().exit_on_failure();
 
@@ -279,13 +281,14 @@ void Demo::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
   auto data_reader = msg.content.getData();
   auto width = msg.content.getWidth();
   auto height = msg.content.getHeight();
+  _logger.debug("Help");
 
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(
       new pcl::PointCloud<pcl::PointXYZ>());
   std::stringstream buffer(
       std::string((char *)data_reader.begin(), data_reader.size()));
   try {
-    _point_cloud_decoder->decodePointCloud(buffer, cloud);
+    _map_decoder->decodePointCloud(buffer, cloud);
   } catch (const std::exception &e) {
     std::cerr << "Error while decoding: " << e.what() << std::endl;
     return;

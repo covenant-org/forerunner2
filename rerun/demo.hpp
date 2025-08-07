@@ -26,6 +26,7 @@ class Demo : Core::Vertex {
   std::shared_ptr<Core::Subscriber<Path>> _local_planned_path_sub;
   std::shared_ptr<rerun::RecordingStream> _rec;
   pcl::io::OctreePointCloudCompression<pcl::PointXYZ> *_point_cloud_decoder;
+  pcl::io::OctreePointCloudCompression<pcl::PointXYZ> *_map_decoder;
 
  public:
   void point_cloud_cb(const Core::IncomingMessage<PointCloud> &);
