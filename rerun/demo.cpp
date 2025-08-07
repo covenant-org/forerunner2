@@ -22,8 +22,7 @@ Demo::Demo(Core::ArgumentParser args) : Core::Vertex(args) {
       "point_cloud",
       std::bind(&Demo::point_cloud_cb, this, std::placeholders::_1));
   this->_map_sub = this->create_subscriber<PointCloud>(
-      "point_cloud",
-      std::bind(&Demo::map_cloud_cb, this, std::placeholders::_1));
+      "map", std::bind(&Demo::map_cloud_cb, this, std::placeholders::_1));
   this->_mic_sub = this->create_subscriber<StereoMic>(
       "mic", std::bind(&Demo::mic_cb, this, std::placeholders::_1));
   this->_odom_sub = this->create_subscriber<Odometry>(
