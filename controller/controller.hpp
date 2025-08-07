@@ -25,6 +25,9 @@ class Controller : public Core::Vertex {
   void smooth_path();
 
  private:
+  std::chrono::steady_clock::time_point last_replan_time;
+  const int REPLAN_COOLDOWN_MS = 3000;
+
   std::shared_ptr<Core::Publisher<PoseStamped>> _reached_goal_pub;
   std::shared_ptr<Core::Publisher<Path>> _smoothed_path_pub;
   std::shared_ptr<Core::Subscriber<HomePosition>> _home_pos_sub;

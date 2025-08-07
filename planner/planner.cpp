@@ -9,6 +9,7 @@
 #include <capnp_schemas/generics.capnp.h>
 #include <capnp_schemas/planner.capnp.h>
 #include <cmath>
+#include <eigen3/Eigen/src/Core/Matrix.h>
 #include <memory>
 #include <pcl/common/transforms.h>
 #include <pcl/compression/octree_pointcloud_compression.h>
@@ -126,7 +127,7 @@ void Planner::run_planner(ReplanRequest::Start::Reader &msg) {
   request.type = SimplePlanner::RequestType::REPLAN;
   request.metadata = (void *)new RequestMetadata(drone_transform);
 
-  Eigen::Vector3d goal(pos.getX(), pos.getY(), pos.getZ());
+  Eigen::Vector3d goal(_goal_msg.x(), _goal_msg.y(), _goal_msg.z());
   // auto transformed_goal = drone_transform * goal;
   request.goal << goal.x(), goal.y(), goal.z();
 
@@ -270,14 +271,18 @@ void Planner::cloud_point_cb(const Core::IncomingMessage<PointCloud> &msg) {
   // Maybe implement a buffer to be able to extract at a specific time
   // also include the header in the mavlink pub
   // In previous implementation this was against the frame of the drone
-  // Eigen::Affine3d eigen_transform(Eigen::Isometry3d(
-  //     Eigen::Translation3d(_drone_pose.position.x(),
-  //     _drone_pose.position.y(),
+  Eigen::Affine3d camera_to_drone = Eigen::Affine3d::Identity();
+  // defined in the model from the PX4 repo for the x500_depth model.sdf
+  camera_to_drone.translation() = Eigen::Vector3d(0.12, 0.03, 0.242);
+
+  // Eigen::Affine3d drone_ned(Eigen::Isometry3d(
+  //     Eigen::Translation3d(_drone_pose.position.x(), _drone_pose.position.y(),
   //                          _drone_pose.position.z()) *
   //     Eigen::Quaterniond(
   //         _drone_pose.orientation.w(), _drone_pose.orientation.x(),
   //         _drone_pose.orientation.y(), _drone_pose.orientation.z())));
-  // pcl::transformPointCloud(*cloud, *cloud, eigen_transform);
+  // Eigen::Affine3d camera_to_ned = drone_ned * camera_to_drone;
+  pcl::transformPointCloud(*cloud, *cloud, camera_to_drone);
 
   if (cloud->points.size() == 0) {
     this->_logger.info("empty cloud");
@@ -329,7 +334,8 @@ void Planner::goal_server_cb(const Core::IncomingMessage<Position> &msg,
   _goal_msg.y() = msg.content.getY();
   _goal_msg.z() = msg.content.getZ();
 
-  auto *drone_transform = new Eigen::Affine3d(Eigen::Translation3d(_drone_pose.position.x(), _drone_pose.position.y(),
+  auto *drone_transform = new Eigen::Affine3d(
+      Eigen::Translation3d(_drone_pose.position.x(), _drone_pose.position.y(),
                            _drone_pose.position.z()) *
       Eigen::Quaterniond(
           _drone_pose.orientation.w(), _drone_pose.orientation.x(),

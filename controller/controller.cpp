@@ -69,32 +69,47 @@ void Controller::odometry_cb(const Core::IncomingMessage<Odometry> &msg) {
   _quat = Eigen::Quaternionf(q.getW(), q.getX(), q.getY(), q.getZ());
   _position = Eigen::Vector3f(pos.getX(), pos.getY(), pos.getZ());
   this->_local_pose = _position;
-  this->_logger.debug("local_pose x: %f, y: %f, z: %f", this->_local_pose.x(),
-                      this->_local_pose.y(), this->_local_pose.z());
+  // this->_logger.debug("local_pose x: %f, y: %f, z: %f",
+  // this->_local_pose.x(),
+  //                     this->_local_pose.y(), this->_local_pose.z());
 
   this->current_position = Eigen::Vector3f(
       o.getPosition().getX(), o.getPosition().getY(), o.getPosition().getZ());
 
   if (!this->waiting_reponse && this->recived_path &&
       this->index < this->_path.getPoses().size()) {
-    Eigen::Vector3d current_position(
-        o.getPosition().getX(), o.getPosition().getY(), o.getPosition().getZ());
-    Eigen::Quaterniond current_orientation(o.getQ().getW(), o.getQ().getX(),
-                                           o.getQ().getY(), o.getQ().getZ());
+    Eigen::Vector3d current_position(pos.getX(), pos.getY(), pos.getZ());
+    Eigen::Quaterniond current_orientation(q.getW(), q.getX(), q.getY(),
+                                           q.getZ());
 
     double dist = std::sqrt((_position - this->temp_goal).squaredNorm());
     double tolerance = this->get_argument<double>("--goal-tolerance");
-    this->_logger.debug("Distance to goal: %f, tolerance: %f", dist, tolerance);
+    this->_logger.debug("-Distance to goal: %f, tolerance: %f", dist,
+                        tolerance);
     double angular_dist =
         current_orientation.angularDistance(this->temp_orientation);
-    this->_logger.debug("Orientation to goal: %f", angular_dist);
+    // this->_logger.debug("Orientation to goal: %f", angular_dist);
 
     bool autorequest = this->get_argument<bool>("--autorequest");
     double yaw_tolerance = this->get_argument<double>("--yaw-tolerance");
-    this->_logger.debug("autorequest: %d, yaw_tolerance: %f", autorequest,
-                        yaw_tolerance);
+    this->_logger.debug(
+        "- autorequest: %d, yaw_tolerance: %f, angular dist: %f", autorequest,
+        yaw_tolerance, angular_dist);
 
     if (autorequest && dist < tolerance && angular_dist < yaw_tolerance) {
+      auto now = std::chrono::steady_clock::now();
+      auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                         now - last_replan_time)
+                         .count();
+
+      if (elapsed < REPLAN_COOLDOWN_MS) {
+        this->_logger.debug(
+            "Skipping replan, cooldown active (%d ms remaining)",
+            REPLAN_COOLDOWN_MS - elapsed);
+        return;
+      }
+
+      last_replan_time = now;
       auto msg = this->_planner_client->new_msg();
       auto start = msg.content.initStart();
       start.setCurrentPathIndex(this->index);
@@ -227,6 +242,9 @@ void Controller::control() {
       this->_logger.error("error in takeoff");
       return;
     }
+    this->_vehicle_initial_position.x() = _position.x();
+    this->_vehicle_initial_position.y() = _position.y();
+    this->_vehicle_initial_position.z() = _position.z();
   }
 
   auto offboard_msg = this->_controller_client->new_msg();
@@ -257,24 +275,29 @@ void Controller::control() {
   }
   this->sent_point += 1;
 
-  this->_logger.debug("publish point");
+  // this->_logger.debug("publish point");
 }
 
 void Controller::publish_trajectory_setpoint(PoseStamped::Reader &pose) {
-  Eigen::Vector3f point(pose.getPose().getPosition().getX(),
-                        pose.getPose().getPosition().getY(),
-                        pose.getPose().getPosition().getZ());
+  auto pos = pose.getPose().getPosition();
+  Eigen::Vector3f point(pos.getX(), pos.getY(), pos.getZ());
 
   Eigen::Vector3f transformed = point;
   double min_height = this->get_argument<double>("--min-height");
-  if (transformed.z() > -min_height) {
-    transformed.z() = -min_height;
-  }
+  // if (transformed.z() > -min_height) {
+  //   transformed.z() = -min_height;
+  // }
 
   double step_size = this->get_argument<double>("--step-size");
   Eigen::Vector3f ePoint(transformed.x(), transformed.y(), transformed.z());
 
   double distance_to_point = (ePoint - this->_last_path_start_position).norm();
+  // this->_logger.debug("pose => x: %f, y: %f, z: %f", pos.getX(), pos.getY(),
+  //                     pos.getZ());
+  // this->_logger.debug("last_path_start_position => x: %f, y: %f, z: %f",
+  //                     this->_last_path_start_position.x(),
+  //                     this->_last_path_start_position.y(),
+  //                     this->_last_path_start_position.z());
   this->_logger.debug("Distance to point: %f", distance_to_point);
   if (distance_to_point > step_size) {
     this->_logger.debug(
@@ -296,8 +319,6 @@ void Controller::publish_trajectory_setpoint(PoseStamped::Reader &pose) {
 
   this->temp_goal =
       Eigen::Vector3f(transformed.x(), transformed.y(), transformed.z());
-  this->_logger.info("temp_goal => x: %f, y: %f, z: %f", this->temp_goal.x(),
-                     this->temp_goal.y(), this->temp_goal.z());
   bool enforce_max_distance =
       this->get_argument<bool>("--enforce-max-distance");
   if (enforce_max_distance) {
