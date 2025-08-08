@@ -16,8 +16,6 @@ set(EXCLUDED_SUBDIRS
     "core"
     "zed"
     "test"
-    "controller"
-    "mavlink"
 )
 
 file(GLOB children RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} */CMakeLists.txt)
