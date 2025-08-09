@@ -297,6 +297,7 @@ void Demo::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
   std::vector<rerun::Color> colors;
 
   positions.reserve(num_points);
+  colors.reserve(num_points);
 
   for (size_t i = 0; i < num_points; ++i) {
     size_t idx = i * 4;

@@ -3,6 +3,7 @@
 #include <capnp_schemas/zed.capnp.h>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <pcl/common/point_tests.h>
 #include <pcl/conversions.h>
@@ -13,13 +14,15 @@
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <pcl/visualization/cloud_viewer.h>
 #include <pthread.h>
 #include <sl/Camera.hpp>
 #include <sstream>
 
 using namespace sl;
 
-Zed::Zed(const Core::ArgumentParser &parser) : Core::Vertex(parser) {
+Zed::Zed(const Core::ArgumentParser &parser)
+    : Core::Vertex(parser), viewer("Test") {
   this->_cloud_point_pub = this->create_publisher<PointCloud>("point_cloud");
 
   _camera = Camera();
@@ -160,21 +163,33 @@ void Zed::run() {
           }
           pcl::PointCloud<pcl::PointXYZRGBA>::Ptr map_cloud(
               new pcl::PointCloud<pcl::PointXYZRGBA>(map_points_size, 1));
-          memcpy(map_cloud->points.data(), map.vertices.data(),
-                 sizeof(sl::float4) * map_points_size);
-          _logger.debug("Copied cloud");
+          for (size_t i = 0; i < map_points_size; i++) {
+            map_cloud->points[i].x = map.vertices[i][0];
+            map_cloud->points[i].y = map.vertices[i][1];
+            map_cloud->points[i].z = map.vertices[i][2];
+            uint32_t color_uint = *(uint32_t *)&map.vertices[i][3];
+            unsigned char *color_uchar = (unsigned char *)&color_uint;
+            color_uint =
+                ((uint32_t)color_uchar[0] << 16 |
+                 (uint32_t)color_uchar[1] << 8 | (uint32_t)color_uchar[2]);
+            map_cloud->points[i].rgb = *reinterpret_cast<float *>(&color_uint);
+          }
+          _logger.debug("Copied %d points", map_points_size);
           pcl::PassThrough<pcl::PointXYZRGBA> map_pass;
           map_pass.setInputCloud(map_cloud);
           map_pass.setFilterFieldName("z");
           map_pass.setFilterLimits(0.0, 100.0);
           map_pass.filter(*map_cloud);
           _logger.debug("Filtered cloud");
+          viewer.showCloud(map_cloud);
+
           auto map_msg = this->_map_pub->new_msg();
           map_msg.content.setWidth(map_points_size);
           map_msg.content.setHeight(1);
+
           std::stringstream map_encoded_cloud;
           _map_encoder->encodePointCloud(map_cloud, map_encoded_cloud);
-          auto map_buffer = map_encoded_cloud.str();
+          std::string map_buffer = map_encoded_cloud.str();
           map_msg.content.initData(map_buffer.size());
           map_msg.content.setSize(map_buffer.size());
           auto map_reader = ::capnp::Data::Reader(
