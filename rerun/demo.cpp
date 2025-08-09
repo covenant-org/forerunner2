@@ -1,9 +1,5 @@
 #include "demo.hpp"
 #include "message.hpp"
-#include "rerun/archetypes/arrows3d.hpp"
-#include "rerun/archetypes/boxes3d.hpp"
-#include "rerun/components/fill_mode.hpp"
-#include "rerun/components/pose_translation3d.hpp"
 #include <array>
 #include <exception>
 #include <iostream>
@@ -14,9 +10,9 @@
 
 Demo::Demo(Core::ArgumentParser args) : Core::Vertex(args) {
   this->_point_cloud_decoder =
-      new pcl::io::OctreePointCloudCompression<pcl::PointXYZ>();
+      new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>();
   this->_map_decoder =
-      new pcl::io::OctreePointCloudCompression<pcl::PointXYZ>();
+      new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>();
   this->_rec = std::make_shared<rerun::RecordingStream>("rerun_demo");
   this->_rec->spawn().exit_on_failure();
 
@@ -227,14 +223,14 @@ void Demo::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
   auto width = msg.content.getWidth();
   auto height = msg.content.getHeight();
 
-  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(
-      new pcl::PointCloud<pcl::PointXYZ>());
+  pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
+      new pcl::PointCloud<pcl::PointXYZRGBA>());
   std::stringstream buffer(
       std::string((char *)data_reader.begin(), data_reader.size()));
   try {
     _point_cloud_decoder->decodePointCloud(buffer, cloud);
   } catch (const std::exception &e) {
-    std::cerr << "Error while decoding: " << e.what() << std::endl;
+    _logger.warn("Error while decoding cloudpoint: %s", e.what());
     return;
   }
 
@@ -283,18 +279,19 @@ void Demo::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
   auto height = msg.content.getHeight();
   _logger.debug("Help");
 
-  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(
-      new pcl::PointCloud<pcl::PointXYZ>());
+  pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
+      new pcl::PointCloud<pcl::PointXYZRGBA>());
   std::stringstream buffer(
       std::string((char *)data_reader.begin(), data_reader.size()));
   try {
     _map_decoder->decodePointCloud(buffer, cloud);
   } catch (const std::exception &e) {
-    std::cerr << "Error while decoding: " << e.what() << std::endl;
+    _logger.warn("Error while decoding map: %s", e.what());
     return;
   }
 
   size_t num_points = cloud->points.size();
+  _logger.debug("Decoded point cloud with %d points", num_points);
 
   std::vector<rerun::Position3D> positions;
   std::vector<rerun::Color> colors;
@@ -307,15 +304,17 @@ void Demo::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
     float x = point.x;
     float y = point.y;
     float z = point.z;
+    if (i % 100 == 0) {
+      _logger.debug("Point %d rgba is %d %d %d %d", i, point.r, point.g,
+                    point.b, point.a);
+    }
     // float_data[idx + 3] is typically confidence or unused
 
     // Filter out invalid points (NaN or infinite values)
     positions.emplace_back(x, y, z);
 
     // Color based on distance for better visualization
-    float distance = sqrt(x * x + y * y + z * z);
-    auto color = distance_to_color(distance);
-    colors.push_back(color);
+    colors.push_back(rerun::Color(point.r, point.g, point.b));
   }
   // Log to Rerun
   if (!positions.empty()) {

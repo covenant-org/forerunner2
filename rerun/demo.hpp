@@ -8,6 +8,7 @@
 #include <capnp_schemas/visualization_msgs.capnp.h>
 #include <capnp_schemas/zed.capnp.h>
 #include <pcl/compression/octree_pointcloud_compression.h>
+#include <pcl/impl/point_types.hpp>
 #include <rerun.hpp>
 #include <rerun/recording_stream.hpp>
 
@@ -25,8 +26,8 @@ class Demo : Core::Vertex {
   std::shared_ptr<Core::Subscriber<Path>> _planned_path_sub;
   std::shared_ptr<Core::Subscriber<Path>> _local_planned_path_sub;
   std::shared_ptr<rerun::RecordingStream> _rec;
-  pcl::io::OctreePointCloudCompression<pcl::PointXYZ> *_point_cloud_decoder;
-  pcl::io::OctreePointCloudCompression<pcl::PointXYZ> *_map_decoder;
+  pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA> *_point_cloud_decoder;
+  pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA> *_map_decoder;
 
  public:
   void point_cloud_cb(const Core::IncomingMessage<PointCloud> &);

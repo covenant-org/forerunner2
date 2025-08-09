@@ -75,10 +75,10 @@ void Zed::run() {
       sl::SpatialMappingParameters::MAPPING_RANGE::MEDIUM);
   // Request partial updates only (only the last updated chunks need to be
   // re-draw)
-  spatial_mapping_parameters.use_chunk_only = true;
+  spatial_mapping_parameters.use_chunk_only = false;
   // Stability counter defines how many times a stable 3D points should be seen
   // before it is integrated into the spatial mapping
-  spatial_mapping_parameters.stability_counter = 10;
+  spatial_mapping_parameters.stability_counter = 3;
   spatial_mapping_parameters.decay = 0.1;
 
   sl::Resolution default_image_size = _camera.getRetrieveMeasureResolution();
@@ -152,31 +152,36 @@ void Zed::run() {
           _logger.debug("Retrieved map");
           request_new_mesh = true;
           ts_last = std::chrono::high_resolution_clock::now();
-          auto points = map.getNumberOfPoints();
+
+          auto map_points_size = map.getNumberOfPoints();
+          if (map_points_size == 0) {
+            _logger.debug("Empty map, not sending");
+            continue;
+          }
           pcl::PointCloud<pcl::PointXYZRGBA>::Ptr map_cloud(
-              new pcl::PointCloud<pcl::PointXYZRGBA>(points, 1));
+              new pcl::PointCloud<pcl::PointXYZRGBA>(map_points_size, 1));
           memcpy(map_cloud->points.data(), map.vertices.data(),
-                 sizeof(sl::float4) * points);
+                 sizeof(sl::float4) * map_points_size);
           _logger.debug("Copied cloud");
-          pcl::PassThrough<pcl::PointXYZRGBA> pass;
-          pass.setInputCloud(map_cloud);
-          pass.setFilterFieldName("z");
-          pass.setFilterLimits(0.0, 1000.0);
-          pass.filter(*map_cloud);
+          pcl::PassThrough<pcl::PointXYZRGBA> map_pass;
+          map_pass.setInputCloud(map_cloud);
+          map_pass.setFilterFieldName("z");
+          map_pass.setFilterLimits(0.0, 100.0);
+          map_pass.filter(*map_cloud);
           _logger.debug("Filtered cloud");
-          auto msg = this->_map_pub->new_msg();
-          msg.content.setWidth(points);
-          msg.content.setHeight(1);
-          std::stringstream encoded_cloud;
-          _map_encoder->encodePointCloud(map_cloud, encoded_cloud);
-          auto buffer = encoded_cloud.str();
-          msg.content.initData(buffer.size());
-          msg.content.setSize(buffer.size());
-          auto reader = ::capnp::Data::Reader((unsigned char *)buffer.data(),
-                                              buffer.size());
-          msg.content.setData(reader);
-          msg.publish();
-          _logger.debug("Sent map");
+          auto map_msg = this->_map_pub->new_msg();
+          map_msg.content.setWidth(map_points_size);
+          map_msg.content.setHeight(1);
+          std::stringstream map_encoded_cloud;
+          _map_encoder->encodePointCloud(map_cloud, map_encoded_cloud);
+          auto map_buffer = map_encoded_cloud.str();
+          map_msg.content.initData(map_buffer.size());
+          map_msg.content.setSize(map_buffer.size());
+          auto map_reader = ::capnp::Data::Reader(
+              (unsigned char *)map_buffer.data(), map_buffer.size());
+          map_msg.content.setData(map_reader);
+          map_msg.publish();
+          _logger.debug("Sent map with %d points", map_points_size);
         }
       }
     }
