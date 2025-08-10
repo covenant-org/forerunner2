@@ -1,5 +1,6 @@
 #include "argument_parser.hpp"
 #include "message.hpp"
+#include "rerun/archetypes/asset3d.hpp"
 #include "subscriber.hpp"
 #include "vertex.hpp"
 #include <capnp_schemas/mavlink.capnp.h>
@@ -7,6 +8,7 @@
 #include <capnp_schemas/sensors.capnp.h>
 #include <capnp_schemas/visualization_msgs.capnp.h>
 #include <capnp_schemas/zed.capnp.h>
+#include <memory>
 #include <pcl/compression/octree_pointcloud_compression.h>
 #include <pcl/impl/point_types.hpp>
 #include <rerun.hpp>
@@ -29,6 +31,10 @@ class Demo : Core::Vertex {
   std::shared_ptr<rerun::RecordingStream> _rec;
   pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA> *_point_cloud_decoder;
   pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA> *_map_decoder;
+  rerun::archetypes::Asset3D _drone_model;
+  rerun::Quaternion _drone_quat;
+  float _drone_scale_factor = 0.001f;
+  pcl::io::OctreePointCloudCompression<pcl::PointXYZ> *_point_cloud_decoder;
 
  public:
   void goal_cb(const Core::IncomingMessage<Position> &);

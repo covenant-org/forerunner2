@@ -10,6 +10,9 @@
 #include "rerun/datatypes/quaternion.hpp"
 #include <array>
 #include <capnp_schemas/geometry_msgs.capnp.h>
+#include <Eigen/src/Geometry/Quaternion.h>
+#include <array>
+#include <cmath>
 #include <exception>
 #include <iostream>
 #include <pcl/impl/point_types.hpp>
@@ -24,6 +27,13 @@ Demo::Demo(Core::ArgumentParser args) : Core::Vertex(args) {
       new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>();
   this->_rec = std::make_shared<rerun::RecordingStream>("rerun_demo");
   this->_rec->spawn().exit_on_failure();
+
+  auto file_path = this->get_argument("--drone-model");
+  this->_drone_model =
+      rerun::Asset3D::from_file_path(file_path).value_or_throw();
+  this->_drone_quat =
+      rerun::Quaternion{static_cast<float>(std::sin(M_PI / 4)), 0.0f, 0.0f,
+                        static_cast<float>(std::cos(M_PI / 4))};
 
   this->_sub = this->create_subscriber<PointCloud>(
       "point_cloud",
@@ -155,13 +165,21 @@ void Demo::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
                   rerun::Boxes3D::from_centers_and_sizes(
                       {{position.getX(), position.getY(), -position.getZ()}},
                       {{0.3, 0.3, 0.3}}));
+  auto quat = content.getQ();
 
-  this->_rec->log("drone/coords_x",
-                  rerun::Scalars(static_cast<double>(position.getX())));
-  this->_rec->log("drone/coords_y",
-                  rerun::Scalars(static_cast<double>(position.getY())));
-  this->_rec->log("drone/coords_z",
-                  rerun::Scalars(static_cast<double>(position.getZ())));
+  Eigen::Quaternionf initial_orientation = Eigen::Quaternionf(
+      _drone_quat.w(), _drone_quat.x(), _drone_quat.y(), _drone_quat.z());
+  Eigen::Quaternionf orientation =
+      Eigen::Quaternionf(quat.getW(), quat.getX(), quat.getY(), quat.getZ());
+  orientation = orientation * initial_orientation;
+
+  this->_rec->log(
+      "drone/asset",
+      rerun::Transform3D::from_scale(_drone_scale_factor)
+          .with_rotation(rerun::Quaternion{orientation.x(), orientation.y(),
+                                           orientation.z(), orientation.w()})
+          .with_translation(
+              {position.getX(), position.getY(), -position.getZ()}));
 }
 
 void Demo::goal_cb(const Core::IncomingMessage<Position> &msg) {
@@ -371,11 +389,18 @@ void Demo::run() {
   this->_rec->log("world/drone",
                   rerun::Asset3D::from_file_path("./assets/X500.glb")
                       .value_or_throw());  // Set an up-axis
+  this->_rec->log("drone/asset", this->_drone_model,
+                  rerun::Transform3D::from_scale(_drone_scale_factor)
+                      .with_rotation(_drone_quat));
   while (true) sleep(1);
 }
 
 int main(int argc, char **argv) {
   Core::BaseArgumentParser args(argc, argv);
+  args.add_argument("--drone-model")
+      .default_value("x500.stl")
+      .help("stl file to use for rendering the drone");
+
   auto demo = Demo(args);
   demo.run();
   return 0;
