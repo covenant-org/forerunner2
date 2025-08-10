@@ -99,7 +99,7 @@ void Registry::handle_request(RouterEvent event) {
 
   if (request.getType() == RequestType::QUERY_NODE) {
     auto path = request.getPath();
-    this->_logger.debug("querying topic: %s", request.getPath());
+    this->_logger.debug("querying topic: %s", request.getPath().cStr());
     try {
       Endpoint node = _topic_to_endpoint.at(path);
       this->_logger.debug("querying topic [%s] found at %d",
