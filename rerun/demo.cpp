@@ -167,11 +167,18 @@ void Demo::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
                       {{0.3, 0.3, 0.3}}));
   auto quat = content.getQ();
 
-  Eigen::Quaternionf initial_orientation = Eigen::Quaternionf(
-      _drone_quat.w(), _drone_quat.x(), _drone_quat.y(), _drone_quat.z());
+  this->_rec->log("drone/position",
+                  rerun::Boxes3D::from_centers_and_sizes(
+                      {{position.getX(), position.getY(), -position.getZ()}},
+                      {{0.3, 0.3, 0.3}}));
+
+  Eigen::Quaternionf yaw_correction = Eigen::Quaternionf(
+      Eigen::AngleAxisf(M_PI / 2, Eigen::Vector3f::UnitZ()));
+  Eigen::Quaternionf roll_correction = Eigen::Quaternionf(
+      Eigen::AngleAxisf(M_PI / 2, Eigen::Vector3f::UnitX()));
   Eigen::Quaternionf orientation =
       Eigen::Quaternionf(quat.getW(), quat.getX(), quat.getY(), quat.getZ());
-  orientation = orientation * initial_orientation;
+  orientation = orientation * yaw_correction * roll_correction;
 
   this->_rec->log(
       "drone/asset",
