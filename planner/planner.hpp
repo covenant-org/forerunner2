@@ -51,6 +51,8 @@ class Planner : Core::Vertex {
   SimplePlanner::Algorithm *_algorithm;
   pcl::PointCloud<pcl::PointXYZ>::Ptr _cloud;
   Eigen::Vector3d _goal_msg;
+  Eigen::Vector3d _initial_position;
+  Eigen::Vector3d _world_goal;
   bool _received_goal = false;
   bool _planning = false;
 

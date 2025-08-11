@@ -298,7 +298,6 @@ void Demo::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
   positions.reserve(num_points);
 
   for (size_t i = 0; i < num_points; ++i) {
-    size_t idx = i * 4;
     auto point = cloud->points[i];
     float x = point.x;
     float y = point.y;

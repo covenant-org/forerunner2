@@ -84,18 +84,13 @@ void Controller::odometry_cb(const Core::IncomingMessage<Odometry> &msg) {
 
     double dist = std::sqrt((_position - this->temp_goal).squaredNorm());
     double tolerance = this->get_argument<double>("--goal-tolerance");
-    this->_logger.debug("-Distance to goal: %f, tolerance: %f", dist,
-                        tolerance);
     double angular_dist =
         current_orientation.angularDistance(this->temp_orientation);
-    // this->_logger.debug("Orientation to goal: %f", angular_dist);
 
     bool autorequest = this->get_argument<bool>("--autorequest");
     double yaw_tolerance = this->get_argument<double>("--yaw-tolerance");
-    this->_logger.debug(
-        "- autorequest: %d, yaw_tolerance: %f, angular dist: %f", autorequest,
-        yaw_tolerance, angular_dist);
-
+    this->_logger.debug("Distance to goal: %f, tolerance: %f, orientation to goal: %f, yaw tolerance: %f", dist,
+                        tolerance, angular_dist, yaw_tolerance);
     if (autorequest && dist < tolerance && angular_dist < yaw_tolerance) {
       auto now = std::chrono::steady_clock::now();
       auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -408,7 +403,7 @@ int main(int argc, char **argv) {
           "whether the drone will autorequest a new plan in case the goal was "
           "not reached")
       .flag();
-  parser.add_argument("--yaw-tolerance").default_value(0.6).scan<'g', double>();
+  parser.add_argument("--yaw-tolerance").default_value(0.3).scan<'g', double>();
 
   std::shared_ptr<Controller> controller = std::make_shared<Controller>(parser);
   controller->run();

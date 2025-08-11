@@ -11,8 +11,8 @@
 #include <cmath>
 #include <eigen3/Eigen/src/Core/Matrix.h>
 #include <memory>
-#include <pcl/common/transforms.h>
 #include <pcl/common/io.h>
+#include <pcl/common/transforms.h>
 #include <pcl/compression/octree_pointcloud_compression.h>
 #include <pcl/impl/point_types.hpp>
 
@@ -128,7 +128,8 @@ void Planner::run_planner(ReplanRequest::Start::Reader &msg) {
   request.type = SimplePlanner::RequestType::REPLAN;
   request.metadata = (void *)new RequestMetadata(drone_transform);
 
-  Eigen::Vector3d goal(_goal_msg.x(), _goal_msg.y(), _goal_msg.z());
+  Eigen::Vector3d goal = _world_goal - _drone_pose.position;
+  this->_logger.info("goal: %f, %f, %f", goal.x(), goal.y(), goal.z());
   // auto transformed_goal = drone_transform * goal;
   request.goal << goal.x(), goal.y(), goal.z();
 
@@ -177,7 +178,8 @@ void Planner::publish_octree() {
 
   pcl::PointCloud<pcl::PointXYZ>::Ptr _cloud_copy(
       new pcl::PointCloud<pcl::PointXYZ>());
-  this->_logger.debug("copying cloud with %zu points", this->_cloud->points.size());
+  this->_logger.debug("copying cloud with %zu points",
+                      this->_cloud->points.size());
 
   pcl::copyPointCloud(*this->_cloud, *_cloud_copy);
 
@@ -342,6 +344,8 @@ void Planner::goal_server_cb(const Core::IncomingMessage<Position> &msg,
   this->_logger.info("goal received");
   auto content = msg.content;
   Eigen::Vector3d goal(content.getX(), content.getY(), content.getZ());
+  this->_initial_position << _drone_pose.position.x(), _drone_pose.position.y(),
+      _drone_pose.position.z();
   Eigen::Vector3d current_goal(_goal_msg);
 
   _goal_msg.x() = msg.content.getX();
@@ -356,6 +360,8 @@ void Planner::goal_server_cb(const Core::IncomingMessage<Position> &msg,
           _drone_pose.orientation.y(), _drone_pose.orientation.z()));
   auto goal_msg = this->_goal_pub->new_msg();
   auto transformed_goal = *drone_transform * goal;
+  this->_world_goal << transformed_goal.x(), transformed_goal.y(),
+      transformed_goal.z();
   goal_msg.content.setX(transformed_goal.x());
   goal_msg.content.setY(transformed_goal.y());
   goal_msg.content.setZ(transformed_goal.z());
