@@ -12,6 +12,7 @@
 #include <eigen3/Eigen/src/Core/Matrix.h>
 #include <memory>
 #include <pcl/common/transforms.h>
+#include <pcl/common/io.h>
 #include <pcl/compression/octree_pointcloud_compression.h>
 #include <pcl/impl/point_types.hpp>
 
@@ -174,12 +175,24 @@ void Planner::publish_octree() {
     return;
   }
 
+  pcl::PointCloud<pcl::PointXYZ>::Ptr _cloud_copy(
+      new pcl::PointCloud<pcl::PointXYZ>());
+  this->_logger.debug("copying cloud with %zu points", this->_cloud->points.size());
+
+  pcl::copyPointCloud(*this->_cloud, *_cloud_copy);
+
+  std::unique_ptr<SimplePlanner::PCLOctree> octree =
+      std::make_unique<SimplePlanner::PCLOctree>(
+          this->get_argument<double>("--resolution"));
+  octree->setInputCloud(_cloud_copy);
+  octree->addPointsFromInputCloud();
+
   std::vector<int> pointIdxSearch;
   std::vector<float> pointSquaredDistance;
   double radius = this->get_argument<double>("--max-distance");
   pcl::PointXYZ searchPoint(0, 0, 0);
-  this->_octree_search->radiusSearch(searchPoint, radius, pointIdxSearch,
-                                     pointSquaredDistance);
+  octree->radiusSearch(searchPoint, radius, pointIdxSearch,
+                       pointSquaredDistance);
 
   if (pointIdxSearch.size() > 0) {
     auto msg = this->_octree_pub->new_msg();
@@ -276,7 +289,8 @@ void Planner::cloud_point_cb(const Core::IncomingMessage<PointCloud> &msg) {
   camera_to_drone.translation() = Eigen::Vector3d(0.12, 0.03, 0.242);
 
   // Eigen::Affine3d drone_ned(Eigen::Isometry3d(
-  //     Eigen::Translation3d(_drone_pose.position.x(), _drone_pose.position.y(),
+  //     Eigen::Translation3d(_drone_pose.position.x(),
+  //     _drone_pose.position.y(),
   //                          _drone_pose.position.z()) *
   //     Eigen::Quaterniond(
   //         _drone_pose.orientation.w(), _drone_pose.orientation.x(),

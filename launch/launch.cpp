@@ -120,6 +120,7 @@ int Launch::run_executable(const std::string& name,
     return -1;
   }
   try {
+    _logger.info("starting %s at %s", name.c_str(), it->second.c_str());
     if (args.empty()) {
       boost::process::child c(it->second);
       c.wait();
