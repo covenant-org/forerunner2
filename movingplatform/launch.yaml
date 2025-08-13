@@ -1,0 +1,15 @@
+executables:
+  - name: mavlink
+  - name: mavlink-mission
+  - name: gz
+  # - name: planner
+  #   args:
+  #     flags:
+  #       - --publish-octree
+  #     options:
+  #       --max-distance: 7.5
+  # - name: controller
+  #   args:
+  #     flags:
+  #       - --debug
+  # - name: rerun
