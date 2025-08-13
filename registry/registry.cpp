@@ -87,7 +87,7 @@ void Registry::handle_request(RouterEvent event) {
         .port = free_port.value(),
     };
     _topic_to_endpoint.insert_or_assign(path, endpoint);
-    this->_logger.info("New Vertex: %s at %d", path.c_str(), endpoint.port);
+    this->_logger.info("New topic: %s at %d", path.c_str(), endpoint.port);
     res.setCode(201);
     auto host = res.initHost();
     host.setAddress(endpoint.host);
@@ -102,7 +102,8 @@ void Registry::handle_request(RouterEvent event) {
     this->_logger.debug("querying topic: %s", request.getPath());
     try {
       Endpoint node = _topic_to_endpoint.at(path);
-      this->_logger.debug("querying topic [%s] found at %d", request.getPath().cStr(), node.port);
+      this->_logger.debug("querying topic [%s] found at %d",
+                          request.getPath().cStr(), node.port);
       ::capnp::MallocMessageBuilder message;
       RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
       res.setCode(200);

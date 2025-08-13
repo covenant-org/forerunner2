@@ -3,6 +3,7 @@
 
 #include <argparse/argparse.hpp>
 #include <memory>
+#include <optional>
 
 namespace Core {
 class Vertex;
@@ -38,6 +39,17 @@ class ArgumentParser {
   argparse::Argument &add_argument(Targs... f_args) {
     return _program->add_argument(f_args...);
   }
+
+  argparse::ArgumentParser::MutuallyExclusiveGroup &
+  add_mutually_exclusive_group(bool required = false) {
+    return _program->add_mutually_exclusive_group(required);
+  }
+
+  template <typename T = std::string>
+  std::optional<T> present(std::string_view arg_name) const {
+    return _program->present(arg_name);
+  }
+
   template <typename T = std::string>
   T get_argument(std::string_view arg_name) const {
     return _program->get<T>(arg_name);

@@ -5,7 +5,6 @@
 #include <memory>
 #include <pcl/compression/octree_pointcloud_compression.h>
 #include <pcl/io/pcd_io.h>
-#include <pcl/visualization/cloud_viewer.h>
 #include <sl/Camera.hpp>
 
 #ifndef ZED_HPP
@@ -20,7 +19,6 @@ class Zed : Core::Vertex {
   std::shared_ptr<Core::Publisher<PointCloud>> _map_pub;
   pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>* _cloud_encoder;
   pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>* _map_encoder;
-  pcl::visualization::CloudViewer viewer;
 
  public:
   Zed(const Core::ArgumentParser&);

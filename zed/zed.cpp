@@ -14,15 +14,13 @@
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
-#include <pcl/visualization/cloud_viewer.h>
 #include <pthread.h>
 #include <sl/Camera.hpp>
 #include <sstream>
 
 using namespace sl;
 
-Zed::Zed(const Core::ArgumentParser &parser)
-    : Core::Vertex(parser), viewer("Test") {
+Zed::Zed(const Core::ArgumentParser &parser) : Core::Vertex(parser) {
   this->_cloud_point_pub = this->create_publisher<PointCloud>("point_cloud");
 
   _camera = Camera();
@@ -30,7 +28,23 @@ Zed::Zed(const Core::ArgumentParser &parser)
   InitParameters init_parameters;
   init_parameters.depth_mode = DEPTH_MODE::NEURAL;
   init_parameters.coordinate_units = UNIT::METER;
-  init_parameters.input.setFromStream("127.0.0.1", 30000);
+
+  if (auto fn = parser.present("--svo")) {
+    init_parameters.input.setFromSVOFile(fn->c_str());
+  }
+
+  if (auto fn = parser.present("--host")) {
+    unsigned int a, b, c, d, port;
+    if (sscanf(fn->c_str(), "%u.%u.%u.%u:%d", &a, &b, &c, &d, &port) == 5) {
+      // Stream input mode - IP + port
+      std::string ip_adress = std::to_string(a) + "." + std::to_string(b) +
+                              "." + std::to_string(c) + "." + std::to_string(d);
+      init_parameters.input.setFromStream(String(ip_adress.c_str()), port);
+    } else if (sscanf(fn->c_str(), "%u.%u.%u.%u", &a, &b, &c, &d) == 4) {
+      // Stream input mode - IP only
+      init_parameters.input.setFromStream(String(fn->c_str()));
+    }
+  }
 
   auto returned_state = _camera.open(init_parameters);
   if (returned_state != ERROR_CODE::SUCCESS) {
@@ -181,7 +195,6 @@ void Zed::run() {
           map_pass.setFilterLimits(0.0, 100.0);
           map_pass.filter(*map_cloud);
           _logger.debug("Filtered cloud");
-          viewer.showCloud(map_cloud);
 
           auto map_msg = this->_map_pub->new_msg();
           map_msg.content.setWidth(map_points_size);
@@ -208,7 +221,10 @@ int main(int argc, char **argv) {
   arguments.add_argument("--map")
       .default_value(false)
       .implicit_value(true)
-      .help("Start requesting maping feature from zed");
+      .help("Spatial Mapping feature");
+  auto &group = arguments.add_mutually_exclusive_group();
+  group.add_argument("--svo").help("SVO Recording File Path");
+  group.add_argument("--host").help("Host IP Streaming");
   auto zed = Zed(arguments);
   zed.run();
 

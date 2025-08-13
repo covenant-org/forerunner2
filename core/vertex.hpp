@@ -29,7 +29,7 @@ class BaseArgumentParser : public ArgumentParser {
     this->add_argument("--debug")
         .default_value(false)
         .implicit_value(true)
-        .help("Shortcut for --log_level 0");
+        .help("Shortcut for --log-level 0");
   }
 };
 
@@ -92,5 +92,5 @@ class Vertex {
 
   virtual void run() {}
 };
-};      // namespace Core
+};  // namespace Core
 #endif  // VERTEX_HPP
