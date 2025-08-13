@@ -17,15 +17,15 @@ set(EXCLUDED_SUBDIRS
     "rerun"
 )
 
-
-
 if(DEFINED ENV{SUBDIR})
     set(SUBDIR $ENV{SUBDIR})
 endif()
 
 if(SUBDIR)
-    message(STATUS "Compilando solo el subdirectorio: ${SUBDIR}")
-    add_subdirectory(${SUBDIR})
+    foreach(sub ${SUBDIR})
+        message(STATUS "Building only subdirectory: ${sub}")
+        add_subdirectory(${sub})
+    endforeach()
 else()
     file(GLOB children RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} */CMakeLists.txt)
     foreach(child ${children})
