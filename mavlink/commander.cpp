@@ -9,10 +9,13 @@ Commander::Commander(Core::ArgumentParser parser) : Core::Vertex(parser) {
 void Commander::run() {
   while (true) {
     std::string command;
-    std::cout << "> ";
+    std::cout << "> " << std::flush;
     std::cin >> command;
 
+    this->_logger.debug("Received command: %s", command.c_str());
+
     if (command == "takeoff") {
+      
       auto request = this->_mission_client->new_msg();
       request.content.initTakeoff();
       request.content.getTakeoff().setDesiredAltitude(2);
@@ -37,7 +40,6 @@ void Commander::run() {
 
 int main(int argc, char **argv) {
   Core::BaseArgumentParser parser(argc, argv);
-
   std::shared_ptr<Commander> commander = std::make_shared<Commander>(parser);
   commander->run();
   return 0;
