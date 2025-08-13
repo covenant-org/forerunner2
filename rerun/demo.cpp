@@ -1,6 +1,15 @@
 #include "demo.hpp"
 #include "message.hpp"
+#include "rerun/archetypes/arrows3d.hpp"
+#include "rerun/archetypes/asset3d.hpp"
+#include "rerun/archetypes/boxes3d.hpp"
+#include "rerun/archetypes/instance_poses3d.hpp"
+#include "rerun/components/fill_mode.hpp"
+#include "rerun/components/pose_translation3d.hpp"
+#include "rerun/components/rotation_quat.hpp"
+#include "rerun/datatypes/quaternion.hpp"
 #include <array>
+#include <capnp_schemas/geometry_msgs.capnp.h>
 #include <exception>
 #include <iostream>
 #include <pcl/impl/point_types.hpp>
@@ -139,12 +148,15 @@ void Demo::local_planned_path_cb(const Core::IncomingMessage<Path> &msg) {
 
 void Demo::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
   auto content = msg.content;
+  auto q = msg.content.getQ();
   auto position = content.getPosition();
   auto velocity = content.getVelocity();
-  this->_rec->log("drone/position",
-                  rerun::Boxes3D::from_centers_and_sizes(
-                      {{position.getX(), position.getY(), -position.getZ()}},
-                      {{0.3, 0.3, 0.3}}));
+  this->_rec->log("world/drone",
+                  rerun::InstancePoses3D()
+                      .with_translations({{position.getX(), position.getY(),
+                                           -position.getZ()}})
+                      .with_quaternions({rerun::components::RotationQuat(
+                          {q.getX(), q.getY(), q.getZ(), q.getW()})}));
 }
 
 void Demo::octree_cb(const Core::IncomingMessage<MarkerArray> &msg) {
@@ -335,6 +347,11 @@ void Demo::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
 
 void Demo::run() {
   this->_logger.info("Running");
+  this->_rec->log_static(
+      "world", rerun::ViewCoordinates::RIGHT_HAND_Z_UP);  // Set an up-axis
+  this->_rec->log("world/drone",
+                  rerun::Asset3D::from_file_path("./assets/X500.glb")
+                      .value_or_throw());  // Set an up-axis
   while (true) sleep(1);
 }
 
