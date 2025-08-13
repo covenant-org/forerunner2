@@ -1,11 +1,15 @@
 #include "argument_parser.hpp"
 #include "zed.hpp"
+#include <Eigen/src/Core/Matrix.h>
+#include <Eigen/src/Geometry/AngleAxis.h>
+#include <Eigen/src/Geometry/Transform.h>
 #include <capnp_schemas/zed.capnp.h>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <pcl/common/point_tests.h>
+#include <pcl/common/transforms.h>
 #include <pcl/conversions.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/filters/statistical_outlier_removal.h>
@@ -121,11 +125,9 @@ void Zed::run() {
       memcpy(cloud->points.data(), point_cloud.getPtr<sl::float4>(),
              sizeof(sl::float4) * default_image_size.area());
 
-      pcl::PassThrough<pcl::PointXYZRGBA> pass;
-      pass.setInputCloud(cloud);
-      pass.setFilterFieldName("z");
-      pass.setFilterLimits(0.0, 30.0);
-      pass.filter(*cloud);
+      Eigen::Affine3f transform = Eigen::Affine3f::Identity();
+      transform.rotate(Eigen::AngleAxisf(-M_PI_2f, Eigen::Vector3f::UnitX()));
+      pcl::transformPointCloud(*cloud, *cloud, transform);
 
       std::stringstream encoded_cloud;
       _cloud_encoder->encodePointCloud(cloud, encoded_cloud);
@@ -189,12 +191,11 @@ void Zed::run() {
             map_cloud->points[i].rgb = *reinterpret_cast<float *>(&color_uint);
           }
           _logger.debug("Copied %d points", map_points_size);
-          pcl::PassThrough<pcl::PointXYZRGBA> map_pass;
-          map_pass.setInputCloud(map_cloud);
-          map_pass.setFilterFieldName("z");
-          map_pass.setFilterLimits(0.0, 100.0);
-          map_pass.filter(*map_cloud);
-          _logger.debug("Filtered cloud");
+
+          Eigen::Affine3f map_transform = Eigen::Affine3f::Identity();
+          map_transform.rotate(
+              Eigen::AngleAxisf(-M_PI_2f, Eigen::Vector3f::UnitX()));
+          pcl::transformPointCloud(*map_cloud, *map_cloud, map_transform);
 
           auto map_msg = this->_map_pub->new_msg();
           map_msg.content.setWidth(map_points_size);
