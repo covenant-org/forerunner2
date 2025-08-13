@@ -3,6 +3,7 @@ project(launch)
 
 find_package(Boost REQUIRED COMPONENTS system filesystem program_options)
 include_directories(${Boost_INCLUDE_DIRS})
+include_directories(${CMAKE_SOURCE_DIR}/core)
 
 find_package(yaml-cpp REQUIRED)
 

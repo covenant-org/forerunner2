@@ -1,22 +1,5 @@
 #include "launch.hpp"
-
-std::string Launch::find_root(const std::string& filename, int max_levels) {
-  std::filesystem::path current = std::filesystem::current_path();
-  for (int i = 0; i <= max_levels; ++i) {
-    for (const auto& entry : std::filesystem::directory_iterator(current)) {
-      if (entry.is_regular_file() && entry.path().filename() == filename) {
-        return entry.path().parent_path().string();
-      }
-    }
-    if (current.has_parent_path()) {
-      current = current.parent_path();
-    } else {
-      break;
-    }
-  }
-  _logger.error("Root not found");
-  return "";
-}
+#include "utils.hpp"
 
 std::map<std::string, std::string> Launch::find_executable_files(
     const std::filesystem::path& dir,
@@ -64,7 +47,7 @@ Launch::Launch(argparse::ArgumentParser& parser,
     : _exclude_folders(exclude) {
   int registry_port = parser.get<int>("--registry-port");
   int registry_threads = parser.get<int>("--registry-threads");
-  _root_path = find_root(".root", 10);
+  _root_path = Core::find_root(".root", 10);
   if (_root_path.empty()) {
     _logger.error("Root path not found.");
     return;

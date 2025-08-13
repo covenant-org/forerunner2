@@ -4,6 +4,7 @@
 #include "capnp_schemas/registry.capnp.h"
 #include "message.hpp"
 #include <cmath>
+#include <filesystem>
 #include <cstdint>
 #include <iostream>
 #include <kj/common.h>
@@ -13,6 +14,24 @@
 #include <zmq.hpp>
 
 namespace Core {
+
+inline std::string find_root(const std::string& filename, int max_levels) {
+  std::filesystem::path current = std::filesystem::current_path();
+  for (int i = 0; i <= max_levels; ++i) {
+    for (const auto& entry : std::filesystem::directory_iterator(current)) {
+      if (entry.is_regular_file() && entry.path().filename() == filename) {
+        return entry.path().parent_path().string();
+      }
+    }
+    if (current.has_parent_path()) {
+      current = current.parent_path();
+    } else {
+      break;
+    }
+  }
+  std::cerr << "Root not found" << std::endl;
+  return "";
+}
 
 inline IncomingMessage<RegistryResponse> _make_request_to_registry(
     const std::string& topic, RequestType type, const std::string& uri) {

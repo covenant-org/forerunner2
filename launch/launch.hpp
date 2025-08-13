@@ -14,6 +14,7 @@
 #include <vector>
 #include <yaml-cpp/yaml.h>
 
+
 class Launch {
  protected:
   Core::Logger _logger;
@@ -24,7 +25,6 @@ class Launch {
   inline static const std::vector<std::string> default_exclude_folders = {
       "vendor", ".git"};
 
-  std::string find_root(const std::string& filename, int max_levels);
   static std::map<std::string, std::string> find_executable_files(
       const std::filesystem::path& dir,
       const std::vector<std::string>& exclude_folders);
