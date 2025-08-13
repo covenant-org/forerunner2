@@ -14,7 +14,6 @@ set(EXCLUDED_SUBDIRS
     "core"
     "zed"
     "test"
-    "rerun"
 )
 
 if(DEFINED ENV{SUBDIR})

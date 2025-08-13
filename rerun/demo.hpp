@@ -34,7 +34,6 @@ class Demo : Core::Vertex {
   rerun::archetypes::Asset3D _drone_model;
   rerun::Quaternion _drone_quat;
   float _drone_scale_factor = 0.001f;
-  pcl::io::OctreePointCloudCompression<pcl::PointXYZ> *_point_cloud_decoder;
 
  public:
   void goal_cb(const Core::IncomingMessage<Position> &);
