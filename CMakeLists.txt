@@ -12,8 +12,8 @@ add_subdirectory(core)
 set(EXCLUDED_SUBDIRS
     "vendor"
     "core"
+    
     "zed"
-    "test"
 )
 
 if(DEFINED ENV{SUBDIR})
