@@ -1,16 +1,17 @@
-#include "demo.hpp"
 #include "message.hpp"
 #include "rerun/archetypes/arrows3d.hpp"
 #include "rerun/archetypes/asset3d.hpp"
 #include "rerun/archetypes/boxes3d.hpp"
 #include "rerun/archetypes/instance_poses3d.hpp"
 #include "rerun/components/fill_mode.hpp"
-#include "rerun/components/pose_translation3d.hpp"
 #include "rerun/components/rotation_quat.hpp"
+#include "utils.hpp"
+#include "viewer.hpp"
 #include <Eigen/src/Geometry/Quaternion.h>
 #include <capnp_schemas/geometry_msgs.capnp.h>
 #include <cmath>
 #include <exception>
+#include <iostream>
 #include <pcl/impl/point_types.hpp>
 #include <rerun.hpp>
 #include <rerun/recording_stream.hpp>
@@ -339,6 +340,7 @@ void Demo::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
 void Demo::run() {
   this->_logger.info("Running");
   auto file_path = this->get_argument("--drone-model");
+  this->_logger.debug("Drone model path: %s", file_path.c_str());
   this->_rec->log_static(
       "world", rerun::ViewCoordinates::RIGHT_HAND_Z_UP);  // Set an up-axis
   this->_rec->log("world/drone",
@@ -349,8 +351,17 @@ void Demo::run() {
 
 int main(int argc, char **argv) {
   Core::BaseArgumentParser args(argc, argv);
+  auto root = Core::find_root();
+  if (root.empty()) {
+    root = ".";
+  }
+  if (root[root.size() - 1] != '/') {
+    root.push_back('/');
+  }
+  std::string default_model_path = root + "rerun/assets/X500.glb";
+  std::cout << default_model_path << std::endl;
   args.add_argument("--drone-model")
-      .default_value("x500.stl")
+      .default_value(default_model_path)
       .help("stl file to use for rendering the drone");
 
   auto demo = Demo(args);

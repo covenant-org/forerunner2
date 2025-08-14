@@ -11,6 +11,6 @@ find_package(cppzmq REQUIRED)
 find_package(capnp_schemas REQUIRED)
 find_package(PCL 1.15 REQUIRED)
 
-add_executable(rerun demo.cpp)
+add_executable(rerun viewer.cpp)
 
 target_link_libraries(rerun rerun_sdk core cppzmq capnp capnp_schemas kj ${PCL_LIBRARIES})

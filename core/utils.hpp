@@ -2,10 +2,11 @@
 #define CORE_UTILS_HPP
 
 #include "capnp_schemas/registry.capnp.h"
+#include "logger.hpp"
 #include "message.hpp"
 #include <cmath>
-#include <filesystem>
 #include <cstdint>
+#include <filesystem>
 #include <iostream>
 #include <kj/common.h>
 #include <optional>
@@ -15,7 +16,8 @@
 
 namespace Core {
 
-inline std::string find_root(const std::string& filename, int max_levels) {
+inline std::string find_root(const std::string& filename = ".root",
+                             int max_levels = 10) {
   std::filesystem::path current = std::filesystem::current_path();
   for (int i = 0; i <= max_levels; ++i) {
     for (const auto& entry : std::filesystem::directory_iterator(current)) {
@@ -29,7 +31,7 @@ inline std::string find_root(const std::string& filename, int max_levels) {
       break;
     }
   }
-  std::cerr << "Root not found" << std::endl;
+  Logger(LogLevel::ERROR, "application.log", "Utils").error("Root not found");
   return "";
 }
 
