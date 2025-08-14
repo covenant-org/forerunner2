@@ -82,18 +82,56 @@ class Logger {
 
     std::string timestamp = get_timestamp();
     std::string level_str = get_level_string(level);
-    std::string full_message = "[" + timestamp + "] [" + level_str + "]";
+    std::string class_str = !_class_name.empty() ? " [" + _class_name + "]" : "";
+    std::string msg_str = " " + message;
 
-    if (!_class_name.empty()) {
-      full_message += " [" + _class_name + "]";
+    // ANSI colors for console output
+    std::string color_level = get_color(level); // Used for timestamp and log level section
+    std::string color_class = "\033[37m"; // Light gray for the class section
+    std::string color_reset = "\033[0m";
+
+    // Build colored output for console:
+    std::cout << color_level << "[" << timestamp << "] [" << level_str << "]" << color_reset;
+    if (!class_str.empty()) {
+      std::cout << color_class << class_str << color_reset;
     }
+    // Apply log level color only to segments without ANSI codes, preserve custom colors
+    std::string ansi_start = "\033[";
+    size_t pos = 0;
+    bool in_ansi = false;
+    while (pos < msg_str.size()) {
+      size_t next_ansi = msg_str.find(ansi_start, pos);
+      if (next_ansi == std::string::npos) {
+        // No more ANSI codes, color the rest
+        if (!in_ansi) {
+          std::cout << color_level << msg_str.substr(pos) << color_reset;
+        } else {
+          std::cout << msg_str.substr(pos);
+        }
+        break;
+      }
+      // Color text before ANSI code
+      if (!in_ansi && next_ansi > pos) {
+        std::cout << color_level << msg_str.substr(pos, next_ansi - pos) << color_reset;
+      } else if (next_ansi > pos) {
+        std::cout << msg_str.substr(pos, next_ansi - pos);
+      }
+      // Find end of ANSI sequence
+      size_t ansi_end = msg_str.find('m', next_ansi);
+      if (ansi_end == std::string::npos) {
+        // Malformed ANSI, print rest as-is
+        std::cout << msg_str.substr(next_ansi);
+        break;
+      }
+      // Print ANSI sequence
+      std::cout << msg_str.substr(next_ansi, ansi_end - next_ansi + 1);
+      pos = ansi_end + 1;
+      in_ansi = true;
+    }
+    std::cout << color_reset << std::endl;
 
-    full_message += " " + message;
-
-    // Console output with colors
-    std::cout << get_color(level) << full_message << "\033[0m" << std::endl;
-
-    // File output without colors
+    // File output without colors (plain text)
+    std::string full_message = "[" + timestamp + "] [" + level_str + "]" + class_str + msg_str;
     if (_log_file.is_open()) {
       _log_file << full_message << std::endl;
       _log_file.flush();

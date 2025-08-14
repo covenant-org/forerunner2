@@ -18,6 +18,11 @@
 #include <zmq.hpp>
 
 namespace Core {
+
+// Helper to color topic name using TOPIC_COLOR
+inline std::string color_topic(const std::string& topic) {
+  return std::string(TOPIC_COLOR) + topic + "\033[0m";
+}
 Registry::Registry(RegistryConfiguration config)
     : _config(config),
       _ctx(config.threads),
@@ -81,13 +86,13 @@ void Registry::handle_request(RouterEvent event) {
       respond_event(event, message_from_builder(message));
       return;
     }
-    std::string path = request.getPath();
-    Endpoint endpoint{
-        .host = "127.0.0.1",
-        .port = free_port.value(),
-    };
-    _topic_to_endpoint.insert_or_assign(path, endpoint);
-    this->_logger.info("New topic: %s at %d", path.c_str(), endpoint.port);
+  std::string path = request.getPath();
+  Endpoint endpoint{
+    .host = "127.0.0.1",
+    .port = free_port.value(),
+  };
+  _topic_to_endpoint.insert_or_assign(path, endpoint);
+  this->_logger.info("New topic: %s at %d", color_topic(path).c_str(), endpoint.port);
     res.setCode(201);
     auto host = res.initHost();
     host.setAddress(endpoint.host);
@@ -99,11 +104,11 @@ void Registry::handle_request(RouterEvent event) {
 
   if (request.getType() == RequestType::QUERY_NODE) {
     auto path = request.getPath();
-    this->_logger.debug("querying topic: %s", request.getPath().cStr());
+  this->_logger.debug("querying topic: %s", color_topic(request.getPath().cStr()).c_str());
     try {
       Endpoint node = _topic_to_endpoint.at(path);
-      this->_logger.debug("querying topic [%s] found at %d",
-                          request.getPath().cStr(), node.port);
+  this->_logger.debug("querying topic [%s] found at %d",
+          color_topic(request.getPath().cStr()).c_str(), node.port);
       ::capnp::MallocMessageBuilder message;
       RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
       res.setCode(200);
@@ -112,7 +117,7 @@ void Registry::handle_request(RouterEvent event) {
       host.setPort(node.port);
       respond_event(event, message_from_builder(message));
     } catch (std::out_of_range) {
-      this->_logger.debug("querying topic not found, pending to notify");
+  this->_logger.debug("querying topic not found, pending to notify");
       _topic_to_waiters[path].emplace_back((char *)event.identity.data(),
                                            event.identity.size());
     }
@@ -130,7 +135,7 @@ void Registry::handle_request(RouterEvent event) {
         .port = obj.getPort(),
     };
     _topic_to_endpoint.insert_or_assign(request.getPath(), endpoint);
-    this->_logger.info("New Host: %s at %d", path.cStr(), endpoint.port);
+  this->_logger.info("New Host: %s at %d", color_topic(path.cStr()).c_str(), endpoint.port);
     res.setCode(201);
     auto host = res.initHost();
     host.setAddress(endpoint.host);

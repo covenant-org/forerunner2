@@ -13,8 +13,11 @@
 #include <zmq_addon.hpp>
 
 #define MAX_PORT_SEARCHES 100
+// Topic color (ANSI): 
+#define TOPIC_COLOR "\033[36m" // cyan
 
 namespace Core {
+std::string color_topic(const std::string& topic);
 struct Endpoint {
   std::string host;
   uint32_t port;
