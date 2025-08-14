@@ -107,9 +107,8 @@ int Launch::run_executable(const std::string& name,
     std::stringstream command;
     command << it->second.c_str();
     if (!args.empty()) {
-      command << " ";
       for (const std::string& arg : args) {
-        command << arg;
+        command << " " << arg;
       }
     }
     return system(command.str().c_str());
