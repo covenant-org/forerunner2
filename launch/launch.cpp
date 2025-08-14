@@ -103,18 +103,16 @@ int Launch::run_executable(const std::string& name,
     return -1;
   }
   try {
-    _logger.info("starting %s at %s", name.c_str(), it->second.c_str());
-    if (args.empty()) {
-      boost::process::child c(it->second);
-      c.wait();
-      _logger.info("%s finished with code: %d", name.c_str(), c.exit_code());
-      return c.exit_code();
-    } else {
-      boost::process::child c(it->second, boost::process::args(args));
-      c.wait();
-      _logger.info("%s finished with code: %d", name.c_str(), c.exit_code());
-      return c.exit_code();
+    _logger.info("Starting %s at %s", name.c_str(), it->second.c_str());
+    std::stringstream command;
+    command << it->second.c_str();
+    if (!args.empty()) {
+      command << " ";
+      for (const std::string& arg : args) {
+        command << arg;
+      }
     }
+    return system(command.str().c_str());
   } catch (const std::exception& e) {
     _logger.error("Error running %s: %s", name.c_str(), e.what());
     return -1;

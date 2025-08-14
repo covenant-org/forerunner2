@@ -4,7 +4,6 @@
 #include "argument_parser.hpp"
 #include "logger.hpp"
 #include "nodes_yaml_parser.hpp"
-#include <boost/process.hpp>
 #include <filesystem>
 #include <iostream>
 #include <map>
