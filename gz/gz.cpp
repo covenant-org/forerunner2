@@ -18,12 +18,18 @@
 #include <pcl/point_types.h>
 
 GZ::GZ(Core::ArgumentParser args) : Core::Vertex(args) {
-  _point_cloud_publisher = this->create_publisher<PointCloud>("point_cloud");
+  _camera_pc_publisher = this->create_publisher<PointCloud>("point_cloud");
+  _lidar_pc_publisher = this->create_publisher<PointCloud>("lidar");
   _mic_publisher = this->create_publisher<StereoMic>("mic");
 
   _gz_node = std::make_shared<gz::transport::Node>();
-  if (!_gz_node->Subscribe("/depth_camera/points", &GZ::on_point_cb, this)) {
+  if (!_gz_node->Subscribe("/depth_camera/points", &GZ::on_camera_cb, this)) {
     throw std::runtime_error("Failed to subscribe to point cloud topic");
+  }
+  // Subscribe to lidar point cloud topic
+  if (!_gz_node->Subscribe("/world/imav_indoor/model/x500_lidar_down_0/link/lidar_sensor_link/sensor/lidar/scan/points",
+                           &GZ::on_lidar_cb, this)) {
+    throw std::runtime_error("Failed to subscribe to lidar point cloud topic");
   }
 
   if (!_gz_node->Subscribe("/model/x500_depth_mic_0/sensor/mic_1/detection",
@@ -73,68 +79,68 @@ void GZ::run() {
   gz::transport::waitForShutdown();
 }
 
-void GZ::on_point_cb(const gz::msgs::PointCloudPacked &pt) {
-  if (is_processing) {
-    return;
-  }
-  is_processing = true;
-
-  auto msg = this->_point_cloud_publisher->new_msg();
-  msg.content.setHeight(pt.height());
-  msg.content.setWidth(pt.width());
-
-  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(
-      new pcl::PointCloud<pcl::PointXYZ>());
-  cloud->width = pt.width();
-  cloud->height = pt.height();
-  cloud->is_dense = pt.is_dense();
-  cloud->points.resize(cloud->width * cloud->height);
-
-  // manually convert each point, in pcl each is represented by 16 bytes and in
-  // gazebo 24 bytes
-  // can run: gz topic -e -t /depth_camera/points
-  // field { name: "x" datatype: FLOAT32 count: 1 }
-  // field { name: "y" offset: 4 datatype: FLOAT32 count: 1 }
-  // field { name: "z" offset: 8 datatype: FLOAT32 count: 1 }
-  // field { name: "rgb" offset: 16 datatype: FLOAT32 count: 1 }
-  // height: 480 width: 640 point_step: 24
+// Shared point cloud processing for both topics
+void process_pointcloud(const gz::msgs::PointCloudPacked &pt, pcl::PointCloud<pcl::PointXYZ>::Ptr &out_cloud) {
+  out_cloud.reset(new pcl::PointCloud<pcl::PointXYZ>());
+  out_cloud->width = pt.width();
+  out_cloud->height = pt.height();
+  out_cloud->is_dense = pt.is_dense();
+  out_cloud->points.resize(out_cloud->width * out_cloud->height);
   const uint8_t *data_ptr = reinterpret_cast<const uint8_t *>(pt.data().data());
-  for (size_t i = 0; i < cloud->points.size(); ++i) {
+  for (size_t i = 0; i < out_cloud->points.size(); ++i) {
     size_t point_offset = i * pt.point_step();
-
     float x, y, z;
     memcpy(&x, data_ptr + point_offset + 0, sizeof(float));
     memcpy(&y, data_ptr + point_offset + 4, sizeof(float));
     memcpy(&z, data_ptr + point_offset + 8, sizeof(float));
-
-    // sometimes the points for some axis have a Inf value
     if (std::isfinite(x) && std::isfinite(y) && std::isfinite(z)) {
-      cloud->points[i].x = x;
-      cloud->points[i].y = y;
-      cloud->points[i].z = z;
+      out_cloud->points[i].x = x;
+      out_cloud->points[i].y = y;
+      out_cloud->points[i].z = z;
     }
   }
-
   pcl::PassThrough<pcl::PointXYZ> pass;
-  pass.setInputCloud(cloud);
+  pass.setInputCloud(out_cloud);
   pass.setFilterFieldName("x");
   pass.setFilterLimits(0.0f, 10.0f);
-  pass.filter(*cloud);
-
+  pass.filter(*out_cloud);
   pcl::VoxelGrid<pcl::PointXYZ> voxel_filter;
-  voxel_filter.setInputCloud(cloud);
-  // this is 5cm
+  voxel_filter.setInputCloud(out_cloud);
   voxel_filter.setLeafSize(0.5f, 0.5f, 0.5f);
-  voxel_filter.filter(*cloud);
+  voxel_filter.filter(*out_cloud);
+}
 
+void GZ::on_camera_cb(const gz::msgs::PointCloudPacked &pt) {
+  if (is_processing) return;
+  is_processing = true;
+  process_pointcloud(pt, _last_camera_cloud);
+  auto msg = this->_camera_pc_publisher->new_msg();
+  msg.content.setHeight(pt.height());
+  msg.content.setWidth(pt.width());
   std::stringstream encoded_cloud;
-  _cloud_encoder->encodePointCloud(cloud, encoded_cloud);
+  _cloud_encoder->encodePointCloud(_last_camera_cloud, encoded_cloud);
   auto buffer = encoded_cloud.str();
   msg.content.initData(buffer.size());
   msg.content.setSize(buffer.size());
+  auto reader = ::capnp::Data::Reader((unsigned char *)buffer.data(), buffer.size());
+  msg.content.setData(reader);
+  msg.publish();
+  is_processing = false;
+}
 
-  auto reader =
-      ::capnp::Data::Reader((unsigned char *)buffer.data(), buffer.size());
+void GZ::on_lidar_cb(const gz::msgs::PointCloudPacked &pt) {
+  if (is_processing) return;
+  is_processing = true;
+  process_pointcloud(pt, _last_lidar_cloud);
+  auto msg = this->_lidar_pc_publisher->new_msg();
+  msg.content.setHeight(pt.height());
+  msg.content.setWidth(pt.width());
+  std::stringstream encoded_cloud;
+  _cloud_encoder->encodePointCloud(_last_lidar_cloud, encoded_cloud);
+  auto buffer = encoded_cloud.str();
+  msg.content.initData(buffer.size());
+  msg.content.setSize(buffer.size());
+  auto reader = ::capnp::Data::Reader((unsigned char *)buffer.data(), buffer.size());
   msg.content.setData(reader);
   msg.publish();
   is_processing = false;
