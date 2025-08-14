@@ -7,14 +7,10 @@
 #include "rerun/components/fill_mode.hpp"
 #include "rerun/components/pose_translation3d.hpp"
 #include "rerun/components/rotation_quat.hpp"
-#include "rerun/datatypes/quaternion.hpp"
-#include <array>
-#include <capnp_schemas/geometry_msgs.capnp.h>
 #include <Eigen/src/Geometry/Quaternion.h>
-#include <array>
+#include <capnp_schemas/geometry_msgs.capnp.h>
 #include <cmath>
 #include <exception>
-#include <iostream>
 #include <pcl/impl/point_types.hpp>
 #include <rerun.hpp>
 #include <rerun/recording_stream.hpp>
@@ -25,15 +21,9 @@ Demo::Demo(Core::ArgumentParser args) : Core::Vertex(args) {
       new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>();
   this->_map_decoder =
       new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>();
-  this->_rec = std::make_shared<rerun::RecordingStream>("rerun_demo");
-  this->_rec->spawn().exit_on_failure();
 
-  auto file_path = this->get_argument("--drone-model");
-  this->_drone_model =
-      rerun::Asset3D::from_file_path(file_path).value_or_throw();
-  this->_drone_quat =
-      rerun::Quaternion{static_cast<float>(std::sin(M_PI / 4)), 0.0f, 0.0f,
-                        static_cast<float>(std::cos(M_PI / 4))};
+  this->_rec = std::make_shared<rerun::RecordingStream>("Forerunner v2");
+  this->_rec->spawn().exit_on_failure();
 
   this->_sub = this->create_subscriber<PointCloud>(
       "point_cloud",
@@ -154,39 +144,12 @@ void Demo::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
   auto content = msg.content;
   auto q = msg.content.getQ();
   auto position = content.getPosition();
-  auto velocity = content.getVelocity();
   this->_rec->log("world/drone",
                   rerun::InstancePoses3D()
                       .with_translations({{position.getX(), position.getY(),
                                            -position.getZ()}})
                       .with_quaternions({rerun::components::RotationQuat(
                           {q.getX(), q.getY(), q.getZ(), q.getW()})}));
-  this->_rec->log("drone/position",
-                  rerun::Boxes3D::from_centers_and_sizes(
-                      {{position.getX(), position.getY(), -position.getZ()}},
-                      {{0.3, 0.3, 0.3}}));
-  auto quat = content.getQ();
-
-  this->_rec->log("drone/position",
-                  rerun::Boxes3D::from_centers_and_sizes(
-                      {{position.getX(), position.getY(), -position.getZ()}},
-                      {{0.3, 0.3, 0.3}}));
-
-  Eigen::Quaternionf yaw_correction = Eigen::Quaternionf(
-      Eigen::AngleAxisf(M_PI / 2, Eigen::Vector3f::UnitZ()));
-  Eigen::Quaternionf roll_correction = Eigen::Quaternionf(
-      Eigen::AngleAxisf(M_PI / 2, Eigen::Vector3f::UnitX()));
-  Eigen::Quaternionf orientation =
-      Eigen::Quaternionf(quat.getW(), quat.getX(), quat.getY(), quat.getZ());
-  orientation = orientation * yaw_correction * roll_correction;
-
-  this->_rec->log(
-      "drone/asset",
-      rerun::Transform3D::from_scale(_drone_scale_factor)
-          .with_rotation(rerun::Quaternion{orientation.x(), orientation.y(),
-                                           orientation.z(), orientation.w()})
-          .with_translation(
-              {position.getX(), position.getY(), -position.getZ()}));
 }
 
 void Demo::goal_cb(const Core::IncomingMessage<Position> &msg) {
@@ -291,6 +254,7 @@ void Demo::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
   }
 
   size_t num_points = cloud->points.size();
+  if (num_points == 0) return;
 
   std::vector<rerun::Position3D> positions;
   std::vector<rerun::Color> colors;
@@ -302,9 +266,6 @@ void Demo::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
     float x = point.x;
     float y = point.y;
     float z = point.z;
-    // float_data[idx + 3] is typically confidence or unused
-
-    // Filter out invalid points (NaN or infinite values)
     positions.emplace_back(x, y, z);
 
     // Color based on distance for better visualization
@@ -313,26 +274,23 @@ void Demo::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
     colors.push_back(color);
   }
   // Log to Rerun
-  if (!positions.empty()) {
-    this->_rec->log("pointcloud/points",
-                    rerun::Points3D(positions).with_colors(colors));
+  this->_rec->log("world/camera/depth/points",
+                  rerun::Points3D(positions).with_colors(colors));
 
-    // Log statistics
-    this->_rec->log("stats/point_count",
-                    rerun::Scalars(static_cast<double>(positions.size())));
-    this->_rec->log("stats/total_received",
-                    rerun::Scalars(static_cast<double>(num_points)));
-    this->_rec->log("stats/image_dimensions",
-                    rerun::TextLog("Dimensions: " + std::to_string(width) +
-                                   "x" + std::to_string(height)));
-  }
+  // Log statistics
+  this->_rec->log("stats/camera/depth/point_count",
+                  rerun::Scalars(static_cast<double>(positions.size())));
+  this->_rec->log("stats/camera/depth/total_received",
+                  rerun::Scalars(static_cast<double>(num_points)));
+  this->_rec->log("stats/camera/depth/image_dimensions",
+                  rerun::TextLog("Dimensions: " + std::to_string(width) + "x" +
+                                 std::to_string(height)));
 }
 
 void Demo::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
   auto data_reader = msg.content.getData();
   auto width = msg.content.getWidth();
   auto height = msg.content.getHeight();
-  _logger.debug("Help");
 
   pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
       new pcl::PointCloud<pcl::PointXYZRGBA>());
@@ -347,6 +305,7 @@ void Demo::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
 
   size_t num_points = cloud->points.size();
   _logger.debug("Decoded point cloud with %d points", num_points);
+  if (num_points == 0) return;
 
   std::vector<rerun::Position3D> positions;
   std::vector<rerun::Color> colors;
@@ -360,44 +319,31 @@ void Demo::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
     float x = point.x;
     float y = point.y;
     float z = point.z;
-    if (i % 100 == 0) {
-      _logger.debug("Point %d rgba is %d %d %d %d", i, point.r, point.g,
-                    point.b, point.a);
-    }
-    // float_data[idx + 3] is typically confidence or unused
-
-    // Filter out invalid points (NaN or infinite values)
     positions.emplace_back(x, y, z);
-
-    // Color based on distance for better visualization
-    colors.push_back(rerun::Color(point.r, point.g, point.b));
+    colors.emplace_back(rerun::Color(point.r, point.g, point.b));
   }
   // Log to Rerun
-  if (!positions.empty()) {
-    this->_rec->log("map/points",
-                    rerun::Points3D(positions).with_colors(colors));
+  this->_rec->log("world/map/points",
+                  rerun::Points3D(positions).with_colors(colors));
 
-    // Log statistics
-    this->_rec->log("stats/map/point_count",
-                    rerun::Scalars(static_cast<double>(positions.size())));
-    this->_rec->log("stats/map/total_received",
-                    rerun::Scalars(static_cast<double>(num_points)));
-    this->_rec->log("stats/map/image_dimensions",
-                    rerun::TextLog("Dimensions: " + std::to_string(width) +
-                                   "x" + std::to_string(height)));
-  }
+  // Log statistics
+  this->_rec->log("stats/map/point_count",
+                  rerun::Scalars(static_cast<double>(positions.size())));
+  this->_rec->log("stats/map/total_received",
+                  rerun::Scalars(static_cast<double>(num_points)));
+  this->_rec->log("stats/map/image_dimensions",
+                  rerun::TextLog("Dimensions: " + std::to_string(width) + "x" +
+                                 std::to_string(height)));
 }
 
 void Demo::run() {
   this->_logger.info("Running");
+  auto file_path = this->get_argument("--drone-model");
   this->_rec->log_static(
       "world", rerun::ViewCoordinates::RIGHT_HAND_Z_UP);  // Set an up-axis
   this->_rec->log("world/drone",
-                  rerun::Asset3D::from_file_path("./assets/X500.glb")
+                  rerun::Asset3D::from_file_path(file_path)
                       .value_or_throw());  // Set an up-axis
-  this->_rec->log("drone/asset", this->_drone_model,
-                  rerun::Transform3D::from_scale(_drone_scale_factor)
-                      .with_rotation(_drone_quat));
   while (true) sleep(1);
 }
 
