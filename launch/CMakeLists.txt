@@ -11,7 +11,7 @@ add_executable(executable_test2 test/executable_test2.cpp)
 target_link_libraries(${PROJECT_NAME}
     core
     pthread
-    yaml-cpp
+    yaml-cpp::yaml-cpp
 )
 
 
