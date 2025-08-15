@@ -29,16 +29,24 @@ Demo::Demo(Core::ArgumentParser args) : Core::Vertex(args) {
   this->_sub = this->create_subscriber<PointCloud>(
       "point_cloud",
       std::bind(&Demo::point_cloud_cb, this, std::placeholders::_1));
+  this->_lidar_sub = this->create_subscriber<PointCloud>(
+      "lidar", 
+      std::bind(&Demo::lidar_cb, this, std::placeholders::_1));
   this->_map_sub = this->create_subscriber<PointCloud>(
-      "map", std::bind(&Demo::map_cloud_cb, this, std::placeholders::_1));
+      "map", 
+      std::bind(&Demo::map_cloud_cb, this, std::placeholders::_1));
   this->_goal_sub = this->create_subscriber<Position>(
-      "goal", std::bind(&Demo::goal_cb, this, std::placeholders::_1));
+      "goal", 
+      std::bind(&Demo::goal_cb, this, std::placeholders::_1));
   this->_mic_sub = this->create_subscriber<StereoMic>(
-      "mic", std::bind(&Demo::mic_cb, this, std::placeholders::_1));
+      "mic", 
+      std::bind(&Demo::mic_cb, this, std::placeholders::_1));
   this->_odom_sub = this->create_subscriber<Odometry>(
-      "odometry", std::bind(&Demo::odom_cb, this, std::placeholders::_1));
+      "odometry", 
+      std::bind(&Demo::odom_cb, this, std::placeholders::_1));
   this->_octree_sub = this->create_subscriber<MarkerArray>(
-      "octree", std::bind(&Demo::octree_cb, this, std::placeholders::_1));
+      "octree", 
+      std::bind(&Demo::octree_cb, this, std::placeholders::_1));
   this->_octree_layers_sub = this->create_subscriber<MarkerArray>(
       "octree_layers",
       std::bind(&Demo::octree_layers_cb, this, std::placeholders::_1));
@@ -137,11 +145,12 @@ void Demo::render_path(const Core::IncomingMessage<Path> &msg,
 }
 
 void Demo::planned_path_cb(const Core::IncomingMessage<Path> &msg) {
-  this->_logger.info("planned_path_cb was called");
+  this->_logger.debug("Received planned_path message");
   this->render_path(msg, "path/points", "path/arrows");
 }
 
 void Demo::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
+  this->_logger.debug("Received odometry message");
   auto content = msg.content;
   auto q = msg.content.getQ();
   auto position = content.getPosition();
@@ -154,6 +163,7 @@ void Demo::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
 }
 
 void Demo::goal_cb(const Core::IncomingMessage<Position> &msg) {
+  this->_logger.debug("Received goal message");
   auto content = msg.content;
   this->_rec->log("goal/position",
                   rerun::Boxes3D::from_centers_and_sizes(
@@ -168,6 +178,7 @@ void Demo::goal_cb(const Core::IncomingMessage<Position> &msg) {
 }
 
 void Demo::octree_cb(const Core::IncomingMessage<MarkerArray> &msg) {
+  this->_logger.debug("Received octree message");
   std::vector<rerun::components::PoseTranslation3D> centers;
   std::vector<rerun::HalfSize3D> sizes;
   std::vector<rerun::Color> colors;
@@ -200,6 +211,7 @@ void Demo::octree_cb(const Core::IncomingMessage<MarkerArray> &msg) {
 }
 
 void Demo::octree_layers_cb(const Core::IncomingMessage<MarkerArray> &msg) {
+  this->_logger.debug("Received octree_layers message");
   std::vector<rerun::components::PoseTranslation3D> centers;
   std::vector<rerun::HalfSize3D> sizes;
   std::vector<rerun::Color> colors;
@@ -232,6 +244,7 @@ void Demo::octree_layers_cb(const Core::IncomingMessage<MarkerArray> &msg) {
 }
 
 void Demo::mic_cb(const Core::IncomingMessage<StereoMic> &msg) {
+  this->_logger.debug("Received mic message");
   this->_rec->log("mic/left",
                   rerun::Scalars(static_cast<double>(msg.content.getLeft())));
   this->_rec->log("mic/right",
@@ -239,6 +252,7 @@ void Demo::mic_cb(const Core::IncomingMessage<StereoMic> &msg) {
 }
 
 void Demo::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
+  this->_logger.debug("Received point_cloud message");
   auto data_reader = msg.content.getData();
   auto width = msg.content.getWidth();
   auto height = msg.content.getHeight();
@@ -289,6 +303,7 @@ void Demo::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
 }
 
 void Demo::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
+  this->_logger.debug("Received map message");
   auto data_reader = msg.content.getData();
   auto width = msg.content.getWidth();
   auto height = msg.content.getHeight();
@@ -333,6 +348,57 @@ void Demo::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
   this->_rec->log("stats/map/total_received",
                   rerun::Scalars(static_cast<double>(num_points)));
   this->_rec->log("stats/map/image_dimensions",
+                  rerun::TextLog("Dimensions: " + std::to_string(width) + "x" +
+                                 std::to_string(height)));
+}
+
+void Demo::lidar_cb(const Core::IncomingMessage<PointCloud> &msg) {
+  this->_logger.debug("Received lidar message");
+  auto data_reader = msg.content.getData();
+  auto width = msg.content.getWidth();
+  auto height = msg.content.getHeight();
+
+  pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
+      new pcl::PointCloud<pcl::PointXYZRGBA>());
+  std::stringstream buffer(
+      std::string((char *)data_reader.begin(), data_reader.size()));
+  try {
+    _point_cloud_decoder->decodePointCloud(buffer, cloud);
+  } catch (const std::exception &e) {
+    _logger.warn("Error while decoding lidar cloud: %s", e.what());
+    return;
+  }
+
+  size_t num_points = cloud->points.size();
+  if (num_points == 0) return;
+
+  std::vector<rerun::Position3D> positions;
+  std::vector<rerun::Color> colors;
+
+  positions.reserve(num_points);
+
+  for (size_t i = 0; i < num_points; ++i) {
+    auto point = cloud->points[i];
+    float x = point.x;
+    float y = point.y;
+    float z = point.z;
+    positions.emplace_back(x, y, z);
+
+    // Color based on distance for better visualization
+    float distance = sqrt(x * x + y * y + z * z);
+    auto color = distance_to_color(distance);
+    colors.push_back(color);
+  }
+  // Log to Rerun
+  this->_rec->log("world/drone/lidar/points",
+                  rerun::Points3D(positions).with_colors(colors));
+
+  // Log statistics
+  this->_rec->log("stats/lidar/point_count",
+                  rerun::Scalars(static_cast<double>(positions.size())));
+  this->_rec->log("stats/lidar/total_received",
+                  rerun::Scalars(static_cast<double>(num_points)));
+  this->_rec->log("stats/lidar/image_dimensions",
                   rerun::TextLog("Dimensions: " + std::to_string(width) + "x" +
                                  std::to_string(height)));
 }

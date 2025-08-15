@@ -20,6 +20,7 @@
 class Demo : Core::Vertex {
  private:
   std::shared_ptr<Core::Subscriber<PointCloud>> _sub;
+  std::shared_ptr<Core::Subscriber<PointCloud>> _lidar_sub;
   std::shared_ptr<Core::Subscriber<PointCloud>> _map_sub;
   std::shared_ptr<Core::Subscriber<Position>> _goal_sub;
   std::shared_ptr<Core::Subscriber<StereoMic>> _mic_sub;
@@ -38,6 +39,7 @@ class Demo : Core::Vertex {
  public:
   void goal_cb(const Core::IncomingMessage<Position> &);
   void point_cloud_cb(const Core::IncomingMessage<PointCloud> &);
+  void lidar_cb(const Core::IncomingMessage<PointCloud> &);
   void map_cloud_cb(const Core::IncomingMessage<PointCloud> &);
   void mic_cb(const Core::IncomingMessage<StereoMic> &);
   void odom_cb(const Core::IncomingMessage<Odometry> &);
@@ -47,6 +49,7 @@ class Demo : Core::Vertex {
   void local_planned_path_cb(const Core::IncomingMessage<Path> &);
   void render_path(const Core::IncomingMessage<Path> &, const std::string &,
                    const std::string &);
+  
   rerun::Color distance_to_color(float distance);
   Demo(Core::ArgumentParser);
   void run();
