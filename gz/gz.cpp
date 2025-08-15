@@ -86,6 +86,15 @@ void process_pointcloud(const gz::msgs::PointCloudPacked &pt, pcl::PointCloud<pc
   out_cloud->height = pt.height();
   out_cloud->is_dense = pt.is_dense();
   out_cloud->points.resize(out_cloud->width * out_cloud->height);
+  // manually convert each point, in pcl each is represented by 16 bytes and in
+  // gazebo 24 bytes
+  // can run: gz topic -e -t /depth_camera/points
+  // field { name: "x" datatype: FLOAT32 count: 1 }
+  // field { name: "y" offset: 4 datatype: FLOAT32 count: 1 }
+  // field { name: "z" offset: 8 datatype: FLOAT32 count: 1 }
+  // field { name: "rgb" offset: 16 datatype: FLOAT32 count: 1 }
+  // height: 480 width: 640 point_step: 24
+  // Shared point cloud processing for both topics
   const uint8_t *data_ptr = reinterpret_cast<const uint8_t *>(pt.data().data());
   for (size_t i = 0; i < out_cloud->points.size(); ++i) {
     size_t point_offset = i * pt.point_step();
