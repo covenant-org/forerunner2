@@ -6,3 +6,8 @@ struct PointCloud {
 	data @2 :Data;
 	size @3 :UInt32;
 }
+
+struct PointCloudChunk {
+	index @0 :UInt16;
+  cloud @1 :PointCloud;
+}

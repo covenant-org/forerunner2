@@ -21,17 +21,16 @@
 #include <pthread.h>
 #include <sl/Camera.hpp>
 #include <sstream>
-
-using namespace sl;
+#include <unistd.h>
 
 Zed::Zed(const Core::ArgumentParser &parser) : Core::Vertex(parser) {
   this->_cloud_point_pub = this->create_publisher<PointCloud>("point_cloud");
 
-  _camera = Camera();
+  _camera = sl::Camera();
 
-  InitParameters init_parameters;
-  init_parameters.depth_mode = DEPTH_MODE::NEURAL;
-  init_parameters.coordinate_units = UNIT::METER;
+  sl::InitParameters init_parameters;
+  init_parameters.depth_mode = sl::DEPTH_MODE::NEURAL;
+  init_parameters.coordinate_units = sl::UNIT::METER;
 
   if (auto fn = parser.present("--svo")) {
     init_parameters.input.setFromSVOFile(fn->c_str());
@@ -43,15 +42,15 @@ Zed::Zed(const Core::ArgumentParser &parser) : Core::Vertex(parser) {
       // Stream input mode - IP + port
       std::string ip_adress = std::to_string(a) + "." + std::to_string(b) +
                               "." + std::to_string(c) + "." + std::to_string(d);
-      init_parameters.input.setFromStream(String(ip_adress.c_str()), port);
+      init_parameters.input.setFromStream(sl::String(ip_adress.c_str()), port);
     } else if (sscanf(fn->c_str(), "%u.%u.%u.%u", &a, &b, &c, &d) == 4) {
       // Stream input mode - IP only
-      init_parameters.input.setFromStream(String(fn->c_str()));
+      init_parameters.input.setFromStream(sl::String(fn->c_str()));
     }
   }
 
   auto returned_state = _camera.open(init_parameters);
-  if (returned_state != ERROR_CODE::SUCCESS) {
+  if (returned_state != sl::ERROR_CODE::SUCCESS) {
     _camera.close();
     std::cout << returned_state << std::endl;
     throw std::runtime_error("zed camera can't start");
@@ -61,33 +60,32 @@ Zed::Zed(const Core::ArgumentParser &parser) : Core::Vertex(parser) {
     sl::PositionalTrackingParameters ptp;
     ptp.mode = sl::POSITIONAL_TRACKING_MODE::GEN_3;
     returned_state = _camera.enablePositionalTracking(ptp);
-    if (returned_state > ERROR_CODE::SUCCESS) {
+    if (returned_state > sl::ERROR_CODE::SUCCESS) {
       _camera.close();
       throw std::runtime_error("zed camera can't enable positional tracking");
     }
-    this->_map_pub = this->create_publisher<PointCloud>("map");
+    this->_map_pub = this->create_publisher<PointCloudChunk>("map");
   }
 
   pcl::io::compression_Profiles_e compressionProfile =
       pcl::io::MED_RES_ONLINE_COMPRESSION_WITH_COLOR;
   _cloud_encoder = new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>(
       compressionProfile, false);
-  _map_encoder = new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>(
-      compressionProfile, false);
 }
 
 void Zed::run() {
-  Pose pose;
-  FusedPointCloud map;
-  RuntimeParameters runtime_parameters;
+  sl::Pose pose;
+  sl::FusedPointCloud map;
+  sl::RuntimeParameters runtime_parameters;
   runtime_parameters.confidence_threshold = 30;
-  POSITIONAL_TRACKING_STATE tracking_state = POSITIONAL_TRACKING_STATE::OFF;
+  sl::POSITIONAL_TRACKING_STATE tracking_state =
+      sl::POSITIONAL_TRACKING_STATE::OFF;
   bool wait_for_mapping = true;
   bool request_new_mesh = true;
 
-  SpatialMappingParameters spatial_mapping_parameters;
+  sl::SpatialMappingParameters spatial_mapping_parameters;
   spatial_mapping_parameters.map_type =
-      SpatialMappingParameters::SPATIAL_MAP_TYPE::FUSED_POINT_CLOUD;
+      sl::SpatialMappingParameters::SPATIAL_MAP_TYPE::FUSED_POINT_CLOUD;
   // Set mapping range, it will set the resolution accordingly (a higher range,
   // a lower resolution)
   spatial_mapping_parameters.set(
@@ -96,20 +94,20 @@ void Zed::run() {
       sl::SpatialMappingParameters::MAPPING_RANGE::MEDIUM);
   // Request partial updates only (only the last updated chunks need to be
   // re-draw)
-  spatial_mapping_parameters.use_chunk_only = false;
+  spatial_mapping_parameters.use_chunk_only = true;
   // Stability counter defines how many times a stable 3D points should be seen
   // before it is integrated into the spatial mapping
-  spatial_mapping_parameters.stability_counter = 3;
-  spatial_mapping_parameters.decay = 0.1;
+  spatial_mapping_parameters.stability_counter = 5;
+  spatial_mapping_parameters.decay = 1;
 
   sl::Resolution default_image_size = _camera.getRetrieveMeasureResolution();
   sl::Mat point_cloud;
 
   std::chrono::high_resolution_clock::time_point ts_last;
   while (true) {
-    if (_camera.grab(runtime_parameters) == ERROR_CODE::SUCCESS) {
+    if (_camera.grab(runtime_parameters) == sl::ERROR_CODE::SUCCESS) {
       // get cloud point image
-      _camera.retrieveMeasure(point_cloud, MEASURE::XYZRGBA, MEM::CPU,
+      _camera.retrieveMeasure(point_cloud, sl::MEASURE::XYZRGBA, sl::MEM::CPU,
                               default_image_size);
       auto msg = this->_cloud_point_pub->new_msg();
       msg.content.setWidth(default_image_size.width);
@@ -144,7 +142,7 @@ void Zed::run() {
 
       tracking_state = _camera.getPosition(pose);
       _logger.debug("Got position");
-      if (tracking_state == POSITIONAL_TRACKING_STATE::OK) {
+      if (tracking_state == sl::POSITIONAL_TRACKING_STATE::OK) {
         if (wait_for_mapping) {
           _camera.enableSpatialMapping(spatial_mapping_parameters);
           _logger.debug("Enabled spatial mapping");
@@ -165,52 +163,57 @@ void Zed::run() {
         }
 
         // If the point cloud is ready to be retrieved
-        if (_camera.getSpatialMapRequestStatusAsync() == ERROR_CODE::SUCCESS &&
+        if (_camera.getSpatialMapRequestStatusAsync() ==
+                sl::ERROR_CODE::SUCCESS &&
             !request_new_mesh) {
           _camera.retrieveSpatialMapAsync(map);
           _logger.debug("Retrieved map");
           request_new_mesh = true;
           ts_last = std::chrono::high_resolution_clock::now();
 
-          auto map_points_size = map.getNumberOfPoints();
-          if (map_points_size == 0) {
-            _logger.debug("Empty map, not sending");
-            continue;
+          for (size_t i = 0; i < map.chunks.size(); i++) {
+            auto &chunk = map.chunks[i];
+            if (!chunk.has_been_updated || chunk.vertices.size() == 0) continue;
+
+            auto chunk_points_size = chunk.vertices.size();
+            pcl::PointCloud<pcl::PointXYZRGBA>::Ptr chunk_cloud(
+                new pcl::PointCloud<pcl::PointXYZRGBA>(chunk_points_size, 1));
+            for (size_t i = 0; i < chunk_points_size; i++) {
+              chunk_cloud->points[i].x = chunk.vertices[i][0];
+              chunk_cloud->points[i].y = chunk.vertices[i][1];
+              chunk_cloud->points[i].z = chunk.vertices[i][2];
+              uint32_t color_uint = *(uint32_t *)&chunk.vertices[i][3];
+              unsigned char *color_uchar = (unsigned char *)&color_uint;
+              color_uint =
+                  ((uint32_t)color_uchar[0] << 16 |
+                   (uint32_t)color_uchar[1] << 8 | (uint32_t)color_uchar[2]);
+              chunk_cloud->points[i].rgb =
+                  *reinterpret_cast<float *>(&color_uint);
+            }
+            _logger.debug("Copied %d points", chunk_points_size);
+
+            Eigen::Affine3f chunk_transform = Eigen::Affine3f::Identity();
+            chunk_transform.rotate(
+                Eigen::AngleAxisf(-M_PI_2f, Eigen::Vector3f::UnitX()));
+            pcl::transformPointCloud(*chunk_cloud, *chunk_cloud,
+                                     chunk_transform);
+
+            auto chunk_msg = this->_map_pub->new_msg();
+            auto chunk_msg_cloud = chunk_msg.content.initCloud();
+            chunk_msg_cloud.setWidth(chunk_points_size);
+            chunk_msg_cloud.setHeight(1);
+
+            auto reader_size =
+                chunk_cloud->points.size() * sizeof(pcl::PointXYZRGBA);
+            chunk_msg_cloud.initData(reader_size);
+            chunk_msg_cloud.setSize(reader_size);
+            auto chunk_reader = ::capnp::Data::Reader(
+                (unsigned char *)chunk_cloud->points.data(), reader_size);
+            chunk_msg_cloud.setData(chunk_reader);
+            chunk_msg.content.setIndex(i);
+            chunk_msg.publish();
+            _logger.debug("Sent %d chunk with %d points", i, chunk_points_size);
           }
-          pcl::PointCloud<pcl::PointXYZRGBA>::Ptr map_cloud(
-              new pcl::PointCloud<pcl::PointXYZRGBA>(map_points_size, 1));
-          for (size_t i = 0; i < map_points_size; i++) {
-            map_cloud->points[i].x = map.vertices[i][0];
-            map_cloud->points[i].y = map.vertices[i][1];
-            map_cloud->points[i].z = map.vertices[i][2];
-            uint32_t color_uint = *(uint32_t *)&map.vertices[i][3];
-            unsigned char *color_uchar = (unsigned char *)&color_uint;
-            color_uint =
-                ((uint32_t)color_uchar[0] << 16 |
-                 (uint32_t)color_uchar[1] << 8 | (uint32_t)color_uchar[2]);
-            map_cloud->points[i].rgb = *reinterpret_cast<float *>(&color_uint);
-          }
-          _logger.debug("Copied %d points", map_points_size);
-
-          Eigen::Affine3f map_transform = Eigen::Affine3f::Identity();
-          map_transform.rotate(
-              Eigen::AngleAxisf(-M_PI_2f, Eigen::Vector3f::UnitX()));
-          pcl::transformPointCloud(*map_cloud, *map_cloud, map_transform);
-
-          auto map_msg = this->_map_pub->new_msg();
-          map_msg.content.setWidth(map_points_size);
-          map_msg.content.setHeight(1);
-
-          std::stringstream map_encoded_cloud;
-          _map_encoder->encodePointCloud(map_cloud, map_encoded_cloud);
-          std::string map_buffer = map_encoded_cloud.str();
-          map_msg.content.initData(map_buffer.size());
-          map_msg.content.setSize(map_buffer.size());
-          auto map_reader = ::capnp::Data::Reader(
-              (unsigned char *)map_buffer.data(), map_buffer.size());
-          map_msg.content.setData(map_reader);
-          map_msg.publish();
-          _logger.debug("Sent map with %d points", map_points_size);
         }
       }
     }

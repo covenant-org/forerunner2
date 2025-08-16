@@ -9,18 +9,19 @@
 #include "viewer.hpp"
 #include <Eigen/src/Geometry/Quaternion.h>
 #include <capnp_schemas/geometry_msgs.capnp.h>
+#include <capnp_schemas/zed.capnp.h>
 #include <cmath>
+#include <cstring>
 #include <exception>
 #include <iostream>
 #include <pcl/impl/point_types.hpp>
 #include <rerun.hpp>
 #include <rerun/recording_stream.hpp>
+#include <string>
 #include <vector>
 
 Demo::Demo(Core::ArgumentParser args) : Core::Vertex(args) {
   this->_point_cloud_decoder =
-      new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>();
-  this->_map_decoder =
       new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>();
 
   this->_rec = std::make_shared<rerun::RecordingStream>("Forerunner v2");
@@ -29,7 +30,7 @@ Demo::Demo(Core::ArgumentParser args) : Core::Vertex(args) {
   this->_sub = this->create_subscriber<PointCloud>(
       "point_cloud",
       std::bind(&Demo::point_cloud_cb, this, std::placeholders::_1));
-  this->_map_sub = this->create_subscriber<PointCloud>(
+  this->_map_sub = this->create_subscriber<PointCloudChunk>(
       "map", std::bind(&Demo::map_cloud_cb, this, std::placeholders::_1));
   this->_goal_sub = this->create_subscriber<Position>(
       "goal", std::bind(&Demo::goal_cb, this, std::placeholders::_1));
@@ -288,24 +289,19 @@ void Demo::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
                                  std::to_string(height)));
 }
 
-void Demo::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
-  auto data_reader = msg.content.getData();
-  auto width = msg.content.getWidth();
-  auto height = msg.content.getHeight();
+void Demo::map_cloud_cb(const Core::IncomingMessage<PointCloudChunk> &msg) {
+  auto cloud_msg = msg.content.getCloud();
+  auto data_reader = cloud_msg.getData();
+  auto width = cloud_msg.getWidth();
+  auto height = cloud_msg.getHeight();
 
   pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
-      new pcl::PointCloud<pcl::PointXYZRGBA>());
-  std::stringstream buffer(
-      std::string((char *)data_reader.begin(), data_reader.size()));
-  try {
-    _map_decoder->decodePointCloud(buffer, cloud);
-  } catch (const std::exception &e) {
-    _logger.warn("Error while decoding map: %s", e.what());
-    return;
-  }
+      new pcl::PointCloud<pcl::PointXYZRGBA>(width, height));
+  memcpy((unsigned char *)data_reader.begin(),
+         (unsigned char *)cloud->points.data(), data_reader.size());
 
   size_t num_points = cloud->points.size();
-  _logger.debug("Decoded point cloud with %d points", num_points);
+  _logger.debug("Received chunk with %d points", num_points);
   if (num_points == 0) return;
 
   std::vector<rerun::Position3D> positions;
@@ -323,16 +319,17 @@ void Demo::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
     positions.emplace_back(x, y, z);
     colors.emplace_back(rerun::Color(point.r, point.g, point.b));
   }
+  auto index = std::to_string(msg.content.getIndex());
   // Log to Rerun
-  this->_rec->log("world/map/points",
+  this->_rec->log("world/map/" + index,
                   rerun::Points3D(positions).with_colors(colors));
 
   // Log statistics
-  this->_rec->log("stats/map/point_count",
+  this->_rec->log("stats/map/" + index + "/point_count",
                   rerun::Scalars(static_cast<double>(positions.size())));
-  this->_rec->log("stats/map/total_received",
+  this->_rec->log("stats/map/" + index + "/total_received",
                   rerun::Scalars(static_cast<double>(num_points)));
-  this->_rec->log("stats/map/image_dimensions",
+  this->_rec->log("stats/map/" + index + "/image_dimensions",
                   rerun::TextLog("Dimensions: " + std::to_string(width) + "x" +
                                  std::to_string(height)));
 }

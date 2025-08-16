@@ -20,7 +20,7 @@
 class Demo : Core::Vertex {
  private:
   std::shared_ptr<Core::Subscriber<PointCloud>> _sub;
-  std::shared_ptr<Core::Subscriber<PointCloud>> _map_sub;
+  std::shared_ptr<Core::Subscriber<PointCloudChunk>> _map_sub;
   std::shared_ptr<Core::Subscriber<Position>> _goal_sub;
   std::shared_ptr<Core::Subscriber<StereoMic>> _mic_sub;
   std::shared_ptr<Core::Subscriber<Odometry>> _odom_sub;
@@ -30,15 +30,13 @@ class Demo : Core::Vertex {
   std::shared_ptr<Core::Subscriber<Path>> _local_planned_path_sub;
   std::shared_ptr<rerun::RecordingStream> _rec;
   pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA> *_point_cloud_decoder;
-  pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA> *_map_decoder;
   rerun::archetypes::Asset3D _drone_model;
   rerun::Quaternion _drone_quat;
-  float _drone_scale_factor = 0.001f;
 
  public:
   void goal_cb(const Core::IncomingMessage<Position> &);
   void point_cloud_cb(const Core::IncomingMessage<PointCloud> &);
-  void map_cloud_cb(const Core::IncomingMessage<PointCloud> &);
+  void map_cloud_cb(const Core::IncomingMessage<PointCloudChunk> &);
   void mic_cb(const Core::IncomingMessage<StereoMic> &);
   void odom_cb(const Core::IncomingMessage<Odometry> &);
   void octree_cb(const Core::IncomingMessage<MarkerArray> &);

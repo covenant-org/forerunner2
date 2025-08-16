@@ -1,0 +1,10 @@
+executables:
+  - name: mavlink
+  - name: mavlink-mission
+  - name: gz
+  - name: zed
+    args:
+      flags:
+        - --map
+        - --debug
+  - name: rerun
