@@ -7,15 +7,19 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_definitions("-Wall -Wextra")
 
-add_subdirectory(core)
-
 set(EXCLUDED_SUBDIRS
     "vendor"
     "core"
-    
-    "zed"
+    "messages"
 )
 
+find_package(ZED)
+if(NOT DEFINED ZED_FOUND OR NOT ZED_FOUND)
+  message(WARNING "ZED SDK not found, ignoring zed subdir")
+  list(APPEND EXCLUDED_SUBDIRS "zed")
+endif()
+
+add_subdirectory(core)
 if(DEFINED ENV{SUBDIR})
     set(SUBDIR $ENV{SUBDIR})
 endif()
@@ -36,3 +40,5 @@ else()
         endif()
     endforeach()
 endif()
+
+
