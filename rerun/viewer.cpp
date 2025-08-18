@@ -150,7 +150,7 @@ void Demo::planned_path_cb(const Core::IncomingMessage<Path> &msg) {
 }
 
 void Demo::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
-  this->_logger.debug("Received odometry message");
+  // this->_logger.debug("Received odometry message");
   auto content = msg.content;
   auto q = msg.content.getQ();
   auto position = content.getPosition();
@@ -353,7 +353,7 @@ void Demo::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
 }
 
 void Demo::lidar_cb(const Core::IncomingMessage<PointCloud> &msg) {
-  this->_logger.debug("Received lidar message");
+  // this->_logger.debug("Received lidar message");
   auto data_reader = msg.content.getData();
   auto width = msg.content.getWidth();
   auto height = msg.content.getHeight();
@@ -377,15 +377,23 @@ void Demo::lidar_cb(const Core::IncomingMessage<PointCloud> &msg) {
 
   positions.reserve(num_points);
 
+  // TODO: Hacer rotacion y traslacion directamente com PCL 
   for (size_t i = 0; i < num_points; ++i) {
     auto point = cloud->points[i];
-    float x = point.x;
-    float y = point.y;
-    float z = point.z;
-    positions.emplace_back(x, y, z);
+    //                     NO  NO  NO  NO  NO  NO  NO
+    float x = point.x; //  x   x   y   z   z   z
+    float y = point.y; // -z   y   x   y  -y  -y
+    float z = point.z; //  y  -z  -z  -x  -x   x
+    //                     da db  fa  bi  bi  af
+    // d=derecha f=frente b=abajo a=arriba i=inverso f=fijo(sigue al dron)
+    // Ejemplo: rotar 90° alrededor de X para que Z apunte hacia abajo
+    // Orientación hacia abajo y movimiento sincronizado con el dron
+    float new_x = -z;
+    float new_y = y;
+    float new_z = -x;
+    positions.emplace_back(new_x, new_y, new_z);
 
-    // Color based on distance for better visualization
-    float distance = sqrt(x * x + y * y + z * z);
+    float distance = sqrt(new_x * new_x + new_y * new_y + new_z * new_z);
     auto color = distance_to_color(distance);
     colors.push_back(color);
   }
