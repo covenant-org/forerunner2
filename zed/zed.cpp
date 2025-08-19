@@ -196,6 +196,8 @@ void Zed::run() {
             Eigen::Affine3f chunk_transform = Eigen::Affine3f::Identity();
             chunk_transform.rotate(
                 Eigen::AngleAxisf(-M_PI_2f, Eigen::Vector3f::UnitX()));
+            chunk_transform.rotate(
+                Eigen::AngleAxisf(M_PI_2f, Eigen::Vector3f::UnitY()));
             pcl::transformPointCloud(*chunk_cloud, *chunk_cloud,
                                      chunk_transform);
 

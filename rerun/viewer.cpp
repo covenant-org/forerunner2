@@ -148,10 +148,6 @@ void Demo::planned_path_cb(const Core::IncomingMessage<Path> &msg) {
 void Demo::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
   auto content = msg.content;
   auto q = msg.content.getQ();
-  // Eigen::Quaternionf rotation(std::cos(M_PI_2 / 2), 0, 0, std::sin(M_PI_2 /
-  // 2));
-  Eigen::Quaternionf quat(q.getW(), q.getX(), q.getY(), q.getZ());
-  auto euler = quat.toRotationMatrix().eulerAngles(0, 1, 2);
   auto position = content.getPosition();
   this->_rec->log("world/drone",
                   rerun::Transform3D::from_translation_rotation(
@@ -304,8 +300,8 @@ void Demo::map_cloud_cb(const Core::IncomingMessage<PointCloudChunk> &msg) {
 
   pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
       new pcl::PointCloud<pcl::PointXYZRGBA>(width, height));
-  memcpy((unsigned char *)data_reader.begin(),
-         (unsigned char *)cloud->points.data(), data_reader.size());
+  memcpy((unsigned char *)cloud->points.data(),
+         (unsigned char *)data_reader.begin(), data_reader.size());
 
   size_t num_points = cloud->points.size();
   _logger.debug("Received chunk with %d points", num_points);
