@@ -10,6 +10,9 @@
 #include "rerun/rotation3d.hpp"
 #include "utils.hpp"
 #include "viewer.hpp"
+#include <Eigen/src/Core/MathFunctions.h>
+#include <Eigen/src/Core/Matrix.h>
+#include <Eigen/src/Geometry/AngleAxis.h>
 #include <Eigen/src/Geometry/Quaternion.h>
 #include <capnp_schemas/geometry_msgs.capnp.h>
 #include <capnp_schemas/zed.capnp.h>
@@ -147,14 +150,31 @@ void Demo::planned_path_cb(const Core::IncomingMessage<Path> &msg) {
 
 void Demo::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
   auto content = msg.content;
-  auto q = msg.content.getQ();
+  auto q = content.getQ();
   auto position = content.getPosition();
+  auto heading = -content.getHeading();
+  auto w = q.getW();
+  auto x = q.getX();
+  auto y = -q.getY();
+  auto z = -q.getZ();
+  auto original_yaw = atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z));
+  auto cos_half_yaw = cos(-original_yaw / 2);
+  auto sin_half_yaw = sin(-original_yaw / 2);
+  Eigen::Quaternionf original_q(w, x, y, z);
+  Eigen::Quaternionf neg_yaw_q(cos_half_yaw, 0, 0, sin_half_yaw);
+  Eigen::Quaternionf roll_pitch_q = neg_yaw_q * original_q;
+  auto correct_yaw_rad = heading * EIGEN_PI / 180;
+  auto correct_yaw_cos = cos(correct_yaw_rad / 2);
+  auto correct_yaw_sin = sin(correct_yaw_rad / 2);
+  Eigen::Quaternionf new_yaw_q(correct_yaw_cos, 0, 0, correct_yaw_sin);
+  Eigen::Quaternionf correctedq = new_yaw_q * roll_pitch_q;
   this->_rec->log("world/drone",
                   rerun::Transform3D::from_translation_rotation(
                       rerun::components::Translation3D{
                           position.getX(), -position.getY(), -position.getZ()},
                       rerun::Rotation3D(rerun::datatypes::Quaternion{
-                          q.getX(), -q.getY(), -q.getZ(), q.getW()})));
+                          correctedq.x(), correctedq.y(), correctedq.z(),
+                          correctedq.w()})));
 }
 
 void Demo::goal_cb(const Core::IncomingMessage<Position> &msg) {
