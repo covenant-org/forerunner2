@@ -125,6 +125,7 @@ void Zed::run() {
 
       Eigen::Affine3f transform = Eigen::Affine3f::Identity();
       transform.rotate(Eigen::AngleAxisf(-M_PI_2f, Eigen::Vector3f::UnitX()));
+      transform.rotate(Eigen::AngleAxisf(M_PI_2f, Eigen::Vector3f::UnitY()));
       pcl::transformPointCloud(*cloud, *cloud, transform);
 
       std::stringstream encoded_cloud;

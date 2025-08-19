@@ -1,10 +1,11 @@
 executables:
   - name: mavlink
   - name: mavlink-mission
-  - name: gz
   - name: zed
     args:
       flags:
         - --map
         - --debug
+      options:
+        --host: 127.0.0.1
   - name: rerun

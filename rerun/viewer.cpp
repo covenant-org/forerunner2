@@ -5,6 +5,9 @@
 #include "rerun/archetypes/instance_poses3d.hpp"
 #include "rerun/components/fill_mode.hpp"
 #include "rerun/components/rotation_quat.hpp"
+#include "rerun/components/translation3d.hpp"
+#include "rerun/datatypes/quaternion.hpp"
+#include "rerun/rotation3d.hpp"
 #include "utils.hpp"
 #include "viewer.hpp"
 #include <Eigen/src/Geometry/Quaternion.h>
@@ -145,13 +148,17 @@ void Demo::planned_path_cb(const Core::IncomingMessage<Path> &msg) {
 void Demo::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
   auto content = msg.content;
   auto q = msg.content.getQ();
+  // Eigen::Quaternionf rotation(std::cos(M_PI_2 / 2), 0, 0, std::sin(M_PI_2 /
+  // 2));
+  Eigen::Quaternionf quat(q.getW(), q.getX(), q.getY(), q.getZ());
+  auto euler = quat.toRotationMatrix().eulerAngles(0, 1, 2);
   auto position = content.getPosition();
   this->_rec->log("world/drone",
-                  rerun::InstancePoses3D()
-                      .with_translations({{position.getX(), position.getY(),
-                                           -position.getZ()}})
-                      .with_quaternions({rerun::components::RotationQuat(
-                          {q.getX(), q.getY(), q.getZ(), q.getW()})}));
+                  rerun::Transform3D::from_translation_rotation(
+                      rerun::components::Translation3D{
+                          position.getX(), -position.getY(), -position.getZ()},
+                      rerun::Rotation3D(rerun::datatypes::Quaternion{
+                          q.getX(), -q.getY(), -q.getZ(), q.getW()})));
 }
 
 void Demo::goal_cb(const Core::IncomingMessage<Position> &msg) {
@@ -276,7 +283,7 @@ void Demo::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
     colors.push_back(color);
   }
   // Log to Rerun
-  this->_rec->log("world/camera/depth/points",
+  this->_rec->log("world/drone/camera/depth/points",
                   rerun::Points3D(positions).with_colors(colors));
 
   // Log statistics
