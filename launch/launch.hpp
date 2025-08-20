@@ -24,6 +24,7 @@ class Launch {
   std::string _root_path;
   std::vector<std::string> _exclude_folders;
   double _delay_seconds = 0.0;
+  std::string _log_level = "info";
   inline static const std::vector<std::string> default_exclude_folders = {
       "vendor", ".git"};
 
@@ -33,8 +34,6 @@ class Launch {
 
  public:
   std::map<std::string, std::string> executables;
-
-  void set_log_level(Core::LogLevel level);
 
   Launch(argparse::ArgumentParser& parser,
          const std::vector<std::string>& exclude,
@@ -48,7 +47,9 @@ class Launch {
   Launch(argparse::ArgumentParser& parser, const NodesYamlParser& yaml_parser, double delay_seconds = 0.0);
 
   std::map<std::string, std::string> get_executables();
-  
+
+  static Core::LogLevel string_to_loglevel(const std::string& level);
+
   int run_executable(const std::string& name,
                      const std::vector<std::string>& args);
   void run_executables(const std::vector<std::string>& names,

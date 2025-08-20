@@ -38,8 +38,6 @@ std::map<std::string, std::string> Launch::find_executable_files(
   return exe_map;
 }
 
-void Launch::set_log_level(Core::LogLevel level) { _logger.set_level(level); }
-
 Launch::Launch(argparse::ArgumentParser& parser,
                const std::vector<std::string>& exclude,
                const std::vector<std::string>& names,
@@ -48,6 +46,11 @@ Launch::Launch(argparse::ArgumentParser& parser,
     : _exclude_folders(exclude), _delay_seconds(delay_seconds) {
   int registry_port = parser.get<int>("--registry-port");
   int registry_threads = parser.get<int>("--registry-threads");
+  _log_level = parser.get<std::string>("--log-level");
+
+  _logger.set_classname("launch");
+  _logger.set_level(string_to_loglevel(_log_level));
+
   _root_path = Core::find_root(".root", 10);
   if (_root_path.empty()) {
     _logger.error("Root path not found.");
@@ -152,6 +155,14 @@ void print_argparse_help(const argparse::ArgumentParser& parser) {
   logger.info("\n%s", ss.str().c_str());
 }
 
+Core::LogLevel Launch::string_to_loglevel(const std::string& level) {
+    if (level == "debug") return Core::LogLevel::DEBUG;
+    if (level == "info") return Core::LogLevel::INFO;
+    if (level == "warn") return Core::LogLevel::WARN;
+    if (level == "error") return Core::LogLevel::ERROR;
+    return Core::LogLevel::INFO; // valor por defecto
+}
+
 int main(int argc, char** argv) {
   argparse::ArgumentParser parser;
   parser.add_argument("--yaml-path")
@@ -166,10 +177,6 @@ int main(int argc, char** argv) {
       .help(
           "Number of threads for the registry (optional, requires "
           "--registry-port)")
-      .nargs(1);
-  parser.add_argument("--log-level")
-      .default_value("info")
-      .help("Log level (optional)")
       .nargs(1);
   parser.add_argument("--log-level")
       .default_value("info")
@@ -199,7 +206,12 @@ int main(int argc, char** argv) {
   }
 
   std::string yaml_path = parser.get<std::string>("--yaml-path");
-  double delay_seconds = std::stod(parser.get<std::string>("--delay-seconds"));
+  double delay_seconds = 0.0;
+  try {
+    delay_seconds = std::stod(parser.get<std::string>("--delay-seconds"));
+  } catch (const std::exception&) {
+    delay_seconds = 0.0;
+  }
   NodesYamlParser yaml_parser(yaml_path);
   Launch launch_instance(parser, yaml_parser, delay_seconds);
   
