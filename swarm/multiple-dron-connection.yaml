@@ -1,0 +1,23 @@
+executables:
+  - name: mavlink
+    args:
+      options:
+        --mavlink-uri: udpin://0.0.0.0:14540?localport=14580
+        --drone-id: 0
+  - name: mavlink
+    args:
+      options:
+        --mavlink-uri: udpin://0.0.0.0:14541?localport=14581
+        --drone-id: 1
+  # - name: gz
+  # - name: planner
+  #   args:
+  #     flags:
+  #       - --publish-octree
+  #     options:
+  #       --max-distance: 7.5
+  # - name: controller
+  #   args:
+  #     flags:
+  #       - --debug
+  # - name: rerun

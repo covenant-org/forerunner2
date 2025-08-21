@@ -16,19 +16,26 @@ Mavlink::Mavlink(Core::ArgumentParser parser)
       _mavsdk(
           mavsdk::Mavsdk::Configuration{mavsdk::ComponentType::GroundStation}) {
   auto uri = this->get_argument<std::string>("--mavlink-uri");
+  std::string drone_id = "";
+  try {
+    drone_id = this->get_argument<std::string>("--drone-id");
+  } catch (...) {
+    // If not present, drone_id remains empty
+  }
   auto result = this->init_mavlink_connection(uri);
   if (!result) {
     throw std::runtime_error("error initializing mavsdk");
   }
 
+  std::string ns = drone_id.empty() ? "" : ("drone" + drone_id + "/");
   _command_action_server = create_action_server<Command, GenericResponse>(
-      "controller", std::bind(&Mavlink::command_cb, this,
+      ns + "controller", std::bind(&Mavlink::command_cb, this,
                               std::placeholders::_1, std::placeholders::_2));
   this->_home_position_publisher =
-      this->create_publisher<HomePosition>("home_position");
-  this->_odometry_publisher = this->create_publisher<Odometry>("odometry");
-  this->_telemetry_publisher = this->create_publisher<Telemetry>("telemetry");
-  this->_altitude_publisher = this->create_publisher<Altitude>("altitude");
+      this->create_publisher<HomePosition>(ns + "home_position");
+  this->_odometry_publisher = this->create_publisher<Odometry>(ns + "odometry");
+  this->_telemetry_publisher = this->create_publisher<Telemetry>(ns + "telemetry");
+  this->_altitude_publisher = this->create_publisher<Altitude>(ns + "altitude");
 }
 
 void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
@@ -123,7 +130,7 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
 }
 
 bool Mavlink::init_mavlink_connection(const std::string &uri) {
-  mavsdk::ConnectionResult result = this->_mavsdk.add_any_connection(uri);
+  mavsdk::ConnectionResult result = this->_mavsdk.add_any_connection(uri); // Falla al iniciar 2 a la vez
   if (result != mavsdk::ConnectionResult::Success) {
     return false;
   }
@@ -241,12 +248,15 @@ void Mavlink::run() {
 int main(int argc, char **argv) {
   Core::BaseArgumentParser base(argc, argv);
   base.add_argument("--mavlink-uri")
-      .help("ip where the mavlink instance is running")
-      .nargs(1)
-      .default_value(MAVLINK_URI);
+    .help("ip where the mavlink instance is running")
+    .nargs(1)
+    .default_value(MAVLINK_URI);
+  base.add_argument("--drone-id")
+      .help("Unique drone ID for topic namespace")
+      .nargs(1);
 
   std::shared_ptr<Mavlink> mavlink =
-      std::make_shared<Mavlink>(std::move(base));
+    std::make_shared<Mavlink>(std::move(base));
   mavlink->run();
   return 0;
 }

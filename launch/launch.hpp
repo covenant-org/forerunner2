@@ -19,8 +19,12 @@ class Launch {
   Core::Logger _logger;
 
  private:
+  std::vector<std::string> all_names;
+  std::vector<std::vector<std::string>> all_args;
   std::string _root_path;
   std::vector<std::string> _exclude_folders;
+  double _delay_seconds = 0.0;
+  std::string _log_level = "info";
   inline static const std::vector<std::string> default_exclude_folders = {
       "vendor", ".git"};
 
@@ -31,22 +35,26 @@ class Launch {
  public:
   std::map<std::string, std::string> executables;
 
-  void set_log_level(Core::LogLevel level);
-
   Launch(argparse::ArgumentParser& parser,
          const std::vector<std::string>& exclude,
          const std::vector<std::string>& names,
-         const std::vector<std::vector<std::string>>& args);
+         const std::vector<std::vector<std::string>>& args,
+         double delay_seconds = 0.0);
   Launch(argparse::ArgumentParser& parser,
          const std::vector<std::string>& names,
-         const std::vector<std::vector<std::string>>& args);
-  Launch(argparse::ArgumentParser& parser, const NodesYamlParser& yaml_parser);
+         const std::vector<std::vector<std::string>>& args,
+         double delay_seconds = 0.0);
+  Launch(argparse::ArgumentParser& parser, const NodesYamlParser& yaml_parser, double delay_seconds = 0.0);
 
   std::map<std::string, std::string> get_executables();
+
+  static Core::LogLevel string_to_loglevel(const std::string& level);
+
   int run_executable(const std::string& name,
                      const std::vector<std::string>& args);
   void run_executables(const std::vector<std::string>& names,
                        const std::vector<std::vector<std::string>>& arguments);
+  void run_executables();
 };
 
 #endif  // LAUNCH_HPP
