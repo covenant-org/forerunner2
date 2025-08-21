@@ -9,3 +9,6 @@ executables:
       options:
         --host: 127.0.0.1
   - name: rerun
+    args:
+      flags:
+        - --map-compression

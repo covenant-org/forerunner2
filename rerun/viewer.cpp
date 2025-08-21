@@ -2,9 +2,7 @@
 #include "rerun/archetypes/arrows3d.hpp"
 #include "rerun/archetypes/asset3d.hpp"
 #include "rerun/archetypes/boxes3d.hpp"
-#include "rerun/archetypes/instance_poses3d.hpp"
 #include "rerun/components/fill_mode.hpp"
-#include "rerun/components/rotation_quat.hpp"
 #include "rerun/components/translation3d.hpp"
 #include "rerun/datatypes/quaternion.hpp"
 #include "rerun/rotation3d.hpp"
@@ -22,8 +20,9 @@
 #include <rerun/recording_stream.hpp>
 #include <string>
 #include <vector>
+#include <zlib.h>
 
-Demo::Demo(Core::ArgumentParser args) : Core::Vertex(args) {
+Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
   this->_point_cloud_decoder =
       new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>();
 
@@ -32,26 +31,26 @@ Demo::Demo(Core::ArgumentParser args) : Core::Vertex(args) {
 
   this->_sub = this->create_subscriber<PointCloud>(
       "point_cloud",
-      std::bind(&Demo::point_cloud_cb, this, std::placeholders::_1));
+      std::bind(&Viewer::point_cloud_cb, this, std::placeholders::_1));
   this->_map_sub = this->create_subscriber<PointCloudChunk>(
-      "map", std::bind(&Demo::map_cloud_cb, this, std::placeholders::_1));
+      "map", std::bind(&Viewer::map_cloud_cb, this, std::placeholders::_1));
   this->_goal_sub = this->create_subscriber<Position>(
-      "goal", std::bind(&Demo::goal_cb, this, std::placeholders::_1));
+      "goal", std::bind(&Viewer::goal_cb, this, std::placeholders::_1));
   this->_mic_sub = this->create_subscriber<StereoMic>(
-      "mic", std::bind(&Demo::mic_cb, this, std::placeholders::_1));
+      "mic", std::bind(&Viewer::mic_cb, this, std::placeholders::_1));
   this->_odom_sub = this->create_subscriber<Odometry>(
-      "odometry", std::bind(&Demo::odom_cb, this, std::placeholders::_1));
+      "odometry", std::bind(&Viewer::odom_cb, this, std::placeholders::_1));
   this->_octree_sub = this->create_subscriber<MarkerArray>(
-      "octree", std::bind(&Demo::octree_cb, this, std::placeholders::_1));
+      "octree", std::bind(&Viewer::octree_cb, this, std::placeholders::_1));
   this->_octree_layers_sub = this->create_subscriber<MarkerArray>(
       "octree_layers",
-      std::bind(&Demo::octree_layers_cb, this, std::placeholders::_1));
+      std::bind(&Viewer::octree_layers_cb, this, std::placeholders::_1));
   this->_planned_path_sub = this->create_subscriber<Path>(
       "planned_path",
-      std::bind(&Demo::planned_path_cb, this, std::placeholders::_1));
+      std::bind(&Viewer::planned_path_cb, this, std::placeholders::_1));
 }
 
-rerun::Color Demo::distance_to_color(float distance) {
+rerun::Color Viewer::distance_to_color(float distance) {
   // Create a color gradient based on distance
   // Blue (close) -> Green -> Yellow -> Red (far)
 
@@ -78,9 +77,9 @@ rerun::Color Demo::distance_to_color(float distance) {
   }
 }
 
-void Demo::render_path(const Core::IncomingMessage<Path> &msg,
-                       const std::string &points_name,
-                       const std::string &path_arrows) {
+void Viewer::render_path(const Core::IncomingMessage<Path> &msg,
+                         const std::string &points_name,
+                         const std::string &path_arrows) {
   auto poses = msg.content.getPoses();
 
   std::vector<rerun::Position3D> points;
@@ -140,12 +139,12 @@ void Demo::render_path(const Core::IncomingMessage<Path> &msg,
   }
 }
 
-void Demo::planned_path_cb(const Core::IncomingMessage<Path> &msg) {
+void Viewer::planned_path_cb(const Core::IncomingMessage<Path> &msg) {
   this->_logger.info("planned_path_cb was called");
   this->render_path(msg, "path/points", "path/arrows");
 }
 
-void Demo::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
+void Viewer::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
   auto content = msg.content;
   auto q = msg.content.getQ();
   auto position = content.getPosition();
@@ -157,7 +156,7 @@ void Demo::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
                           q.getX(), -q.getY(), -q.getZ(), q.getW()})));
 }
 
-void Demo::goal_cb(const Core::IncomingMessage<Position> &msg) {
+void Viewer::goal_cb(const Core::IncomingMessage<Position> &msg) {
   auto content = msg.content;
   this->_rec->log("goal/position",
                   rerun::Boxes3D::from_centers_and_sizes(
@@ -171,7 +170,7 @@ void Demo::goal_cb(const Core::IncomingMessage<Position> &msg) {
                   rerun::Scalars(static_cast<double>(content.getZ())));
 }
 
-void Demo::octree_cb(const Core::IncomingMessage<MarkerArray> &msg) {
+void Viewer::octree_cb(const Core::IncomingMessage<MarkerArray> &msg) {
   std::vector<rerun::components::PoseTranslation3D> centers;
   std::vector<rerun::HalfSize3D> sizes;
   std::vector<rerun::Color> colors;
@@ -203,7 +202,7 @@ void Demo::octree_cb(const Core::IncomingMessage<MarkerArray> &msg) {
       rerun::TextLog("Octree markers: " + std::to_string(markers.size())));
 }
 
-void Demo::octree_layers_cb(const Core::IncomingMessage<MarkerArray> &msg) {
+void Viewer::octree_layers_cb(const Core::IncomingMessage<MarkerArray> &msg) {
   std::vector<rerun::components::PoseTranslation3D> centers;
   std::vector<rerun::HalfSize3D> sizes;
   std::vector<rerun::Color> colors;
@@ -235,14 +234,14 @@ void Demo::octree_layers_cb(const Core::IncomingMessage<MarkerArray> &msg) {
       rerun::TextLog("Octree markers: " + std::to_string(markers.size())));
 }
 
-void Demo::mic_cb(const Core::IncomingMessage<StereoMic> &msg) {
+void Viewer::mic_cb(const Core::IncomingMessage<StereoMic> &msg) {
   this->_rec->log("mic/left",
                   rerun::Scalars(static_cast<double>(msg.content.getLeft())));
   this->_rec->log("mic/right",
                   rerun::Scalars(static_cast<double>(msg.content.getRight())));
 }
 
-void Demo::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
+void Viewer::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
   auto data_reader = msg.content.getData();
   auto width = msg.content.getWidth();
   auto height = msg.content.getHeight();
@@ -292,16 +291,42 @@ void Demo::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
                                  std::to_string(height)));
 }
 
-void Demo::map_cloud_cb(const Core::IncomingMessage<PointCloudChunk> &msg) {
+void Viewer::map_cloud_cb(const Core::IncomingMessage<PointCloudChunk> &msg) {
   auto cloud_msg = msg.content.getCloud();
   auto data_reader = cloud_msg.getData();
   auto width = cloud_msg.getWidth();
   auto height = cloud_msg.getHeight();
 
+  auto compression = _args.get_argument<bool>("--map-compression");
   pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
       new pcl::PointCloud<pcl::PointXYZRGBA>(width, height));
-  memcpy((unsigned char *)cloud->points.data(),
-         (unsigned char *)data_reader.begin(), data_reader.size());
+  if (compression) {
+    size_t len = cloud->points.size() * sizeof(pcl::PointXYZRGBA);
+    auto res =
+        uncompress(reinterpret_cast<Bytef *>(cloud->points.data()), &len,
+                   (unsigned char *)data_reader.begin(), data_reader.size());
+    if (res != Z_OK) {
+      _logger.error("Error while uncompressing map");
+      switch (res) {
+        case Z_MEM_ERROR:
+          _logger.error("Z_MEM_ERROR: insufficient memory");
+          break;
+        case Z_BUF_ERROR:
+          _logger.error("Z_BUF_ERROR: insufficient output buffer");
+          break;
+        case Z_DATA_ERROR:
+          _logger.error("Z_DATA_ERROR: corrupted input data");
+          break;
+        default:
+          break;
+      }
+      return;
+    }
+    _logger.debug("Read %d bytes", len);
+  } else {
+    memcpy((unsigned char *)cloud->points.data(),
+           (unsigned char *)data_reader.begin(), data_reader.size());
+  }
 
   size_t num_points = cloud->points.size();
   _logger.debug("Received chunk with %d points", num_points);
@@ -314,7 +339,6 @@ void Demo::map_cloud_cb(const Core::IncomingMessage<PointCloudChunk> &msg) {
   colors.reserve(num_points);
 
   for (size_t i = 0; i < num_points; ++i) {
-    size_t idx = i * 4;
     auto point = cloud->points[i];
     float x = point.x;
     float y = point.y;
@@ -337,7 +361,7 @@ void Demo::map_cloud_cb(const Core::IncomingMessage<PointCloudChunk> &msg) {
                                  std::to_string(height)));
 }
 
-void Demo::run() {
+void Viewer::run() {
   this->_logger.info("Running");
   auto file_path = this->get_argument("--drone-model");
   this->_logger.debug("Drone model path: %s", file_path.c_str());
@@ -363,8 +387,13 @@ int main(int argc, char **argv) {
   args.add_argument("--drone-model")
       .default_value(default_model_path)
       .help("stl file to use for rendering the drone");
+  args.add_argument("--map-compression")
+      .default_value(false)
+      .implicit_value(false)
+      .help("Enable decompression of map chunks")
+      .flag();
 
-  auto demo = Demo(args);
+  auto demo = Viewer(args);
   demo.run();
   return 0;
 }

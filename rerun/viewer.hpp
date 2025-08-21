@@ -17,7 +17,7 @@
 #ifndef DEMO_HPP
 #define DEMO_HPP
 
-class Demo : Core::Vertex {
+class Viewer : Core::Vertex {
  private:
   std::shared_ptr<Core::Subscriber<PointCloud>> _sub;
   std::shared_ptr<Core::Subscriber<PointCloudChunk>> _map_sub;
@@ -46,7 +46,7 @@ class Demo : Core::Vertex {
   void render_path(const Core::IncomingMessage<Path> &, const std::string &,
                    const std::string &);
   rerun::Color distance_to_color(float distance);
-  Demo(Core::ArgumentParser);
+  Viewer(Core::ArgumentParser);
   void run();
 };
 

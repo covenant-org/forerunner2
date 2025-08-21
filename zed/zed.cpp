@@ -22,6 +22,8 @@
 #include <sl/Camera.hpp>
 #include <sstream>
 #include <unistd.h>
+#include <vector>
+#include <zlib.h>
 
 Zed::Zed(const Core::ArgumentParser &parser) : Core::Vertex(parser) {
   this->_cloud_point_pub = this->create_publisher<PointCloud>("point_cloud");
@@ -142,7 +144,6 @@ void Zed::run() {
       if (!_args.get_argument<bool>("--map")) continue;
 
       tracking_state = _camera.getPosition(pose);
-      _logger.debug("Got position");
       if (tracking_state == sl::POSITIONAL_TRACKING_STATE::OK) {
         if (wait_for_mapping) {
           _camera.enableSpatialMapping(spatial_mapping_parameters);
@@ -191,7 +192,6 @@ void Zed::run() {
               chunk_cloud->points[i].rgb =
                   *reinterpret_cast<float *>(&color_uint);
             }
-            _logger.debug("Copied %d points", chunk_points_size);
 
             Eigen::Affine3f chunk_transform = Eigen::Affine3f::Identity();
             chunk_transform.rotate(
@@ -206,12 +206,31 @@ void Zed::run() {
             chunk_msg_cloud.setWidth(chunk_points_size);
             chunk_msg_cloud.setHeight(1);
 
-            auto reader_size =
+            auto message_size =
                 chunk_cloud->points.size() * sizeof(pcl::PointXYZRGBA);
-            chunk_msg_cloud.initData(reader_size);
-            chunk_msg_cloud.setSize(reader_size);
-            auto chunk_reader = ::capnp::Data::Reader(
-                (unsigned char *)chunk_cloud->points.data(), reader_size);
+            auto compression_level =
+                _args.get_argument<int>("--map-compression-level");
+            unsigned char *chunk_data =
+                reinterpret_cast<unsigned char *>(chunk_cloud->points.data());
+            std::vector<Bytef> compressed(compressBound(message_size));
+            if (compression_level > 0) {
+              auto compression_size = compressed.size();
+              auto res =
+                  compress2(compressed.data(), &compression_size,
+                            (const unsigned char *)chunk_cloud->points.data(),
+                            message_size, compression_level);
+              if (res != Z_OK) {
+                _logger.error("Compression error");
+                continue;
+              }
+              _logger.debug("Compressed %d to %d bytes", message_size,
+                            compression_size);
+              message_size = compression_size;
+              chunk_data = compressed.data();
+            }
+            chunk_msg_cloud.initData(message_size);
+            chunk_msg_cloud.setSize(message_size);
+            auto chunk_reader = ::capnp::Data::Reader(chunk_data, message_size);
             chunk_msg_cloud.setData(chunk_reader);
             chunk_msg.content.setIndex(i);
             chunk_msg.publish();
@@ -229,6 +248,13 @@ int main(int argc, char **argv) {
       .default_value(false)
       .implicit_value(true)
       .help("Spatial Mapping feature");
+  arguments.add_argument("--map-compression-level")
+      .default_value(9)
+      .choices(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+      .help(
+          "Level of compression. 9 is the best comrpession and 1 is for the "
+          "best speed. 0 disable compression")
+      .scan<'d', int>();
   auto &group = arguments.add_mutually_exclusive_group();
   group.add_argument("--svo").help("SVO Recording File Path");
   group.add_argument("--host").help("Host IP Streaming");
