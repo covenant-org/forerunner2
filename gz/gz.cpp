@@ -36,6 +36,11 @@ GZ::GZ(Core::ArgumentParser args) : Core::Vertex(args) {
     throw std::runtime_error("Failed to subscribe to left mic");
   }
 
+  if (!_gz_node->Subscribe("/camera", 
+                           &GZ::on_camera_cb, this)) {
+    throw std::runtime_error("Failed to subscribe to camera topic");
+  }
+
   pcl::io::compression_Profiles_e compression_profile =
       pcl::io::MED_RES_ONLINE_COMPRESSION_WITH_COLOR;
   _cloud_encoder = new pcl::io::OctreePointCloudCompression<pcl::PointXYZ>(
@@ -61,6 +66,17 @@ void GZ::on_rmic_cb(const gz::msgs::Double &msg,
   this->_last_rmic_value = msg.data();
   this->_logger.debug("Received right mic");
   this->publish_mic();
+}
+
+void GZ::on_camera_cb(const gz::msgs::Image &msg,
+                      const gz::transport::MessageInfo &info) {
+  this->_logger.debug("Received camera image");
+  auto out = this->_camera_publisher->new_msg();
+  out.content.setWidth(msg.width());
+  out.content.setHeight(msg.height());
+  out.content.setData(msg.data());
+  out.content.setFormat(msg.format());
+  out.publish();
 }
 
 void GZ::run() {
