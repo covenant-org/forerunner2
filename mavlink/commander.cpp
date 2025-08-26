@@ -55,14 +55,12 @@ void Commander::run() {
     } else if (command == "waypoint") {
           // Example: "waypoint local 19,20,-21,0" or "waypoint local 19 20 -21 0"
           if (!args.empty() && args.size() > 1) {
-
             // Rebuild the remainder of the input after 'local'
             std::string coords_str;
             for (size_t i = 1; i < args.size(); ++i) {
               if (!coords_str.empty()) coords_str += ' ';
               coords_str += args[i];
             }
-
             // Normalize commas to spaces so we can parse with >>
             for (char &c : coords_str) {
               if (c == ',') c = ' ';
@@ -98,7 +96,7 @@ void Commander::run() {
               }
             }
             else if (args[0] == "global") {
-
+              // TO DO: Agregar transformacion de global a local
             }
 
           } else {
