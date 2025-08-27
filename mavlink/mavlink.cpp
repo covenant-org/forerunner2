@@ -121,7 +121,7 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
         // continue and try to start Offboard anyway
       }
 
-      // TO DO: Agregar un modo en commander para cambiar de modo (Cambiar manualmente a offboard)
+      // TODO: Agregar un modo en commander para cambiar de modo (Cambiar manualmente a offboard)
       const auto start_res = this->_offboard->start();
       if (start_res != mavsdk::Offboard::Result::Success) {
         this->_logger.error("Failed to start Offboard: %d",
@@ -211,10 +211,12 @@ void Mavlink::run() {
         mavlink_msg_home_position_decode(&msg, &this->_mavlink_home_position);
         auto home_position_msg = this->_home_position_publisher->new_msg();
         home_position_msg.content.getPos().setX(this->_mavlink_home_position.x);
-        home_position_msg.content.getPos().setY(
-            -this->_mavlink_home_position.y);
-        home_position_msg.content.getPos().setZ(
-            -this->_mavlink_home_position.z);
+        home_position_msg.content.getPos().setY(-this->_mavlink_home_position.y);
+        home_position_msg.content.getPos().setZ(-this->_mavlink_home_position.z);
+
+        home_position_msg.content.getGps().setLatitude(this->_mavlink_home_position.latitude);
+        home_position_msg.content.getGps().setLongitude(this->_mavlink_home_position.longitude);
+        home_position_msg.content.getGps().setAltitude(this->_mavlink_home_position.altitude);
         home_position_msg.publish();
       });
 
