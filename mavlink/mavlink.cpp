@@ -4,17 +4,22 @@
 #include <capnp_schemas/controller.capnp.h>
 #include <capnp_schemas/generics.capnp.h>
 #include <capnp_schemas/mavlink.capnp.h>
+#include <cstdlib>
+#include <cstring>
 #include <mavsdk/connection_result.h>
 #include <mavsdk/mavsdk.h>
 #include <mavsdk/plugins/action/action.h>
 #include <mavsdk/plugins/offboard/offboard.h>
 #include <mavsdk/plugins/telemetry/telemetry.h>
+#include <memory>
+#include <plugins/ftp_server/ftp_server.h>
 #include <plugins/mavlink_passthrough/mavlink_passthrough.h>
+#include <server_component.h>
 
 Mavlink::Mavlink(Core::ArgumentParser parser)
     : Core::Vertex(std::move(parser)),
-      _mavsdk(
-          mavsdk::Mavsdk::Configuration{mavsdk::ComponentType::GroundStation}) {
+      _mavsdk(mavsdk::Mavsdk::Configuration{
+          mavsdk::ComponentType::CompanionComputer}) {
   auto uri = this->get_argument<std::string>("--mavlink-uri");
   auto result = this->init_mavlink_connection(uri);
   if (!result) {
@@ -22,17 +27,26 @@ Mavlink::Mavlink(Core::ArgumentParser parser)
   }
 
   _command_action_server = create_action_server<Command, GenericResponse>(
-      "controller", std::bind(&Mavlink::command_cb, this,
-                              std::placeholders::_1, std::placeholders::_2));
+      "controller", std::bind(&Mavlink::command_cb, this, std::placeholders::_1,
+                              std::placeholders::_2));
   this->_home_position_publisher =
       this->create_publisher<HomePosition>("home_position");
   this->_odometry_publisher = this->create_publisher<Odometry>("odometry");
   this->_telemetry_publisher = this->create_publisher<Telemetry>("telemetry");
   this->_altitude_publisher = this->create_publisher<Altitude>("altitude");
+  this->_config_publisher = this->create_publisher<KeyValue>("config/ftp");
+}
+
+void Mavlink::publish_config() {
+  if (this->_ftp_dir.empty()) return;
+  auto msg = this->_config_publisher->new_msg();
+  msg.content.setKey("FTP_DIR");
+  msg.content.setValue(_ftp_dir);
+  msg.publish();
 }
 
 void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
-                               GenericResponse::Builder &res) {
+                         GenericResponse::Builder &res) {
   this->_logger.debug("Requested command");
   res.setCode(200);
   res.setMessage("OK");
@@ -138,6 +152,13 @@ bool Mavlink::init_mavlink_connection(const std::string &uri) {
   this->_offboard = std::make_shared<mavsdk::Offboard>(this->_system.value());
   this->_passthrough =
       std::make_shared<mavsdk::MavlinkPassthrough>(this->_system.value());
+  this->_ftp_server =
+      std::make_shared<mavsdk::FtpServer>(this->_mavsdk.server_component());
+  if (mkdtemp(_ftp_dir.data()) == nullptr) {
+    _logger.error("Cloud not make a tempdir for FtpServer");
+    return false;
+  }
+  this->_ftp_server->set_root_dir(_ftp_dir);
 
   return true;
 }
@@ -234,6 +255,7 @@ void Mavlink::run() {
       });
 
   while (true) {
+    publish_config();
     sleep(1);
   }
 }
@@ -245,8 +267,7 @@ int main(int argc, char **argv) {
       .nargs(1)
       .default_value(MAVLINK_URI);
 
-  std::shared_ptr<Mavlink> mavlink =
-      std::make_shared<Mavlink>(std::move(base));
+  std::shared_ptr<Mavlink> mavlink = std::make_shared<Mavlink>(std::move(base));
   mavlink->run();
   return 0;
 }

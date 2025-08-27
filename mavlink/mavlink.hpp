@@ -1,6 +1,5 @@
 #include "argument_parser.hpp"
 #include "publisher.hpp"
-#include "subscriber.hpp"
 #include "vertex.hpp"
 #include <capnp_schemas/controller.capnp.h>
 #include <capnp_schemas/generics.capnp.h>
@@ -8,6 +7,7 @@
 #include <mavsdk/connection_result.h>
 #include <mavsdk/mavsdk.h>
 #include <mavsdk/plugins/action/action.h>
+#include <mavsdk/plugins/ftp_server/ftp_server.h>
 #include <mavsdk/plugins/mavlink_passthrough/mavlink_passthrough.h>
 #include <mavsdk/plugins/offboard/offboard.h>
 #include <mavsdk/plugins/telemetry/telemetry.h>
@@ -28,15 +28,18 @@ class Mavlink : public Core::Vertex {
   std::shared_ptr<Core::Publisher<Odometry>> _odometry_publisher;
   std::shared_ptr<Core::Publisher<Telemetry>> _telemetry_publisher;
   std::shared_ptr<Core::Publisher<Altitude>> _altitude_publisher;
+  std::shared_ptr<Core::Publisher<KeyValue>> _config_publisher;
   std::shared_ptr<Core::ActionServer<Command, GenericResponse>>
       _command_action_server;
 
   std::optional<std::shared_ptr<mavsdk::System>> _system = std::nullopt;
+  std::string _ftp_dir;
   mavsdk::Mavsdk _mavsdk;
   std::shared_ptr<mavsdk::Telemetry> _telemetry;
   std::shared_ptr<mavsdk::Action> _action;
   std::shared_ptr<mavsdk::Offboard> _offboard;
   std::shared_ptr<mavsdk::MavlinkPassthrough> _passthrough;
+  std::shared_ptr<mavsdk::FtpServer> _ftp_server;
 
   mavlink_home_position_t _mavlink_home_position;
 
@@ -57,6 +60,7 @@ class Mavlink : public Core::Vertex {
                   GenericResponse::Builder &);
   void odometry_cb(const mavsdk::Telemetry::Odometry &);
   void publish_telemtry();
+  void publish_config();
 
   void run();
 };
