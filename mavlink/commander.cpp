@@ -66,10 +66,18 @@ void Commander::run() {
     this->_logger.debug("Command: %s", command.c_str());
 
     if (command == "takeoff") {
-      
+      // Usage: takeoff [altitude]
+      float desired_alt = 2.0f;
+      if (!args.empty()) {
+        try {
+          desired_alt = std::stof(args[0]);
+        } catch (...) {
+          this->_logger.warn("Invalid altitude argument, using default 2");
+        }
+      }
       auto request = this->_mission_client->new_msg();
       request.content.initTakeoff();
-      request.content.getTakeoff().setDesiredAltitude(2);
+      request.content.getTakeoff().setDesiredAltitude(desired_alt);
       auto result = request.send();
       auto response = result.value().content;
       if (response.getCode() != 200) {
