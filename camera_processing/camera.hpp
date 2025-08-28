@@ -10,7 +10,7 @@ class CameraViewer {
  public:
   CameraViewer();
   ~CameraViewer();
-  bool start();
+  bool start(cv::dnn::Net &net, const std::vector<std::string> &class_list);
   void stop();
 
  private:

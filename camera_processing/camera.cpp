@@ -190,7 +190,7 @@ bool CameraViewer::start(cv::dnn::Net &net, const std::vector<std::string> &clas
   }
 
   // Main display loop on the main thread
-  std::thread([this]() {
+  std::thread([this, &net, &class_list]() {
     cv::namedWindow("camera", cv::WINDOW_AUTOSIZE);
     while (_running && g_running) {
       std::vector<Detection> output;
