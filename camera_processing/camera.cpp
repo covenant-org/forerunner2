@@ -4,6 +4,95 @@
 #include <signal.h>
 #include <thread>
 #include <chrono>
+#include <NvInfer.h>
+#include <NvInferRuntime.h>
+#include <cuda_runtime_api.h>
+#include <opencv2/opencv.hpp>
+#include <fstream>
+#include <iostream>
+
+using namespace nvinfer1;
+
+class TrtLogger : public ILogger {
+    void log(Severity severity, const char* msg) noexcept override {
+        if (severity <= Severity::kWARNING)
+            std::cout << "[TRT] " << msg << std::endl;
+    }
+};
+
+class TrtLogger : public ILogger {
+    void log(Severity severity, const char* msg) noexcept override {
+        if (severity <= Severity::kWARNING)
+            std::cout << "[TRT] " << msg << std::endl;
+    }
+};
+
+class YoloTRT {
+public:
+    YoloTRT(const std::string& engineFile) {
+        TrtLogger logger;
+        std::ifstream file(engineFile, std::ios::binary);
+        if (!file.good()) throw std::runtime_error("Could not read engine file!");
+
+        file.seekg(0, std::ifstream::end);
+        size_t size = file.tellg();
+        file.seekg(0, std::ifstream::beg);
+
+        std::vector<char> trtModelStream(size);
+        file.read(trtModelStream.data(), size);
+        file.close();
+
+        runtime = createInferRuntime(logger);
+        engine = runtime->deserializeCudaEngine(trtModelStream.data(), size);
+        context = engine->createExecutionContext();
+    }
+
+    ~YoloTRT() {
+        context->destroy();
+        engine->destroy();
+        runtime->destroy();
+    }
+
+    std::vector<float> infer(const cv::Mat& input) {
+        // preprocess to 640x640, normalize
+        cv::Mat resized;
+        cv::resize(input, resized, cv::Size(640, 640));
+        resized.convertTo(resized, CV_32F, 1.0/255);
+
+        // Allocate GPU buffers
+        void* buffers[2];
+        int inputIndex = engine->getBindingIndex("images");   // check binding names
+        int outputIndex = engine->getBindingIndex("output0");
+
+        size_t inputSize = 1 * 3 * 640 * 640 * sizeof(float);
+        size_t outputSize = 25200 * 85 * sizeof(float); // YOLO output size
+
+        cudaMalloc(&buffers[inputIndex], inputSize);
+        cudaMalloc(&buffers[outputIndex], outputSize);
+
+        // Copy input
+        std::vector<float> inputTensor(3 * 640 * 640);
+        std::memcpy(inputTensor.data(), resized.data, inputTensor.size() * sizeof(float));
+        cudaMemcpy(buffers[inputIndex], inputTensor.data(), inputSize, cudaMemcpyHostToDevice);
+
+        // Run inference
+        context->enqueueV2(buffers, 0, nullptr);
+
+        // Copy output
+        std::vector<float> outputTensor(25200 * 85);
+        cudaMemcpy(outputTensor.data(), buffers[outputIndex], outputSize, cudaMemcpyDeviceToHost);
+
+        cudaFree(buffers[inputIndex]);
+        cudaFree(buffers[outputIndex]);
+
+        return outputTensor;
+    }
+
+private:
+    IRuntime* runtime{nullptr};
+    ICudaEngine* engine{nullptr};
+    IExecutionContext* context{nullptr};
+};
 
 std::vector<std::string> load_class_list()
 {
@@ -21,11 +110,11 @@ std::vector<std::string> load_class_list()
 void load_net(cv::dnn::Net &net)
 {   
     // change this path to your model path 
-    auto result = cv::dnn::readNet("model/yolov11n.onnx");
+    auto result = cv::dnn::readNet("/workspaces/forerunner2/camera_processing/model/yolo11n.onnx");
 
     std::cout << "Running on CPU/n";
-    result.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
-    result.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
+    result.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
+    result.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
  
     net = result;
 }
@@ -201,6 +290,7 @@ bool CameraViewer::start(cv::dnn::Net &net, const std::vector<std::string> &clas
       }
       if (!frame.empty()) {
         detect(frame, net, output, class_list);
+        //  auto output = yolo.infer(frame); 
         cv::imshow("camera", frame);
         // waitKey with small delay to keep UI responsive
         if (cv::waitKey(1) == 27) {  // ESC to quit
