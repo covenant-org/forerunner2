@@ -85,13 +85,13 @@ void Planner::planner_server_cb(const Core::IncomingMessage<ReplanRequest> &req,
   switch (req.content.which()) {
     case ReplanRequest::START: {
       auto start = req.content.getStart();
-      auto pos = start.getPose().getPose().getPosition();
-      this->_logger.info("received goal request: %f, %f, %f", pos.getX(),
-                         pos.getY(), pos.getZ());
+      auto pos = start.getPose().getPose().getPosition(); // unused
+      this->_logger.info("received goal request");
 
-      Eigen::Vector3d absolute_goal(_goal_msg.x(), _goal_msg.y(),
-                                    _goal_msg.z());
-      Eigen::Vector3d current_pose(pos.getX(), pos.getY(), pos.getZ());
+      Eigen::Vector3d absolute_goal(_goal_msg.x(), _goal_msg.y(), _goal_msg.z());
+      Eigen::Vector3d current_pose(pos.getX(),
+                                  pos.getY(),
+                                  pos.getZ());
 
       if ((current_pose - absolute_goal).norm() < 1.0) {
         this->_received_goal = false;
@@ -104,18 +104,20 @@ void Planner::planner_server_cb(const Core::IncomingMessage<ReplanRequest> &req,
       }
       break;
     }
+    case ReplanRequest::STOP: {
+      res.setCode(200);
+      res.setMessage("planner stopped");
+      break;
+    }
+    default: {
+      res.setCode(400);
+      res.setMessage("unknown request type");
+      break;
+    }
   }
 }
 
 void Planner::run_planner(ReplanRequest::Start::Reader &msg) {
-  SimplePlanner::AlgorithmConfig config;
-  config.resolution = this->get_argument<double>("--resolution");
-  config.min_distance = this->get_argument<double>("--min-distance");
-  config.max_distance = this->get_argument<double>("--max-distance");
-  config.safe_distance = this->get_argument<double>("--safe-distance");
-  config.preferred_distance =
-      this->get_argument<double>("--preferred-distance");
-
   Eigen::Affine3d drone_transform(Eigen::Isometry3d(
       Eigen::Translation3d(_drone_pose.position.x(), _drone_pose.position.y(),
                            _drone_pose.position.z()) *
@@ -123,14 +125,12 @@ void Planner::run_planner(ReplanRequest::Start::Reader &msg) {
           _drone_pose.orientation.w(), _drone_pose.orientation.x(),
           _drone_pose.orientation.y(), _drone_pose.orientation.z())));
 
-  auto pos = msg.getPose().getPose().getPosition();
   SimplePlanner::PlanRequest request;
   request.type = SimplePlanner::RequestType::REPLAN;
   request.metadata = (void *)new RequestMetadata(drone_transform);
 
   Eigen::Vector3d goal = _world_goal - _drone_pose.position;
   this->_logger.info("goal: %f, %f, %f", goal.x(), goal.y(), goal.z());
-  // auto transformed_goal = drone_transform * goal;
   request.goal << goal.x(), goal.y(), goal.z();
 
   SimplePlanner::ReplanRequest replan;
@@ -142,7 +142,6 @@ void Planner::run_planner(ReplanRequest::Start::Reader &msg) {
        this->_algorithm->get_current_trajectory().getPoses()) {
     auto pos = pose.getPose().getPosition();
     Eigen::Vector3d point(pos.getX(), pos.getY(), pos.getZ());
-    // auto transformed_point = drone_transform * point;
     auto transformed_point = point;
 
     Pose::Builder p = message.initRoot<Pose>();
@@ -263,8 +262,6 @@ void Planner::executing_request_cb(const SimplePlanner::PlanRequest &request) {
 void Planner::cloud_point_cb(const Core::IncomingMessage<PointCloud> &msg) {
   this->_logger.debug("cloud point received");
   auto data_reader = msg.content.getData();
-  auto width = msg.content.getWidth();
-  auto height = msg.content.getHeight();
 
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(
       new pcl::PointCloud<pcl::PointXYZ>());
