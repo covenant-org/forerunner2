@@ -6,6 +6,12 @@ struct Position {
   z @2 :Float32;
 }
 
+struct GPS {
+  latitude @0 :Float32;
+  longitude @1 :Float32;
+  altitude @2 :Float32;
+}
+
 struct Quartenion{
   x @0 :Float32;
   y @1 :Float32;
@@ -35,6 +41,7 @@ struct Odometry {
 
 struct HomePosition {
   pos @0 :Position;
+  gps @1 :GPS;
 }
 
 struct Altitude{

@@ -117,15 +117,45 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
       return;
     }
     case Command::WAYPOINT: {
+      this->_logger.debug("Entered Command::WAYPOINT");
       auto waypoint = command.content.getWaypoint();
-      const auto waypoint_res =
-          this->_offboard->set_position_ned({.north_m = waypoint.getX(),
-                                             .east_m = waypoint.getY(),
-                                             .down_m = waypoint.getZ(),
-                                             .yaw_deg = waypoint.getR()});
-      if (waypoint_res != mavsdk::Offboard::Result::Success) {
+      this->_logger.debug("WAYPOINT coords: x=%f y=%f z=%f r=%f",
+                          waypoint.getX(), waypoint.getY(), waypoint.getZ(),
+                          waypoint.getR());
+
+      // Try to set an initial setpoint (recommended before starting Offboard)
+      const auto pre_set_res = this->_offboard->set_position_ned({
+          .north_m = waypoint.getX(),
+          .east_m = waypoint.getY(),
+          .down_m = waypoint.getZ(),
+          .yaw_deg = waypoint.getR()});
+      if (pre_set_res != mavsdk::Offboard::Result::Success) {
+        this->_logger.warn("pre-start set_position_ned returned %d",
+                           static_cast<int>(pre_set_res));
+        // continue and try to start Offboard anyway
+      }
+
+      // TODO: Agregar un modo en commander para cambiar de modo (Cambiar manualmente a offboard)
+      const auto start_res = this->_offboard->start();
+      if (start_res != mavsdk::Offboard::Result::Success) {
+        this->_logger.error("Failed to start Offboard: %d",
+                            static_cast<int>(start_res));
         res.setCode(500);
-        res.setMessage("Failed to set position");
+        res.setMessage("Failed to start offboard");
+        return;
+      }
+
+      // Ensure setpoint is applied after Offboard is started
+      const auto set_res = this->_offboard->set_position_ned({
+          .north_m = waypoint.getX(),
+          .east_m = waypoint.getY(),
+          .down_m = waypoint.getZ(),
+          .yaw_deg = waypoint.getR()});
+      if (set_res != mavsdk::Offboard::Result::Success) {
+        this->_logger.error("set_position_ned after start failed: %d",
+                            static_cast<int>(set_res));
+        res.setCode(500);
+        res.setMessage("Failed to set position after starting offboard");
         return;
       }
       return;
@@ -202,10 +232,12 @@ void Mavlink::run() {
         mavlink_msg_home_position_decode(&msg, &this->_mavlink_home_position);
         auto home_position_msg = this->_home_position_publisher->new_msg();
         home_position_msg.content.getPos().setX(this->_mavlink_home_position.x);
-        home_position_msg.content.getPos().setY(
-            -this->_mavlink_home_position.y);
-        home_position_msg.content.getPos().setZ(
-            -this->_mavlink_home_position.z);
+        home_position_msg.content.getPos().setY(-this->_mavlink_home_position.y);
+        home_position_msg.content.getPos().setZ(-this->_mavlink_home_position.z);
+
+        home_position_msg.content.getGps().setLatitude(this->_mavlink_home_position.latitude);
+        home_position_msg.content.getGps().setLongitude(this->_mavlink_home_position.longitude);
+        home_position_msg.content.getGps().setAltitude(this->_mavlink_home_position.altitude);
         home_position_msg.publish();
       });
 
