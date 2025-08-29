@@ -66,7 +66,7 @@ void Registry::notify_waiters(std::string path) {
       host.setPort(endpoint.port);
       respond_event(wait_event, message_from_builder(message));
     }
-  } catch (std::out_of_range) {
+  } catch (const std::out_of_range&) {
   }
 }
 
@@ -104,10 +104,10 @@ void Registry::handle_request(RouterEvent event) {
 
   if (request.getType() == RequestType::QUERY_NODE) {
     auto path = request.getPath();
-  this->_logger.debug("querying topic: %s", color_topic(request.getPath().cStr()).c_str());
+    this->_logger.debug("querying topic: %s", color_topic(request.getPath().cStr()).c_str());
     try {
       Endpoint node = _topic_to_endpoint.at(path);
-  this->_logger.debug("querying topic [%s] found at %d",
+      this->_logger.debug("querying topic [%s] found at %d",
           color_topic(request.getPath().cStr()).c_str(), node.port);
       ::capnp::MallocMessageBuilder message;
       RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
@@ -116,9 +116,9 @@ void Registry::handle_request(RouterEvent event) {
       host.setAddress(node.host);
       host.setPort(node.port);
       respond_event(event, message_from_builder(message));
-    } catch (std::out_of_range) {
-  this->_logger.debug("querying topic not found, pending to notify");
-      _topic_to_waiters[path].emplace_back((char *)event.identity.data(),
+    } catch (const std::out_of_range&) {
+      this->_logger.debug("querying topic not found, pending to notify");
+          _topic_to_waiters[path].emplace_back((char *)event.identity.data(),
                                            event.identity.size());
     }
     return;
@@ -135,7 +135,7 @@ void Registry::handle_request(RouterEvent event) {
         .port = obj.getPort(),
     };
     _topic_to_endpoint.insert_or_assign(request.getPath(), endpoint);
-  this->_logger.info("New Host: %s at %d", color_topic(path.cStr()).c_str(), endpoint.port);
+    this->_logger.info("New Host: %s at %d", color_topic(path.cStr()).c_str(), endpoint.port);
     res.setCode(201);
     auto host = res.initHost();
     host.setAddress(endpoint.host);
@@ -156,14 +156,14 @@ std::optional<uint32_t> Registry::get_free_port() {
       tmp.unbind(bind_dir);
       _last_free_port += i;
       return _last_free_port;
-    } catch (zmq::error_t error) {
+    } catch (const zmq::error_t& error) {
       this->_logger.error("get_free_port failed due to: %s", error.what());
     }
   }
   return std::nullopt;
 }
 
-std::optional<RouterEvent> Registry::wait_for_message(zmq::socket_t &socket) {
+  std::optional<RouterEvent> Registry::wait_for_message(zmq::socket_t &) {
   // Router gets the identity first
   zmq::message_t identity(5);
   auto res = _router.recv(identity);
@@ -202,7 +202,7 @@ void Registry::run() {
 
 }  // namespace Core
 
-int main(int argc, char **argv) {
+int main() {
   Core::Registry registry({.port = 4020, .threads = 5});
   registry.run();
   return 0;

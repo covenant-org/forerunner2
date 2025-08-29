@@ -36,14 +36,14 @@ class BaseArgumentParser : public ArgumentParser {
 class Vertex {
  protected:
   ArgumentParser _args;
-  std::string _registry;
   Logger _logger;
+  std::string _registry;
 
  public:
   Vertex(ArgumentParser args)
-      : _registry(DEFAULT_REGISTRY_URI),
+      : _args(args),
         _logger(LogLevel::INFO, "app.log", typeid(this).name()),
-        _args(args) {
+        _registry(DEFAULT_REGISTRY_URI) {
     _args.parse();
     _logger.set_classname(this->_args._program_name);
     _registry = _args.get_argument("--registry-uri");

@@ -50,14 +50,14 @@ void GZ::publish_mic() {
 }
 
 void GZ::on_lmic_cb(const gz::msgs::Double &msg,
-                    const gz::transport::MessageInfo &info) {
+                    const gz::transport::MessageInfo &) {
   this->_last_lmic_value = msg.data();
   this->_logger.debug("Received left mic");
   this->publish_mic();
 }
 
 void GZ::on_rmic_cb(const gz::msgs::Double &msg,
-                    const gz::transport::MessageInfo &info) {
+                    const gz::transport::MessageInfo &) {
   this->_last_rmic_value = msg.data();
   this->_logger.debug("Received right mic");
   this->publish_mic();

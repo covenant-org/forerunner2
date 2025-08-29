@@ -77,7 +77,7 @@ void Controller::odometry_cb(const Core::IncomingMessage<Odometry> &msg) {
       o.getPosition().getX(), o.getPosition().getY(), o.getPosition().getZ());
 
   if (!this->waiting_reponse && this->recived_path &&
-      this->index < this->_path.getPoses().size()) {
+    this->index < static_cast<int>(this->_path.getPoses().size())) {
     Eigen::Vector3d current_position(pos.getX(), pos.getY(), pos.getZ());
     Eigen::Quaterniond current_orientation(q.getW(), q.getX(), q.getY(),
                                            q.getZ());
@@ -140,7 +140,7 @@ void Controller::odometry_cb(const Core::IncomingMessage<Odometry> &msg) {
   this->_logger.info("recorded initial position");
 }
 
-void Controller::telemetry_cb(const Core::IncomingMessage<Telemetry> &msg) {}
+void Controller::telemetry_cb(const Core::IncomingMessage<Telemetry> &) {}
 
 void Controller::smooth_path() {
   const double weight_data = this->get_argument<double>("--smooth-weight-data");
@@ -182,7 +182,6 @@ void Controller::smooth_path() {
                           change, original_position(0), original_position(1),
                           original_position(2), smoothed(0), smoothed(1),
                           smoothed(2));
-      auto pose = poses[i].initPose();
       auto position = poses[i].getPose().initPosition();
       position.setX(smoothed(0));
       position.setY(smoothed(1));
@@ -215,7 +214,6 @@ void Controller::planned_path_cb(const Core::IncomingMessage<Path> &msg) {
       Eigen::Quaternionf(_quat.w(), _quat.x(), _quat.y(), _quat.z()));
   Eigen::Vector3f start_point(first_coord(0), first_coord(1), first_coord(2));
 
-  auto pose = this->_path.getPoses()[this->index];
   this->_last_path_start_position =
       Eigen::Vector3f(start_point.x(), start_point.y(), start_point.z());
   this->recived_path = true;
@@ -265,7 +263,6 @@ void Controller::control() {
   } else {
     // TODO: Check if path is not empty and pose is valid
     auto pose = _path.getPoses()[this->index];
-    auto pos = pose.getPose().getPosition();
     this->publish_trajectory_setpoint(pose);
   }
   this->sent_point += 1;
@@ -278,11 +275,6 @@ void Controller::publish_trajectory_setpoint(PoseStamped::Reader &pose) {
   Eigen::Vector3f point(pos.getX(), pos.getY(), pos.getZ());
 
   Eigen::Vector3f transformed = point;
-  double min_height = this->get_argument<double>("--min-height");
-  // if (transformed.z() > -min_height) {
-  //   transformed.z() = -min_height;
-  // }
-
   double step_size = this->get_argument<double>("--step-size");
   Eigen::Vector3f ePoint(transformed.x(), transformed.y(), transformed.z());
 
