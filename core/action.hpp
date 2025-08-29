@@ -65,7 +65,7 @@ class ActionServer {
         socket.send(identity, zmq::send_flags::sndmore);
         socket.send(response, zmq::send_flags::none);
       }
-    } catch (std::exception) {
+    } catch (const std::exception&) {
     }
   }
 
@@ -88,12 +88,12 @@ class ActionServer {
     sprintf(addr, "tcp://0.0.0.0:%d", _port);
     _router.bind(addr);
     _dealer.bind("inproc://backend");
-    for (int i = 0; i < _num_workers; i++) {
+    for (size_t i = 0; i < _num_workers; i++) {
       _workers.emplace_back(
           new std::thread(std::bind(&ActionServer::worker, this)));
     }
     zmq::proxy(_router, _dealer);
-    for (int i = 0; i < _workers.size(); i++) {
+    for (size_t i = 0; i < _workers.size(); i++) {
       delete _workers[i];
     }
   }
