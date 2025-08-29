@@ -1,6 +1,9 @@
 {
   "name": "Nuclea Gazebo Forerunner",
   "image": "fairbrook/px4-cuda:px4v14-cuda12.8",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
   "runArgs": [
     "--gpus=all",
     "--privileged",
