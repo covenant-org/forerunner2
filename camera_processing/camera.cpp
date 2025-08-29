@@ -8,6 +8,9 @@
 #include <NvInferRuntime.h>
 #include <cuda_runtime_api.h>
 #include <opencv2/opencv.hpp>
+#include <vector>
+#include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <iostream>
 
@@ -93,6 +96,76 @@ private:
     ICudaEngine* engine{nullptr};
     IExecutionContext* context{nullptr};
 };
+
+float IoU(const cv::Rect& a, const cv::Rect& b) {
+    int interArea = (a & b).area();
+    int unionArea = a.area() + b.area() - interArea;
+    return (unionArea > 0) ? (float)interArea / unionArea : 0.0f;
+}
+
+std::vector<Detection> parseYoloOutput(const float* output,
+                                       int num_preds,   // e.g. 25200
+                                       int num_attrs,   // 85 = 4 box + 1 obj + 80 classes
+                                       int img_w,
+                                       int img_h,
+                                       float conf_thresh = 0.25f,
+                                       float iou_thresh = 0.45f) {
+    std::vector<Detection> detections;
+
+    for (int i = 0; i < num_preds; i++) {
+        const float* row = output + i * num_attrs;
+
+        float x = row[0];
+        float y = row[1];
+        float w = row[2];
+        float h = row[3];
+        float obj_conf = row[4];
+
+        if (obj_conf < conf_thresh) continue;
+
+        // find best class
+        int class_id = -1;
+        float max_class_score = -1;
+        for (int c = 5; c < num_attrs; c++) {
+            if (row[c] > max_class_score) {
+                max_class_score = row[c];
+                class_id = c - 5;
+            }
+        }
+
+        float final_conf = obj_conf * max_class_score;
+        if (final_conf < conf_thresh) continue;
+
+        // xywh → xyxy
+        int left   = std::max(int((x - w/2.0f) * img_w), 0);
+        int top    = std::max(int((y - h/2.0f) * img_h), 0);
+        int right  = std::min(int((x + w/2.0f) * img_w), img_w - 1);
+        int bottom = std::min(int((y + h/2.0f) * img_h), img_h - 1);
+
+        detections.push_back({cv::Rect(left, top, right - left, bottom - top), final_conf, class_id});
+    }
+
+    // --- NMS ---
+    std::sort(detections.begin(), detections.end(),
+              [](const Detection& a, const Detection& b){ return a.confidence > b.confidence; });
+
+    std::vector<Detection> final_dets;
+    std::vector<bool> removed(detections.size(), false);
+
+    for (size_t i = 0; i < detections.size(); i++) {
+        if (removed[i]) continue;
+        final_dets.push_back(detections[i]);
+        for (size_t j = i + 1; j < detections.size(); j++) {
+            if (removed[j]) continue;
+            if (detections[i].class_id == detections[j].class_id &&
+                IoU(detections[i].box, detections[j].box) > iou_thresh) {
+                removed[j] = true;
+            }
+        }
+    }
+
+    return final_dets;
+}
 
 std::vector<std::string> load_class_list()
 {
@@ -278,6 +351,13 @@ bool CameraViewer::start(cv::dnn::Net &net, const std::vector<std::string> &clas
     return false;
   }
 
+  YoloTRT yolo("yolo11n.engine");
+  int num_preds = 25200;    // YOLOv8n default
+  int num_attrs = 85;       // [x, y, w, h, obj_conf, 80 class scores]
+
+  int input_w = 640;
+  int input_h = 640;
+
   // Main display loop on the main thread
   std::thread([this, &net, &class_list]() {
     cv::namedWindow("camera", cv::WINDOW_AUTOSIZE);
@@ -290,7 +370,11 @@ bool CameraViewer::start(cv::dnn::Net &net, const std::vector<std::string> &clas
       }
       if (!frame.empty()) {
         detect(frame, net, output, class_list);
-        //  auto output = yolo.infer(frame); 
+        /*
+          auto output = yolo.infer(frame); 
+          int* output_ptr = &output;
+          auto detections = parseYoloOutput(output_ptr, num_preds, num_attrs, input_h, input_w);
+        */
         cv::imshow("camera", frame);
         // waitKey with small delay to keep UI responsive
         if (cv::waitKey(1) == 27) {  // ESC to quit
