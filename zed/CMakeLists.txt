@@ -14,6 +14,7 @@ find_package(CUDA ${ZED_CUDA_VERSION} REQUIRED)
 find_package(cppzmq REQUIRED)
 find_package(capnp_schemas REQUIRED)
 find_package(PCL 1.15 REQUIRED)
+find_package(MAVSDK REQUIRED)
 
 include_directories(${ZED_INCLUDE_DIRS})
 include_directories(${CUDA_INCLUDE_DIRS})
@@ -26,6 +27,7 @@ FILE(GLOB_RECURSE HDR_FILES *.hpp)
 
 
 ADD_EXECUTABLE(${PROJECT_NAME} zed.cpp)
+ADD_EXECUTABLE(ftp_birdge ftp_bridge.cpp)
 
 if (LINK_SHARED_ZED)
     SET(ZED_LIBS ${ZED_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${CUDA_CUDART_LIBRARY})
@@ -40,6 +42,15 @@ TARGET_LINK_LIBRARIES(${PROJECT_NAME}
                         capnp 
                         capnp_schemas 
                         kj
+                        ${PCL_LIBRARIES})
+
+TARGET_LINK_LIBRARIES(ftp_bridge
+                        core
+                        cppzmq 
+                        capnp 
+                        capnp_schemas 
+                        kj
+	                      MAVSDK::mavsdk
                         ${PCL_LIBRARIES})
 
 if(INSTALL_SAMPLES)
