@@ -7,6 +7,7 @@
 #include <argparse/argparse.hpp>
 #include <memory>
 #include <string>
+#include <unistd.h>
 #ifndef VERTEX_HPP
 #define VERTEX_HPP
 
@@ -42,8 +43,8 @@ class Vertex {
  public:
   Vertex(ArgumentParser args)
       : _args(args),
-        _logger(LogLevel::INFO, "app.log", typeid(this).name()),
-        _registry(DEFAULT_REGISTRY_URI) {
+        _registry(DEFAULT_REGISTRY_URI),
+        _logger(LogLevel::INFO, "app.log", typeid(this).name()) {
     _args.parse();
     _logger.set_classname(this->_args._program_name);
     _registry = _args.get_argument("--registry-uri");
@@ -90,7 +91,11 @@ class Vertex {
     return this->_args.get_argument<T>(arg_name);
   }
 
-  virtual void run() {}
+  virtual void run() {
+    while (true) {
+      sleep(1);
+    }
+  }
 };
 };  // namespace Core
 #endif  // VERTEX_HPP

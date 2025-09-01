@@ -31,14 +31,14 @@ class OutgoingMessage {
 template <typename T>
 class IncomingMessage {
  private:
-  // TODO: Evaluate if copying is necesary
-  std::string buffer;
   ::kj::ArrayPtr<unsigned char> ptr;
   ::kj::ArrayInputStream array;
 
   ::capnp::PackedMessageReader reader;
 
  public:
+  // TODO: Evaluate if copying is necesary
+  std::string buffer;
   typename T::Reader content;
   IncomingMessage(const IncomingMessage<T>& a)
       : buffer(a.buffer.data(), a.buffer.size()),
