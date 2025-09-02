@@ -1,9 +1,12 @@
 #include "ftp_bridge.hpp"
+#include <component_type.h>
 #include <connection_result.h>
 #include <fstream>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <unistd.h>
+#include <vehicle.h>
 
 FtpBridge::FtpBridge(const Core::ArgumentParser& args)
     : Core::Vertex(args),
@@ -19,13 +22,20 @@ FtpBridge::FtpBridge(const Core::ArgumentParser& args)
                           connres);
       throw std::runtime_error("Cannot connect to mavlink uri");
     }
-    this->_system = this->_mavsdk.first_autopilot(3.0);
+    this->_system = this->_mavsdk.first_autopilot(3);
+    this->_system->get()->subscribe_component_discovered_id(
+        [&](mavsdk::ComponentType type, unsigned char id) {
+          if (type == mavsdk::ComponentType::CompanionComputer) {
+            this->_ftp_client =
+                std::make_shared<mavsdk::Ftp>(this->_system.value());
+            this->_ftp_client->set_target_compid(id);
+          }
+        });
     if (!this->_system) {
       this->_logger.error("Cloud not find an autopilot in the address %s",
-                          uri.value());
+                          uri.value().c_str());
       throw std::runtime_error("Cannot connect to mavlink uri");
     }
-    this->_ftp_client = std::make_shared<mavsdk::Ftp>(this->_system.value());
     return;
   }
   this->_ftp_config_sub = this->create_subscriber<KeyValue>(
@@ -34,6 +44,7 @@ FtpBridge::FtpBridge(const Core::ArgumentParser& args)
 }
 
 void FtpBridge::poll_files() {
+  if (!this->_ftp_client) return;
   auto list = this->_ftp_client->list_directory("/");
   for (const auto& item : list.second.files) {
     this->_logger.debug("%s", item.c_str());
