@@ -5,7 +5,7 @@
 #include "vertex.hpp"
 #include <capnp_schemas/generics.capnp.h>
 #include <capnp_schemas/zed.capnp.h>
-#include <mavsdk.h>
+#include <mavsdk/mavsdk.h>
 #include <mavsdk/plugins/ftp/ftp.h>
 #include <memory>
 

@@ -44,7 +44,9 @@ void FtpBridge::config_cb(const Core::IncomingMessage<KeyValue>& msg) {
   auto key = msg.content.getKey();
   if (key != "FTP_DIR") return;
   this->_ftp_folder = msg.content.getValue();
+  this->_logger.debug("Found ftp folder at %s", _ftp_folder.c_str());
   if (this->_map_sub == nullptr) {
+    this->_logger.debug("Created map subscriber");
     this->_map_sub = this->create_subscriber<PointCloudChunk>(
         "map", std::bind(&FtpBridge::map_cb, this, std::placeholders::_1));
   }
@@ -54,11 +56,12 @@ void FtpBridge::map_cb(const Core::IncomingMessage<PointCloudChunk>& msg) {
   auto id = msg.content.getIndex();
   std::ofstream cloudFile(this->_ftp_folder + "/" + std::to_string(id));
   cloudFile << msg.buffer;
+  this->_logger.debug("Wrote %s/%d", this->_ftp_folder.c_str(), id);
   cloudFile.close();
 }
 
 void FtpBridge::run() {
-  if (auto uri = this->_args.present("--mablinks-uri")) {
+  if (auto uri = this->_args.present("--mavlink-uri")) {
     while (true) {
       this->poll_files();
       sleep(1);
@@ -69,7 +72,7 @@ void FtpBridge::run() {
 }
 
 int main(int argc, char** argv) {
-  Core::ArgumentParser args(argc, argv);
+  Core::BaseArgumentParser args(argc, argv);
   args.add_argument("--mavlink-uri");
   FtpBridge bridge(args);
   bridge.run();

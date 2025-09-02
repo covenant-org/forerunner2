@@ -30,6 +30,10 @@ class OutgoingMessage {
 
 template <typename T>
 class IncomingMessage {
+ public:
+  // TODO: Evaluate if copying is necesary
+  std::string buffer;
+
  private:
   ::kj::ArrayPtr<unsigned char> ptr;
   ::kj::ArrayInputStream array;
@@ -37,8 +41,6 @@ class IncomingMessage {
   ::capnp::PackedMessageReader reader;
 
  public:
-  // TODO: Evaluate if copying is necesary
-  std::string buffer;
   typename T::Reader content;
   IncomingMessage(const IncomingMessage<T>& a)
       : buffer(a.buffer.data(), a.buffer.size()),
