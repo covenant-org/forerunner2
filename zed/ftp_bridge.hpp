@@ -2,6 +2,7 @@
 #define FTP_BRIDGE_HPP
 
 #include "publisher.hpp"
+#include "utils.hpp"
 #include "vertex.hpp"
 #include <capnp_schemas/generics.capnp.h>
 #include <capnp_schemas/zed.capnp.h>
@@ -18,6 +19,8 @@ class FtpBridge : public Core::Vertex {
   std::shared_ptr<mavsdk::Ftp> _ftp_client = nullptr;
   mavsdk::Mavsdk _mavsdk;
   std::string _ftp_folder;
+  std::string _tmp_folder;
+  Core::WorkLock lock;
 
  public:
   FtpBridge(const Core::ArgumentParser&);

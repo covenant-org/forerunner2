@@ -56,11 +56,14 @@ class Publisher : public ISender {
     ::capnp::writePackedMessage(buffer, builder);
     auto serialized = buffer.getArray();
 
-    zmq::message_t zmq_message(serialized.size());
-    memcpy(zmq_message.data(), serialized.begin(), serialized.size());
-    this->_socket.send(zmq_message, zmq::send_flags::none);
-
+    this->_dangerously_raw_send(serialized.begin(), serialized.size());
     return 0;
+  }
+
+  zmq::send_result_t _dangerously_raw_send(const char* data, size_t len) {
+    zmq::message_t zmq_message(len);
+    memcpy(zmq_message.data(), data, len);
+    return this->_socket.send(zmq_message, zmq::send_flags::none);
   }
 };
 };  // namespace Core

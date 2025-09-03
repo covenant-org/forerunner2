@@ -37,7 +37,6 @@ class IncomingMessage {
  private:
   ::kj::ArrayPtr<unsigned char> ptr;
   ::kj::ArrayInputStream array;
-
   ::capnp::PackedMessageReader reader;
 
  public:
