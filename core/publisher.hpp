@@ -56,7 +56,8 @@ class Publisher : public ISender {
     ::capnp::writePackedMessage(buffer, builder);
     auto serialized = buffer.getArray();
 
-    this->_dangerously_raw_send(serialized.begin(), serialized.size());
+    this->_dangerously_raw_send((const char*)serialized.begin(),
+                                serialized.size());
     return 0;
   }
 

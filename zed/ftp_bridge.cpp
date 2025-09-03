@@ -7,6 +7,7 @@
 #include <fstream>
 #include <memory>
 #include <plugins/ftp/ftp.h>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <unistd.h>
@@ -62,6 +63,18 @@ void FtpBridge::poll_files() {
     _logger.error("Error while listing FTP directory");
     return;
   }
+  if (_logger.get_level() == Core::LogLevel::DEBUG) {
+    std::stringstream filelist;
+    filelist << "Found files: ";
+    for (auto it = list.second.files.begin(); it != list.second.files.end();
+         ++it) {
+      filelist << *it;
+      if (it + 1 != list.second.files.end()) {
+        filelist << ", ";
+      }
+    }
+    _logger.debug("%s", filelist.str().c_str());
+  }
   for (const auto& item : list.second.files) {
     lock.busy();
     this->_logger.debug("%s", item.c_str());
@@ -72,11 +85,11 @@ void FtpBridge::poll_files() {
           switch (res) {
             case mavsdk::Ftp::Result::Busy:
               _logger.debug("Download of %s in progress", item.c_str());
-              break;
+              return;
             case mavsdk::Ftp::Result::Next:
               _logger.debug("Downloading %s: %d / %d", item.c_str(),
                             progress.bytes_transferred, progress.total_bytes);
-              break;
+              return;
             case mavsdk::Ftp::Result::FileDoesNotExist:
               _logger.error("File %s does not exists", item.c_str());
               break;
@@ -94,7 +107,13 @@ void FtpBridge::poll_files() {
                 total_bytes += file.gcount();
               }
               this->_map_pub->_dangerously_raw_send(input.c_str(), total_bytes);
-              break;
+              this->_ftp_client->remove_file_async(
+                  item, [=](mavsdk::Ftp::Result res) {
+                    this->lock.free();
+                    if (res != mavsdk::Ftp::Result::Success)
+                      _logger.error("Error while removing %s", item.c_str());
+                  });
+              return;
             }
             default:
               _logger.error("Ftp Error while downloading %s", item.c_str());

@@ -187,8 +187,8 @@ void Zed::run() {
               uint32_t color_uint = *(uint32_t *)&chunk.vertices[i][3];
               unsigned char *color_uchar = (unsigned char *)&color_uint;
               color_uint =
-                  ((uint32_t)color_uchar[0] << 16 |
-                   (uint32_t)color_uchar[1] << 8 | (uint32_t)color_uchar[2]);
+                  ((uint32_t)color_uchar[2] << 16 |
+                   (uint32_t)color_uchar[1] << 8 | (uint32_t)color_uchar[0]);
               chunk_cloud->points[i].rgb =
                   *reinterpret_cast<float *>(&color_uint);
             }
