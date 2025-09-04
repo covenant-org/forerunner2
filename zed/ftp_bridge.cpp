@@ -9,7 +9,6 @@
 #include <plugins/ftp/ftp.h>
 #include <sstream>
 #include <stdexcept>
-#include <string>
 #include <unistd.h>
 #include <vehicle.h>
 
@@ -110,8 +109,12 @@ void FtpBridge::poll_files() {
               this->_ftp_client->remove_file_async(
                   item, [=](mavsdk::Ftp::Result res) {
                     this->lock.free();
-                    if (res != mavsdk::Ftp::Result::Success)
+                    if (res != mavsdk::Ftp::Result::Success) {
                       _logger.error("Error while removing %s", item.c_str());
+                      return;
+                    }
+                    std::string full_path = local_path + "/" + item;
+                    std::remove(full_path.c_str());
                   });
               return;
             }
