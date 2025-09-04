@@ -23,6 +23,7 @@ class Viewer : Core::Vertex {
   std::shared_ptr<Core::Subscriber<PointCloudChunk>> _map_sub;
   std::shared_ptr<Core::Subscriber<Position>> _goal_sub;
   std::shared_ptr<Core::Subscriber<StereoMic>> _mic_sub;
+  std::shared_ptr<Core::Subscriber<ImageData>> _image_sub;
   std::shared_ptr<Core::Subscriber<Odometry>> _odom_sub;
   std::shared_ptr<Core::Subscriber<MarkerArray>> _octree_sub;
   std::shared_ptr<Core::Subscriber<MarkerArray>> _octree_layers_sub;
@@ -38,6 +39,7 @@ class Viewer : Core::Vertex {
   void point_cloud_cb(const Core::IncomingMessage<PointCloud> &);
   void map_cloud_cb(const Core::IncomingMessage<PointCloudChunk> &);
   void mic_cb(const Core::IncomingMessage<StereoMic> &);
+  void image_cb(const Core::IncomingMessage<ImageData> &);
   void odom_cb(const Core::IncomingMessage<Odometry> &);
   void octree_cb(const Core::IncomingMessage<MarkerArray> &);
   void octree_layers_cb(const Core::IncomingMessage<MarkerArray> &);

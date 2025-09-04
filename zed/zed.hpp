@@ -2,6 +2,7 @@
 #include "publisher.hpp"
 #include "vertex.hpp"
 #include <capnp_schemas/zed.capnp.h>
+#include <capnp_schemas/sensors.capnp.h>
 #include <memory>
 #include <pcl/compression/octree_pointcloud_compression.h>
 #include <pcl/io/pcd_io.h>
@@ -15,6 +16,7 @@ class Zed : Core::Vertex {
   sl::Camera _camera;
   std::shared_ptr<Core::Publisher<PointCloud>> _cloud_point_pub;
   std::shared_ptr<Core::Publisher<PointCloudChunk>> _map_pub;
+  std::shared_ptr<Core::Publisher<ImageData>> _image_pub;
   pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>* _cloud_encoder;
 
  public:

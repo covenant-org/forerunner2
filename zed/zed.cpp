@@ -24,9 +24,11 @@
 #include <unistd.h>
 #include <vector>
 #include <zlib.h>
+#include <opencv2/opencv.hpp>
 
 Zed::Zed(const Core::ArgumentParser &parser) : Core::Vertex(parser) {
   this->_cloud_point_pub = this->create_publisher<PointCloud>("point_cloud");
+  this->_image_pub = this->create_publisher<ImageData>("image");
 
   _camera = sl::Camera();
 
@@ -140,6 +142,36 @@ void Zed::run() {
           ::capnp::Data::Reader((unsigned char *)buffer.data(), buffer.size());
       msg.content.setData(reader);
       msg.publish();
+
+      // Capture and publish color image (LEFT view) as JPEG
+      if (this->_image_pub) {
+        sl::Mat color_image;
+        _camera.retrieveImage(color_image, sl::VIEW::LEFT, sl::MEM::CPU,
+                              default_image_size);
+        auto color_ptr = color_image.getPtr<sl::uchar4>();
+        cv::Mat img_rgba(default_image_size.height, default_image_size.width,
+                         CV_8UC4, (void *)color_ptr);
+        cv::Mat img_bgr;
+        cv::cvtColor(img_rgba, img_bgr, cv::COLOR_RGBA2BGR);
+
+        std::vector<unsigned char> img_buf;
+        std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 90};
+        cv::imencode(".jpg", img_bgr, img_buf, params);
+
+        auto img_msg = this->_image_pub->new_msg();
+        img_msg.content.setWidth(default_image_size.width);
+        img_msg.content.setHeight(default_image_size.height);
+        img_msg.content.setEncoding("jpeg");
+        img_msg.content.setTimestamp(static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::high_resolution_clock::now().time_since_epoch())
+                .count()));
+        auto img_reader = ::capnp::Data::Reader(
+            reinterpret_cast<const unsigned char *>(img_buf.data()),
+            img_buf.size());
+        img_msg.content.setData(img_reader);
+        img_msg.publish();
+      }
 
       if (!_args.get_argument<bool>("--map")) continue;
 

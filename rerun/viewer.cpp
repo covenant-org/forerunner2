@@ -55,6 +55,8 @@ Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
       "goal", std::bind(&Viewer::goal_cb, this, std::placeholders::_1));
   this->_mic_sub = this->create_subscriber<StereoMic>(
       "mic", std::bind(&Viewer::mic_cb, this, std::placeholders::_1));
+  this->_image_sub = this->create_subscriber<ImageData>(
+      "image", std::bind(&Viewer::image_cb, this, std::placeholders::_1));
   this->_odom_sub = this->create_subscriber<Odometry>(
       "odometry", std::bind(&Viewer::odom_cb, this, std::placeholders::_1));
   this->_octree_sub = this->create_subscriber<MarkerArray>(
@@ -256,6 +258,54 @@ void Viewer::mic_cb(const Core::IncomingMessage<StereoMic> &msg) {
                   rerun::Scalars(static_cast<double>(msg.content.getLeft())));
   this->_rec->log("mic/right",
                   rerun::Scalars(static_cast<double>(msg.content.getRight())));
+}
+
+void Viewer::image_cb(const Core::IncomingMessage<ImageData> &msg) {
+  auto content = msg.content;
+  auto width = content.getWidth();
+  auto height = content.getHeight();
+  auto encoding = std::string(content.getEncoding());
+  auto data_reader = content.getData();
+
+  // Prepare rerun collection from the received bytes (take ownership)
+  std::vector<uint8_t> img_vec;
+  img_vec.reserve(data_reader.size());
+  img_vec.insert(img_vec.end(), (const uint8_t *)data_reader.begin(),
+                 (const uint8_t *)data_reader.begin() + data_reader.size());
+
+  rerun::Collection<uint8_t> img_collection =
+      rerun::Collection<uint8_t>::take_ownership(std::move(img_vec));
+
+  // Map simple encoding strings to media types
+  std::optional<rerun::components::MediaType> media_type;
+  if (!encoding.empty()) {
+    // normalize to lower-case
+    for (auto &c : encoding) c = std::tolower(c);
+    if (encoding == "jpeg" || encoding == "jpg" || encoding == "image/jpeg") {
+      media_type = rerun::components::MediaType::jpeg();
+    } else if (encoding == "png" || encoding == "image/png") {
+      media_type = rerun::components::MediaType::png();
+    }
+  }
+
+  try {
+    rerun::archetypes::EncodedImage img =
+        rerun::archetypes::EncodedImage::from_bytes(img_collection,
+                                                    media_type);
+
+    this->_rec->log("world/drone/camera/rgb/image", std::move(img));
+
+    // Log some stats
+    this->_rec->log("stats/camera/rgb/image_dimensions",
+                    rerun::TextLog("Dimensions: " + std::to_string(width) +
+                                   "x" + std::to_string(height)));
+    this->_rec->log("stats/camera/rgb/encoding",
+                    rerun::TextLog("encoding: " + std::string(content.getEncoding())));
+    this->_logger.debug("Logged image %dx%d encoding=%s", width, height,
+                        content.getEncoding());
+  } catch (const std::exception &e) {
+    this->_logger.error("Failed to create/log encoded image: %s", e.what());
+  }
 }
 
 void Viewer::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
