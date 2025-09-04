@@ -1,0 +1,23 @@
+executables:
+  # - name: registry
+  #   args:
+  #     options:
+  #       - -p: 5020
+  - name: zed
+    args:
+      options:
+        - --map: #
+  - name: mavlink
+  # - name: ftp_bridge
+  - name: ftp_bridge
+    args:
+      options:
+        - --mavlink-uri: udpin://0.0.0.0:14541
+        - --registry-uri: tcp://127.0.0.1:5020
+        - --log-level: debug
+  - name: rerun
+    args:
+      flags:
+        - --map-compression
+      options:
+        - --registry-uri: tcp://127.0.0.1:5020

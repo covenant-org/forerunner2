@@ -5,12 +5,16 @@
 #include <connection_result.h>
 #include <cstdlib>
 #include <fstream>
+#include <vector>
+#include <iterator>
 #include <memory>
 #include <plugins/ftp/ftp.h>
 #include <sstream>
 #include <stdexcept>
 #include <unistd.h>
 #include <vehicle.h>
+
+
 
 #define BUFFER_INITIAL_SIZE 100000
 
@@ -96,16 +100,43 @@ void FtpBridge::poll_files() {
               _logger.info("Downloaded file %s ", item.c_str());
               std::ifstream file(_tmp_folder + "/" + item,
                                  std::ifstream::in | std::ifstream::binary);
-              size_t total_bytes = 0;
-              std::string input(BUFFER_INITIAL_SIZE, '\0');
-              while (!file.eof()) {
-                if (total_bytes >= input.size()) {
-                  input.resize(input.size() + BUFFER_INITIAL_SIZE);
+
+              // detect image extensions (no case-insensitive handling for brevity)
+              std::string extension;
+              size_t pos = item.find_last_of('.');
+              if (pos != std::string::npos) extension = item.substr(pos + 1);
+
+              if (extension == "jpg" || extension == "jpeg" || extension == "png" || extension == "bmp") {
+                // For images we read the full file into memory and publish as ImageData
+                std::vector<char> buffer((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+                auto pub = this->create_publisher<ImageData>("image");
+                if (pub) {
+                  auto msg = pub->new_msg();
+                  msg.content.setWidth(0); // TODO: extract real width
+                  msg.content.setHeight(0); // TODO: extract real height
+                  msg.content.setEncoding(extension);
+                  msg.content.setTimestamp(static_cast<uint64_t>(std::time(nullptr)));
+                  auto reader = ::capnp::Data::Reader(reinterpret_cast<const unsigned char*>(buffer.data()), buffer.size());
+                  msg.content.setData(reader);
+                  msg.publish();
+                  _logger.info("Published image %s", item.c_str());
+                } else {
+                  _logger.error("Could not create image publisher");
                 }
-                file.read(input.data(), input.size());
-                total_bytes += file.gcount();
+              } else {
+                // Original chunked read logic for large binary files
+                size_t total_bytes = 0;
+                std::string input(BUFFER_INITIAL_SIZE, '\0');
+                while (!file.eof()) {
+                  if (total_bytes >= input.size()) {
+                    input.resize(input.size() + BUFFER_INITIAL_SIZE);
+                  }
+                  file.read(input.data(), input.size());
+                  total_bytes += file.gcount();
+                }
+                this->_map_pub->_dangerously_raw_send(input.c_str(), total_bytes);
               }
-              this->_map_pub->_dangerously_raw_send(input.c_str(), total_bytes);
+
               this->_ftp_client->remove_file_async(
                   item, [=](mavsdk::Ftp::Result res) {
                     this->lock.free();
