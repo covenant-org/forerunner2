@@ -9,6 +9,7 @@
 #include <capnp/serialize-packed.h>
 #include <capnp/serialize.h>
 #include <kj/common.h>
+#include <kj/exception.h>
 #include <kj/io.h>
 #include <optional>
 #include <stdexcept>
@@ -29,6 +30,7 @@ class Subscriber {
   std::function<void(IncomingMessage<T>)> _callback;
   std::thread* _listener_thread;
   std::string uri;
+  Logger _logger;
 
   // TODO: Should we make this in another thread so it won't block?
   bool query_registry(const std::string& registry_uri) {
@@ -52,15 +54,23 @@ class Subscriber {
       zmq::message_t msg;
       auto res = socket.recv(msg);
       if (res.has_value()) {
-        _callback(IncomingMessage<T>((unsigned char*)msg.data(), res.value()));
+        try {
+          _callback(
+              IncomingMessage<T>((unsigned char*)msg.data(), res.value()));
+        } catch (kj::Exception ex) {
+          _logger.error("Error while deserializing: %s", ex.getDescription());
+        }
       }
     }
   }
 
  public:
   Subscriber(const std::string& topic,
-             std::function<void(IncomingMessage<T>)> callback)
-      : _topic(std::move(topic)), _context(1), _callback(callback) {}
+             std::function<void(IncomingMessage<T>)> callback,
+             std::string vertex_name = "")
+      : _topic(std::move(topic)), _context(1), _callback(callback) {
+    this->_logger.set_classname(vertex_name + "-Subscriber-" + this->_topic);
+  }
 
   void setup(const std::string& uri) {
     this->uri = uri;

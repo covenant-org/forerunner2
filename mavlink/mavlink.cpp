@@ -4,6 +4,7 @@
 #include <capnp_schemas/controller.capnp.h>
 #include <capnp_schemas/generics.capnp.h>
 #include <capnp_schemas/mavlink.capnp.h>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <mavsdk/connection_result.h>
@@ -20,6 +21,7 @@ Mavlink::Mavlink(Core::ArgumentParser parser)
     : Core::Vertex(std::move(parser)),
       _mavsdk(mavsdk::Mavsdk::Configuration{
           mavsdk::ComponentType::CompanionComputer}) {
+  this->_ftp_dir = this->get_argument<std::string>("--ftp-dir");
   auto uri = this->get_argument<std::string>("--mavlink-uri");
   auto result = this->init_mavlink_connection(uri);
   if (!result) {
@@ -40,6 +42,7 @@ Mavlink::Mavlink(Core::ArgumentParser parser)
 void Mavlink::publish_config() {
   if (this->_ftp_dir.empty()) return;
   auto msg = this->_config_publisher->new_msg();
+  this->_logger.debug("FTP DIR at %s", _ftp_dir.c_str());
   msg.content.setKey("FTP_DIR");
   msg.content.setValue(_ftp_dir);
   msg.publish();
@@ -154,8 +157,9 @@ bool Mavlink::init_mavlink_connection(const std::string &uri) {
       std::make_shared<mavsdk::MavlinkPassthrough>(this->_system.value());
   this->_ftp_server =
       std::make_shared<mavsdk::FtpServer>(this->_mavsdk.server_component());
+  _logger.debug("%s", _ftp_dir.c_str());
   if (mkdtemp(_ftp_dir.data()) == nullptr) {
-    _logger.error("Cloud not make a tempdir for FtpServer");
+    _logger.error("Could not make a tempdir for FtpServer");
     return false;
   }
   this->_ftp_server->set_root_dir(_ftp_dir);
@@ -256,7 +260,7 @@ void Mavlink::run() {
 
   while (true) {
     publish_config();
-    sleep(1);
+    sleep(3);
   }
 }
 
@@ -266,6 +270,9 @@ int main(int argc, char **argv) {
       .help("ip where the mavlink instance is running")
       .nargs(1)
       .default_value(MAVLINK_URI);
+  base.add_argument("--ftp-dir")
+      .help("Root directory for the ftp server")
+      .default_value("/tmp/mavlink.XXXXXX");
 
   std::shared_ptr<Mavlink> mavlink = std::make_shared<Mavlink>(std::move(base));
   mavlink->run();
