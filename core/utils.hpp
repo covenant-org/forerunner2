@@ -5,16 +5,43 @@
 #include "logger.hpp"
 #include "message.hpp"
 #include <cmath>
+#include <condition_variable>
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
 #include <kj/common.h>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <zmq.hpp>
 
 namespace Core {
+
+class WorkLock {
+ private:
+  std::mutex _mutex;
+  std::condition_variable _condition;
+  unsigned long _count = 0;
+
+ public:
+  void busy() {
+    std::lock_guard<decltype(_mutex)> lock(_mutex);
+    ++_count;
+  }
+  void free() {
+    std::lock_guard<decltype(_mutex)> lock(_mutex);
+    if (_count <= 0) {
+      throw std::runtime_error("Freeing without busy");
+    }
+    --_count;
+    _condition.notify_one();
+  }
+  void join() {
+    std::unique_lock<decltype(_mutex)> lock(_mutex);
+    while (_count > 0) _condition.wait(lock);
+  }
+};
 
 inline std::string find_root(const std::string& filename = ".root",
                              int max_levels = 10) {

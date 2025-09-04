@@ -14,7 +14,7 @@
 #include <memory>
 #include <string>
 
-#define MAVLINK_URI "udpin://0.0.0.0:14540"
+#define MAVLINK_URI "udpin://0.0.0.0:14030"
 
 // https://mavlink.io/en/messages/common.html#HOME_POSITION
 #define HOME_POSITION_MESSAGE_ID 242

@@ -1,3 +1,4 @@
+#include "argument_parser.hpp"
 #include "capnp_schemas/registry.capnp.h"
 #include "registry.hpp"
 #include <capnp/common.h>
@@ -8,7 +9,6 @@
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
-#include <iostream>
 #include <kj/common.h>
 #include <kj/io.h>
 #include <optional>
@@ -20,14 +20,16 @@
 namespace Core {
 
 // Helper to color topic name using TOPIC_COLOR
-inline std::string color_topic(const std::string& topic) {
+inline std::string color_topic(const std::string &topic) {
   return std::string(TOPIC_COLOR) + topic + "\033[0m";
 }
-Registry::Registry(RegistryConfiguration config)
-    : _config(config),
-      _ctx(config.threads),
+Registry::Registry(ArgumentParser args)
+    : Vertex(args),
+      _config({.port = (int16_t)args.get_argument<int>("--port"),
+               .threads = (uint8_t)args.get_argument<int>("--threads")}),
+      _ctx(_config.threads),
       _router(_ctx, ZMQ_ROUTER),
-      _last_free_port(config.port) {
+      _last_free_port(_config.port) {
   this->_logger.set_classname("registry");
 }
 
@@ -86,13 +88,14 @@ void Registry::handle_request(RouterEvent event) {
       respond_event(event, message_from_builder(message));
       return;
     }
-  std::string path = request.getPath();
-  Endpoint endpoint{
-    .host = "127.0.0.1",
-    .port = free_port.value(),
-  };
-  _topic_to_endpoint.insert_or_assign(path, endpoint);
-  this->_logger.info("New topic: %s at %d", color_topic(path).c_str(), endpoint.port);
+    std::string path = request.getPath();
+    Endpoint endpoint{
+        .host = "127.0.0.1",
+        .port = free_port.value(),
+    };
+    _topic_to_endpoint.insert_or_assign(path, endpoint);
+    this->_logger.info("New topic: %s at %d", color_topic(path).c_str(),
+                       endpoint.port);
     res.setCode(201);
     auto host = res.initHost();
     host.setAddress(endpoint.host);
@@ -202,8 +205,17 @@ void Registry::run() {
 
 }  // namespace Core
 
-int main() {
-  Core::Registry registry({.port = 4020, .threads = 5});
+int main(int argc, char **argv) {
+  Core::BaseArgumentParser args(argc, argv);
+  args.add_argument("--port", "-p")
+      .help("Port to bind")
+      .default_value(4020)
+      .scan<'i', int>();
+  args.add_argument("--threads", "-j")
+      .help("Number of zmq threads to handle requets")
+      .default_value(5)
+      .scan<'i', int>();
+  Core::Registry registry(args);
   registry.run();
   return 0;
 }

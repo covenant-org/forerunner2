@@ -1,6 +1,7 @@
 #ifndef REGISTRY_HPP
 #define REGISTRY_HPP
 
+#include "argument_parser.hpp"
 #include "logger.hpp"
 #include <capnp/message.h>
 #include <cstdint>
@@ -9,12 +10,13 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <vertex.hpp>
 #include <zmq.hpp>
 #include <zmq_addon.hpp>
 
 #define MAX_PORT_SEARCHES 100
-// Topic color (ANSI): 
-#define TOPIC_COLOR "\033[36m" // cyan
+// Topic color (ANSI):
+#define TOPIC_COLOR "\033[36m"  // cyan
 
 namespace Core {
 std::string color_topic(const std::string& topic);
@@ -33,9 +35,9 @@ struct RouterEvent {
   zmq::message_t data;
 };
 
-class Registry {
+class Registry : public Vertex {
  public:
-  explicit Registry(RegistryConfiguration config);
+  explicit Registry(ArgumentParser);
 
   void run();
   void register_topic(const std::string topic, const Endpoint& host);
@@ -53,7 +55,6 @@ class Registry {
   void notify_waiters(std::string path);
 
  private:
-  Logger _logger;
   RegistryConfiguration _config;
   zmq::context_t _ctx;
   zmq::socket_t _router;
