@@ -33,8 +33,10 @@ NodesYamlParser::NodesYamlParser(const std::string& filename) {
         }
       }
     }
-    executables.push_back(exec_args);
-    args_lines[exec_args.name] = arg_line;
+  executables.push_back(exec_args);
+  // Store the argument line in the list for this executable name.
+  // If the key does not exist yet, operator[] creates an empty vector.
+  args_lines[exec_args.name].push_back(arg_line);
     // Construir string YAML en el mismo ciclo
     oss << "Executable: " << exec_args.name << '\n';
     if (!exec_args.flags.empty()) {
@@ -74,7 +76,15 @@ std::vector<std::string> NodesYamlParser::get_executables() const {
 const std::vector<std::string>& NodesYamlParser::get_args_line(
     const std::string& exec_name) const {
   static const std::vector<std::string> empty;
+  // Backwards compatibility: return the first argument line if multiple exist.
+  auto it = args_lines.find(exec_name);
+  if (it != args_lines.end() && !it->second.empty()) return it->second.front();
+  return empty;
+}
+
+std::vector<std::vector<std::string>> NodesYamlParser::get_args_lines(
+    const std::string& exec_name) const {
   auto it = args_lines.find(exec_name);
   if (it != args_lines.end()) return it->second;
-  return empty;
+  return {};
 }

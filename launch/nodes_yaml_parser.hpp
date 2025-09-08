@@ -14,11 +14,14 @@ class NodesYamlParser {
     std::vector<std::string> positionals;
   };
 
-  // Almacena el string YAML ya formateado
+  // Stores the formatted YAML string
   std::string yaml_str;
-  // Almacena los argumentos ya formateados por ejecutable
-  std::map<std::string, std::vector<std::string>> args_lines;
-  // Almacena los ejecutables parseados
+  // Stores formatted arguments per executable name.
+  // Supports multiple entries per name (when the YAML contains executables
+  // with the same `name`). Each inner vector is an argument line for one
+  // instance of the executable.
+  std::map<std::string, std::vector<std::vector<std::string>>> args_lines;
+  // Stores the parsed executables
   std::vector<ExecutableArgs> executables;
 
   NodesYamlParser(const std::string& filename);
@@ -26,6 +29,11 @@ class NodesYamlParser {
   const std::string& get_yaml() const;
   // Devuelve la línea de argumentos listo para CLI
   const std::vector<std::string>& get_args_line(
+      const std::string& exec_name) const;
+
+  // Returns all argument lines found for an executable name. Useful when
+  // the YAML contains multiple executables with the same name.
+  std::vector<std::vector<std::string>> get_args_lines(
       const std::string& exec_name) const;
 
   // Devuelve un vector con los nombres de los ejecutables
