@@ -28,6 +28,12 @@ class Launch {
   static std::map<std::string, std::string> find_executable_files(
       const std::filesystem::path& dir,
       const std::vector<std::string>& exclude_folders);
+  
+  static std::vector<std::vector<std::string>> build_args_from_yaml(
+      argparse::ArgumentParser& parser, const NodesYamlParser& yaml_parser);
+      
+  static std::vector<std::string> build_registry_args(
+      argparse::ArgumentParser& parser, const std::vector<std::string>& names);
 
  public:
   std::map<std::string, std::string> executables;

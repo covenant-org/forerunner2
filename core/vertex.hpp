@@ -31,6 +31,10 @@ class BaseArgumentParser : public ArgumentParser {
         .default_value(false)
         .implicit_value(true)
         .help("Shortcut for --log-level 0");
+    this->add_argument("--instance-id")
+        .default_value("")
+        .help("Unique identifier for this instance (useful for distinguishing duplicate processes)")
+        .nargs(1);
   }
 };
 
@@ -46,7 +50,15 @@ class Vertex {
         _registry(DEFAULT_REGISTRY_URI),
         _logger(LogLevel::INFO, "app.log", typeid(this).name()) {
     _args.parse();
-    _logger.set_classname(this->_args._program_name);
+    
+    // Set logger classname with instance ID if provided
+    std::string class_name = this->_args._program_name;
+    std::string instance_id = _args.get_argument("--instance-id");
+    if (!instance_id.empty()) {
+      class_name +=  instance_id;
+    }
+    _logger.set_classname(class_name);
+    
     _registry = _args.get_argument("--registry-uri");
     auto level = _args.get_argument<LogLevel>("--log-level");
     if (_args._program->is_used("debug")) level = LogLevel::DEBUG;
