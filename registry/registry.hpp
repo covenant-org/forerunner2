@@ -4,6 +4,7 @@
 #include "argument_parser.hpp"
 #include "logger.hpp"
 #include <capnp/message.h>
+#include <capnp_schemas/registry.capnp.h>
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -52,6 +53,7 @@ class Registry : public Vertex {
 
   void respond_event(RouterEvent& event, zmq::message_t data);
   zmq::message_t message_from_builder(::capnp::MallocMessageBuilder& msg);
+  bool check_with_other_registries(RouterEvent&, const RegistryRequest::Reader&);
   void notify_waiters(std::string path);
 
  private:

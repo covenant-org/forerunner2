@@ -4,19 +4,30 @@
 #include "capnp_schemas/registry.capnp.h"
 #include "logger.hpp"
 #include "message.hpp"
+#include <arpa/inet.h>
 #include <cmath>
 #include <condition_variable>
 #include <cstdint>
 #include <filesystem>
+#include <ifaddrs.h>
 #include <iostream>
 #include <kj/common.h>
+#include <linux/if_link.h>
 #include <mutex>
+#include <netdb.h>
+#include <netinet/in.h>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <sys/socket.h>
 #include <zmq.hpp>
 
 namespace Core {
+
+struct Interface {
+  std::string host;
+  std::string if_name;
+};
 
 class WorkLock {
  private:
@@ -127,6 +138,51 @@ inline std::optional<uint32_t> query_topic(const std::string& topic,
     std::cerr << "Error while querying topic: " << error.what() << std::endl;
     return std::nullopt;
   }
+}
+
+// TODO: maybe build a cache (as a map) to not generate a new vector every time
+inline std::vector<Interface> get_ipv4_interfaces() {
+  std::vector<Interface> ifs = std::vector<Interface>();
+
+  struct ifaddrs* ifaddr;
+  int family, s;
+  char host[NI_MAXHOST];
+
+  if (getifaddrs(&ifaddr) == -1) {
+    return ifs;
+  }
+
+  for (struct ifaddrs* ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+    if (ifa->ifa_addr == NULL) continue;
+
+    family = ifa->ifa_addr->sa_family;
+    // we only care about ipv4
+    if (family != AF_INET) continue;
+
+    s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in), host, NI_MAXHOST,
+                    NULL, 0, NI_NUMERICHOST);
+
+    if (s != 0) {
+      printf("getnameinfo() failed: %s\n", gai_strerror(s));
+      continue;
+    }
+
+    ifs.push_back({host, ifa->ifa_name});
+  }
+  freeifaddrs(ifaddr);
+
+  return ifs;
+}
+
+inline std::optional<std::tuple<std::string, uint32_t>>
+query_another_registry() {
+  auto interfaces = get_ipv4_interfaces();
+  for (auto interface : interfaces) {
+    printf("interface name: %s, address: %s\n", interface.if_name.c_str(),
+           interface.host.c_str());
+  }
+
+  return std::nullopt;
 }
 
 template <unsigned int N>

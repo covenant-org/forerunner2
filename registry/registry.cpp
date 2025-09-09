@@ -1,6 +1,8 @@
 #include "argument_parser.hpp"
 #include "capnp_schemas/registry.capnp.h"
 #include "registry.hpp"
+#include "utils.hpp"
+#include <argparse/argparse.hpp>
 #include <capnp/common.h>
 #include <capnp/generated-header-support.h>
 #include <capnp/message.h>
@@ -68,7 +70,7 @@ void Registry::notify_waiters(std::string path) {
       host.setPort(endpoint.port);
       respond_event(wait_event, message_from_builder(message));
     }
-  } catch (const std::out_of_range&) {
+  } catch (const std::out_of_range &) {
   }
 }
 
@@ -107,11 +109,13 @@ void Registry::handle_request(RouterEvent event) {
 
   if (request.getType() == RequestType::QUERY_NODE) {
     auto path = request.getPath();
-    this->_logger.debug("querying topic: %s", color_topic(request.getPath().cStr()).c_str());
+    this->_logger.debug("querying topic: %s",
+                        color_topic(request.getPath().cStr()).c_str());
     try {
       Endpoint node = _topic_to_endpoint.at(path);
       this->_logger.debug("querying topic [%s] found at %d",
-          color_topic(request.getPath().cStr()).c_str(), node.port);
+                          color_topic(request.getPath().cStr()).c_str(),
+                          node.port);
       ::capnp::MallocMessageBuilder message;
       RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
       res.setCode(200);
@@ -119,10 +123,12 @@ void Registry::handle_request(RouterEvent event) {
       host.setAddress(node.host);
       host.setPort(node.port);
       respond_event(event, message_from_builder(message));
-    } catch (const std::out_of_range&) {
-      this->_logger.debug("querying topic not found, pending to notify");
-          _topic_to_waiters[path].emplace_back((char *)event.identity.data(),
-                                           event.identity.size());
+    } catch (const std::out_of_range &) {
+      if (!this->check_with_other_registries(event, request)) {
+        this->_logger.debug("querying topic not found, pending to notify");
+        _topic_to_waiters[path].emplace_back((char *)event.identity.data(),
+                                             event.identity.size());
+      }
     }
     return;
   }
@@ -138,7 +144,8 @@ void Registry::handle_request(RouterEvent event) {
         .port = obj.getPort(),
     };
     _topic_to_endpoint.insert_or_assign(request.getPath(), endpoint);
-    this->_logger.info("New Host: %s at %d", color_topic(path.cStr()).c_str(), endpoint.port);
+    this->_logger.info("New Host: %s at %d", color_topic(path.cStr()).c_str(),
+                       endpoint.port);
     res.setCode(201);
     auto host = res.initHost();
     host.setAddress(endpoint.host);
@@ -146,6 +153,17 @@ void Registry::handle_request(RouterEvent event) {
     respond_event(event, message_from_builder(message));
     notify_waiters(path);
   }
+}
+
+bool Registry::check_with_other_registries(
+    RouterEvent &event, const RegistryRequest::Reader &request) {
+  std::string other_registry =
+      this->get_argument<std::string>("--registry-uri");
+  if (other_registry.length()) {
+    query_another_registry();
+  }
+
+  return false;
 }
 
 std::optional<uint32_t> Registry::get_free_port() {
@@ -159,14 +177,14 @@ std::optional<uint32_t> Registry::get_free_port() {
       tmp.unbind(bind_dir);
       _last_free_port += i;
       return _last_free_port;
-    } catch (const zmq::error_t& error) {
+    } catch (const zmq::error_t &error) {
       this->_logger.error("get_free_port failed due to: %s", error.what());
     }
   }
   return std::nullopt;
 }
 
-  std::optional<RouterEvent> Registry::wait_for_message(zmq::socket_t &) {
+std::optional<RouterEvent> Registry::wait_for_message(zmq::socket_t &) {
   // Router gets the identity first
   zmq::message_t identity(5);
   auto res = _router.recv(identity);
@@ -215,6 +233,9 @@ int main(int argc, char **argv) {
       .help("Number of zmq threads to handle requets")
       .default_value(5)
       .scan<'i', int>();
+  args.add_argument("--registry-uri", "-r")
+      .help("other registry nodes host with port")
+      .default_value("");
   Core::Registry registry(args);
   registry.run();
   return 0;
