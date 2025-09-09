@@ -27,7 +27,24 @@ Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
       new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>();
 
   this->_rec = std::make_shared<rerun::RecordingStream>("Forerunner v2");
-  this->_rec->spawn().exit_on_failure();
+  if (auto save_file = args.present("--save-file")) {
+    auto error = this->_rec->save(*save_file);
+    if (error.is_err()) {
+      this->_logger.error("Error while saving rerun streaming to file: %s",
+                          error.description.c_str());
+      throw error;
+    }
+  } else if (auto url = args.present("--grpc")) {
+    auto error = this->_rec->connect_grpc();
+    if (error.is_err()) {
+      this->_logger.error(
+          "Error while connecting to remote viewer '%s' streaming to file: %s",
+          url->c_str(), error.description.c_str());
+      throw error;
+    }
+  } else {
+    this->_rec->spawn().exit_on_failure();
+  }
 
   this->_sub = this->create_subscriber<PointCloud>(
       "point_cloud",
@@ -391,6 +408,13 @@ int main(int argc, char **argv) {
       .default_value(false)
       .implicit_value(false)
       .help("Enable decompression of map chunks")
+      .flag();
+  auto &group = args.add_mutually_exclusive_group();
+  group.add_argument("--grpc").help("URL of remote viewer");
+  group.add_argument("--save-file")
+      .help("Path of file to save the recording to");
+  group.add_argument("--spawn")
+      .help("Start or stream to already opened local viewer")
       .flag();
 
   auto demo = Viewer(args);
