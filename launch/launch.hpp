@@ -21,6 +21,7 @@ class Launch {
  private:
   std::string _root_path;
   std::vector<std::string> _exclude_folders;
+  std::string _log_level;
   inline static const std::vector<std::string> default_exclude_folders = {
       "vendor", ".git"};
 
@@ -30,8 +31,7 @@ class Launch {
 
  public:
   std::map<std::string, std::string> executables;
-
-  void set_log_level(Core::LogLevel level);
+  
 
   Launch(argparse::ArgumentParser& parser,
          const std::vector<std::string>& exclude,

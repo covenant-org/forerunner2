@@ -1,9 +1,13 @@
 #include "nodes_yaml_parser.hpp"
-#include <iostream>
 #include <sstream>
 #include <yaml-cpp/yaml.h>
 
 NodesYamlParser::NodesYamlParser(const std::string& filename) {
+
+  Core::Logger _logger(Core::LogLevel::INFO, "application.log",
+                          "nodes_yaml_parser");
+  _logger.set_classname("nodes_yaml_parser");
+  
   YAML::Node config = YAML::LoadFile(filename);
   std::ostringstream oss;
   for (const auto& exe : config["executables"]) {
@@ -19,11 +23,66 @@ NodesYamlParser::NodesYamlParser(const std::string& filename) {
         }
       }
       if (args["options"]) {
-        for (const auto& opt : args["options"]) {
-          exec_args.options[opt.first.as<std::string>()] =
-              opt.second.as<std::string>();
-          arg_line.push_back(opt.first.as<std::string>());
-          arg_line.push_back(opt.second.as<std::string>());
+        const YAML::Node opts = args["options"];
+        if (opts.IsMap()) {
+          for (const auto& opt : opts) {
+            std::string key = opt.first.as<std::string>();
+            if (opt.second && !opt.second.IsNull()) {
+              std::string val = opt.second.as<std::string>();
+              exec_args.options[key] = val;
+              arg_line.push_back(key);
+              arg_line.push_back(val);
+            } else {
+              // Fallback: map key present but value is null. Try to split
+              // the key into "key value" (handles malformed YAML like
+              // "--port 5020" without a colon) or treat as flag.
+              std::istringstream iss(key);
+              std::string k, v;
+              if (iss >> k) {
+                if (iss >> v) {
+                  exec_args.options[k] = v;
+                  arg_line.push_back(k);
+                  arg_line.push_back(v);
+                } else {
+                  exec_args.flags.push_back(k);
+                  arg_line.push_back(k);
+                }
+              }
+            }
+          }
+        } else if (opts.IsSequence()) {
+          // Support sequence of scalars like: options: ["--port 5020", ...]
+          for (const auto& n : opts) {
+            std::string s = n.as<std::string>();
+            std::istringstream iss(s);
+            std::string key, val;
+            if (iss >> key) {
+              if (iss >> val) {
+                exec_args.options[key] = val;
+                arg_line.push_back(key);
+                arg_line.push_back(val);
+              } else {
+                // single token, treat as flag without value
+                exec_args.flags.push_back(key);
+                arg_line.push_back(key);
+              }
+            }
+          }
+        } else if (opts.IsScalar()) {
+          // Single scalar, try to split into key/value
+          std::string s = opts.as<std::string>();
+          std::istringstream iss(s);
+          std::string key, val;
+          if (iss >> key) {
+            if (iss >> val) {
+              exec_args.options[key] = val;
+              arg_line.push_back(key);
+              arg_line.push_back(val);
+            } else {
+              exec_args.flags.push_back(key);
+              arg_line.push_back(key);
+            }
+          }
         }
       }
       if (args["positionals"]) {
@@ -33,10 +92,14 @@ NodesYamlParser::NodesYamlParser(const std::string& filename) {
         }
       }
     }
+  // Assign args_line into the ExecutableArgs and append to vector
+  exec_args.args_line = arg_line;
   executables.push_back(exec_args);
-  // Store the argument line in the list for this executable name.
-  // If the key does not exist yet, operator[] creates an empty vector.
-  args_lines[exec_args.name].push_back(arg_line);
+  // Debug: log parsed args for this executable
+  std::stringstream ss;
+  ss << "Parsed executable '" << exec_args.name << "'";
+  for (const auto& a : arg_line) ss << " '" << a << "'";
+  _logger.debug("%s", ss.str().c_str());
     // Construir string YAML en el mismo ciclo
     oss << "Executable: " << exec_args.name << '\n';
     if (!exec_args.flags.empty()) {
@@ -74,17 +137,8 @@ std::vector<std::string> NodesYamlParser::get_executables() const {
 }
 
 const std::vector<std::string>& NodesYamlParser::get_args_line(
-    const std::string& exec_name) const {
+    size_t index) const {
   static const std::vector<std::string> empty;
-  // Backwards compatibility: return the first argument line if multiple exist.
-  auto it = args_lines.find(exec_name);
-  if (it != args_lines.end() && !it->second.empty()) return it->second.front();
-  return empty;
-}
-
-std::vector<std::vector<std::string>> NodesYamlParser::get_args_lines(
-    const std::string& exec_name) const {
-  auto it = args_lines.find(exec_name);
-  if (it != args_lines.end()) return it->second;
-  return {};
+  if (index >= executables.size()) return empty;
+  return executables[index].args_line;
 }

@@ -38,8 +38,6 @@ std::map<std::string, std::string> Launch::find_executable_files(
   return exe_map;
 }
 
-void Launch::set_log_level(Core::LogLevel level) { _logger.set_level(level); }
-
 Launch::Launch(argparse::ArgumentParser& parser,
                const std::vector<std::string>& exclude,
                const std::vector<std::string>& names,
@@ -47,6 +45,10 @@ Launch::Launch(argparse::ArgumentParser& parser,
     : _exclude_folders(exclude) {
   int registry_port = parser.get<int>("--registry-port");
   int registry_threads = parser.get<int>("--registry-threads");
+  _log_level = parser.get<std::string>("--log-level");
+  _logger.set_classname("launch");
+  // Convert string log level to enum
+  _logger.set_level(Core::Logger::parse_level(_log_level));
   _root_path = Core::find_root(".root", 10);
   if (_root_path.empty()) {
     _logger.error("Root path not found.");
@@ -81,9 +83,12 @@ Launch::Launch(argparse::ArgumentParser& parser,
              [&parser, &yaml_parser]() {
                std::vector<std::vector<std::string>> args;
                std::string log_level = parser.get<std::string>("--log-level");
-               for (const auto& name : yaml_parser.get_executables()) {
+               const auto& names = yaml_parser.get_executables();
+               
+               for (size_t i = 0; i < names.size(); ++i) {
+                 size_t idx = args.size();
                  std::vector<std::string> exe_args =
-                     yaml_parser.get_args_line(name);
+                     yaml_parser.get_args_line(idx);
                  exe_args.insert(exe_args.begin(), log_level);
                  exe_args.insert(exe_args.begin(), "--log-level");
                  args.push_back(exe_args);
@@ -111,6 +116,8 @@ int Launch::run_executable(const std::string& name,
         command << " " << arg;
       }
     }
+  // Debug: log the full command that will be executed
+  _logger.debug("[LAUNCH] exec command: %s", command.str().c_str());
     return system(command.str().c_str());
   } catch (const std::exception& e) {
     _logger.error("Error running %s: %s", name.c_str(), e.what());
