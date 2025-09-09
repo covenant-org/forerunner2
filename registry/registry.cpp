@@ -29,9 +29,7 @@ Registry::Registry(ArgumentParser args)
                .threads = (uint8_t)args.get_argument<int>("--threads")}),
       _ctx(_config.threads),
       _router(_ctx, ZMQ_ROUTER),
-      _last_free_port(_config.port) {
-  this->_logger.set_classname("registry");
-}
+      _last_free_port(_config.port) {}
 
 zmq::message_t Registry::message_from_builder(
     ::capnp::MallocMessageBuilder &message) {

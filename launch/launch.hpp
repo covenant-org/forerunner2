@@ -21,17 +21,23 @@ class Launch {
  private:
   std::string _root_path;
   std::vector<std::string> _exclude_folders;
+  std::string _log_level;
   inline static const std::vector<std::string> default_exclude_folders = {
       "vendor", ".git"};
 
   static std::map<std::string, std::string> find_executable_files(
       const std::filesystem::path& dir,
       const std::vector<std::string>& exclude_folders);
+  
+  static std::vector<std::vector<std::string>> build_args_from_yaml(
+      argparse::ArgumentParser& parser, const NodesYamlParser& yaml_parser);
+      
+  static std::vector<std::string> build_registry_args(
+      argparse::ArgumentParser& parser, const std::vector<std::string>& names);
 
  public:
   std::map<std::string, std::string> executables;
-
-  void set_log_level(Core::LogLevel level);
+  
 
   Launch(argparse::ArgumentParser& parser,
          const std::vector<std::string>& exclude,

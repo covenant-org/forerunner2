@@ -24,12 +24,12 @@ std::map<std::string, std::string> Launch::find_executable_files(
 
       // Verificar permisos de ejecución
       auto perms = entry.status().permissions();
-      if ((perms & std::filesystem::perms::owner_exec) !=
-              std::filesystem::perms::none ||
-          (perms & std::filesystem::perms::group_exec) !=
-              std::filesystem::perms::none ||
-          (perms & std::filesystem::perms::others_exec) !=
-              std::filesystem::perms::none) {
+      bool is_executable = (perms & (std::filesystem::perms::owner_exec |
+                                     std::filesystem::perms::group_exec |
+                                     std::filesystem::perms::others_exec)) != 
+                           std::filesystem::perms::none;
+      
+      if (is_executable) {
         std::string exe_name = entry.path().filename().string();
         exe_map[exe_name] = entry.path().string();
       }
@@ -38,33 +38,102 @@ std::map<std::string, std::string> Launch::find_executable_files(
   return exe_map;
 }
 
-void Launch::set_log_level(Core::LogLevel level) { _logger.set_level(level); }
+std::vector<std::vector<std::string>> Launch::build_args_from_yaml(
+    argparse::ArgumentParser& parser, const NodesYamlParser& yaml_parser) {
+  std::vector<std::vector<std::string>> args;
+  std::string log_level = parser.get<std::string>("--log-level");
+  const auto& names = yaml_parser.get_executables();
+  
+  // Count occurrences of each executable name from YAML only
+  std::map<std::string, int> name_counts;
+  for (const auto& name : names) {
+    name_counts[name]++;
+  }
+  
+  // Create instance counters for duplicates
+  std::map<std::string, int> instance_counters;
+  
+  for (size_t i = 0; i < names.size(); ++i) {
+    size_t idx = args.size();
+    std::vector<std::string> exe_args = yaml_parser.get_args_line(idx);
+    
+    const std::string& exe_name = names[i];
+    
+    // Only add instance-id if this executable appears more than once in YAML
+    if (name_counts[exe_name] > 1) {
+      std::string instance_id = std::to_string(instance_counters[exe_name]);
+      instance_counters[exe_name]++;
+      exe_args.insert(exe_args.begin(), instance_id);
+      exe_args.insert(exe_args.begin(), "--instance-id");
+    }
+    
+    exe_args.insert(exe_args.begin(), log_level);
+    exe_args.insert(exe_args.begin(), "--log-level");
+    args.push_back(exe_args);
+  }
+  return args;
+}
+
+std::vector<std::string> Launch::build_registry_args(
+    argparse::ArgumentParser& parser, const std::vector<std::string>& names) {
+  int registry_port = parser.get<int>("--registry-port");
+  int registry_threads = parser.get<int>("--registry-threads");
+  std::string log_level = parser.get<std::string>("--log-level");
+  
+  std::vector<std::string> registry_args = {"--log-level", log_level};
+  
+  if (registry_port != 0 && registry_threads != 0) {
+    registry_args.push_back("--port");
+    registry_args.push_back(std::to_string(registry_port));
+    registry_args.push_back("--threads");
+    registry_args.push_back(std::to_string(registry_threads));
+  }
+  
+  // Count registry instances to determine if we need instance-id
+  int registry_count = 0;
+  for (const auto& name : names) {
+    if (name == "registry") registry_count++;
+  }
+  
+  // Add instance-id if there are duplicate registries
+  if (registry_count > 0) {
+    registry_args.insert(registry_args.begin(), std::to_string(registry_count));
+    registry_args.insert(registry_args.begin(), "--instance-id");
+  }
+  
+  return registry_args;
+}
 
 Launch::Launch(argparse::ArgumentParser& parser,
                const std::vector<std::string>& exclude,
                const std::vector<std::string>& names,
                const std::vector<std::vector<std::string>>& args)
     : _exclude_folders(exclude) {
-  int registry_port = parser.get<int>("--registry-port");
-  int registry_threads = parser.get<int>("--registry-threads");
+  
+  // Initialize logger and basic setup
+  _log_level = parser.get<std::string>("--log-level");
+  _logger.set_classname("launch");
+  _logger.set_level(Core::Logger::parse_level(_log_level));
+  
+  // Find root path
   _root_path = Core::find_root(".root", 10);
   if (_root_path.empty()) {
     _logger.error("Root path not found.");
     return;
   }
+  
   executables = find_executable_files(_root_path, _exclude_folders);
 
-  std::vector<std::string> all_names = names;
-  std::vector<std::vector<std::string>> all_args = args;
-  std::vector<std::string> registry_args;
-  if (registry_port != 0 && registry_threads != 0) {
-    registry_args = {"--port", std::to_string(registry_port), "--threads",
-                     std::to_string(registry_threads)};
-  }
-  all_names.insert(all_names.begin(), "registry");
-  all_args.insert(all_args.begin(), registry_args);
-  if (!all_names.empty()) {
-    run_executables(all_names, all_args);
+  // Prepare final lists with registry always first
+  std::vector<std::string> final_names = {"registry"};
+  std::vector<std::vector<std::string>> final_args = {build_registry_args(parser, names)};
+  
+  // Add user-provided executables
+  final_names.insert(final_names.end(), names.begin(), names.end());
+  final_args.insert(final_args.end(), args.begin(), args.end());
+  
+  if (!final_names.empty()) {
+    run_executables(final_names, final_args);
   }
 }
 
@@ -74,22 +143,10 @@ Launch::Launch(argparse::ArgumentParser& parser,
     : Launch(parser, default_exclude_folders, names, args) {}
 
 // Constructor que recibe un NodesYamlParser
-
 Launch::Launch(argparse::ArgumentParser& parser,
                const NodesYamlParser& yaml_parser)
     : Launch(parser, default_exclude_folders, yaml_parser.get_executables(),
-             [&parser, &yaml_parser]() {
-               std::vector<std::vector<std::string>> args;
-               std::string log_level = parser.get<std::string>("--log-level");
-               for (const auto& name : yaml_parser.get_executables()) {
-                 std::vector<std::string> exe_args =
-                     yaml_parser.get_args_line(name);
-                 exe_args.insert(exe_args.begin(), log_level);
-                 exe_args.insert(exe_args.begin(), "--log-level");
-                 args.push_back(exe_args);
-               }
-               return args;
-             }()) {}
+             build_args_from_yaml(parser, yaml_parser)) {}
 
 std::map<std::string, std::string> Launch::get_executables() {
   return executables;
@@ -102,16 +159,19 @@ int Launch::run_executable(const std::string& name,
     _logger.error("Executable not found: %s", name.c_str());
     return -1;
   }
+  
   try {
     _logger.info("Starting %s at %s", name.c_str(), it->second.c_str());
-    std::stringstream command;
-    command << it->second.c_str();
-    if (!args.empty()) {
-      for (const std::string& arg : args) {
-        command << " " << arg;
-      }
+    
+    // Build command string
+    std::string command = it->second;
+    for (const std::string& arg : args) {
+      command += " " + arg;
     }
-    return system(command.str().c_str());
+    
+    // Debug: log the full command that will be executed
+    _logger.debug("[LAUNCH] exec command: %s", command.c_str());
+    return system(command.c_str());
   } catch (const std::exception& e) {
     _logger.error("Error running %s: %s", name.c_str(), e.what());
     return -1;
