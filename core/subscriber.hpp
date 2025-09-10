@@ -3,11 +3,13 @@
 
 #include "message.hpp"
 #include "utils.hpp"
+#include <atomic>
 #include <capnp/common.h>
 #include <capnp/generated-header-support.h>
 #include <capnp/message.h>
 #include <capnp/serialize-packed.h>
 #include <capnp/serialize.h>
+#include <cstdint>
 #include <kj/common.h>
 #include <kj/exception.h>
 #include <kj/io.h>
@@ -21,8 +23,14 @@
 
 namespace Core {
 
+class ISubscriber {
+ public:
+  virtual ~ISubscriber() = default;
+  virtual uint32_t reset_connection() = 0;
+};
+
 template <typename T>
-class Subscriber {
+class Subscriber : ISubscriber {
  private:
   std::string _topic;
   zmq::context_t _context;
@@ -30,6 +38,7 @@ class Subscriber {
   std::function<void(IncomingMessage<T>)> _callback;
   std::thread* _listener_thread;
   std::string uri;
+  std::atomic_bool _exit;
   Logger _logger;
 
   // TODO: Should we make this in another thread so it won't block?
@@ -51,7 +60,7 @@ class Subscriber {
     socket.connect(_pub_add);
     socket.set(zmq::sockopt::subscribe, "");
     // TODO: Cleaner exit?
-    while (true) {
+    while (!this->_exit) {
       zmq::message_t msg;
       auto res = socket.recv(msg);
       if (res.has_value()) {
@@ -63,20 +72,40 @@ class Subscriber {
         }
       }
     }
+    socket.close();
+    ctx.shutdown();
+    ctx.close();
   }
 
  public:
   Subscriber(const std::string& topic,
              std::function<void(IncomingMessage<T>)> callback,
              std::string vertex_name = "")
-      : _topic(std::move(topic)), _context(1), _callback(callback) {
+      : _topic(std::move(topic)),
+        _context(1),
+        _callback(callback),
+        _exit(false) {
     this->_logger.set_classname(vertex_name + "-Subscriber-" + this->_topic);
+  }
+
+  uint32_t reset_connection() {
+    this->_logger.debug("Requested reconnection");
+    this->stop();
+    this->_logger.debug("Stopped current thread");
+    this->setup(this->uri);
+    this->_logger.debug("Ready Suybscriber");
+    return 0;
   }
 
   void setup(const std::string& uri) {
     this->uri = uri;
     _listener_thread = new std::thread(
         std::bind(&Subscriber<T>::listen_to_new_messages, this));
+  }
+
+  void stop() {
+    this->_exit = true;
+    if (this->_listener_thread->joinable()) this->_listener_thread->join();
   }
 };
 }  // namespace Core

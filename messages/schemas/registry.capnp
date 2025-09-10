@@ -4,6 +4,7 @@ enum RequestType {
   addNode @0;
   queryNode @1;
   addHost @2;
+  heartbeat @3;
 }
 
 struct Interface {
@@ -19,6 +20,7 @@ struct RegistryRequest {
   union {
     addNode @2 :Void;
     queryNode @3 :Void;
+    heartbeat @6 :Void;
     addHost :group{
       address @4 :Text;
       port    @5 :UInt32;

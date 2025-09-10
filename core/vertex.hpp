@@ -33,36 +33,56 @@ class BaseArgumentParser : public ArgumentParser {
         .help("Shortcut for --log-level 0");
     this->add_argument("--instance-id")
         .default_value("")
-        .help("Unique identifier for this instance (useful for distinguishing duplicate processes)")
+        .help(
+            "Unique identifier for this instance (useful for distinguishing "
+            "duplicate processes)")
         .nargs(1);
   }
 };
 
-class Vertex {
+class BaseVertex {
  protected:
   ArgumentParser _args;
   Logger _logger;
-  std::string _registry;
 
  public:
-  Vertex(ArgumentParser args)
-      : _args(args),
-        _registry(DEFAULT_REGISTRY_URI),
-        _logger(LogLevel::INFO, "app.log", typeid(this).name()) {
+  BaseVertex(ArgumentParser args)
+      : _args(args), _logger(LogLevel::INFO, "app.log", typeid(this).name()) {
     _args.parse();
-    
+
     // Set logger classname with instance ID if provided
     std::string class_name = this->_args._program_name;
     std::string instance_id = _args.get_argument("--instance-id");
     if (!instance_id.empty()) {
-      class_name +=  instance_id;
+      class_name += instance_id;
     }
     _logger.set_classname(class_name);
-    
-    _registry = _args.get_argument("--registry-uri");
+
     auto level = _args.get_argument<LogLevel>("--log-level");
     if (_args._program->is_used("debug")) level = LogLevel::DEBUG;
     _logger.set_level(level);
+  }
+
+  template <typename T = std::string>
+  T get_argument(std::string_view arg_name) const {
+    return this->_args.get_argument<T>(arg_name);
+  }
+
+  virtual void run() {
+    while (true) {
+      sleep(1);
+    }
+  }
+};
+
+class Vertex : public BaseVertex {
+ protected:
+  std::string _registry;
+
+ public:
+  Vertex(ArgumentParser args)
+      : BaseVertex(args), _registry(DEFAULT_REGISTRY_URI) {
+    _registry = _args.get_argument("--registry-uri");
   }
 
   template <typename T>
@@ -96,17 +116,6 @@ class Vertex {
     auto client = std::make_shared<ActionClient<T, K>>(topic);
     client->setup(this->_registry);
     return client;
-  }
-
-  template <typename T = std::string>
-  T get_argument(std::string_view arg_name) const {
-    return this->_args.get_argument<T>(arg_name);
-  }
-
-  virtual void run() {
-    while (true) {
-      sleep(1);
-    }
   }
 };
 };  // namespace Core
