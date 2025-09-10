@@ -3,6 +3,7 @@
 #include "registry.hpp"
 #include "utils.hpp"
 #include <argparse/argparse.hpp>
+#include <arpa/inet.h>
 #include <capnp/common.h>
 #include <capnp/generated-header-support.h>
 #include <capnp/message.h>
@@ -116,15 +117,47 @@ void Registry::handle_request(RouterEvent event) {
       this->_logger.debug("querying topic [%s] found at %d",
                           color_topic(request.getPath().cStr()).c_str(),
                           node.port);
+
       ::capnp::MallocMessageBuilder message;
       RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
       res.setCode(200);
       auto host = res.initHost();
-      host.setAddress(node.host);
+
+      // check if request has networks in which case the request came from
+      // another registry and we should find a common network
+      if (request.hasNetworks()) {
+        auto local_networks = get_ipv4_networks();
+        auto remote_networks = request.getNetworks();
+        for (auto remote_network : remote_networks) {
+          try {
+            uint32_t ip = local_networks.at(remote_network.getNetwork());
+            struct in_addr network_addr;
+            network_addr.s_addr = ip;
+            host.setAddress(std::string(inet_ntoa(network_addr)));
+            break;
+          } catch (std::out_of_range &) {
+          }
+        }
+        // what if at this point we dont find it? add to waiters but keep in
+        // mind that we need to return an ip (different from the loopback one)
+      } else {
+        host.setAddress(node.host);
+      }
+
       host.setPort(node.port);
       respond_event(event, message_from_builder(message));
     } catch (const std::out_of_range &) {
-      if (!this->check_with_other_registries(event, request)) {
+      auto response = this->check_with_other_registries(path);
+      if (response.has_value()) {
+        auto value = response.value();
+        ::capnp::MallocMessageBuilder message;
+        RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
+        res.setCode(200);
+        auto host = res.initHost();
+        host.setAddress(std::get<0>(value));
+        host.setPort(std::get<1>(value));
+        respond_event(event, message_from_builder(message));
+      } else {
         this->_logger.debug("querying topic not found, pending to notify");
         _topic_to_waiters[path].emplace_back((char *)event.identity.data(),
                                              event.identity.size());
@@ -155,15 +188,15 @@ void Registry::handle_request(RouterEvent event) {
   }
 }
 
-bool Registry::check_with_other_registries(
-    RouterEvent &event, const RegistryRequest::Reader &request) {
+std::optional<std::tuple<std::string, uint32_t>>
+Registry::check_with_other_registries(const std::string &path) {
   std::string other_registry =
       this->get_argument<std::string>("--registry-uri");
   if (other_registry.length()) {
-    query_another_registry();
+    return query_another_registry(path, other_registry);
   }
 
-  return false;
+  return std::nullopt;
 }
 
 std::optional<uint32_t> Registry::get_free_port() {
