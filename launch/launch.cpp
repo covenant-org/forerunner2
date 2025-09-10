@@ -1,5 +1,8 @@
 #include "launch.hpp"
 #include "utils.hpp"
+#include <mutex>
+
+std::mutex log_mutex;
 
 std::map<std::string, std::string> Launch::find_executable_files(
     const std::filesystem::path& dir,
@@ -67,8 +70,18 @@ std::vector<std::vector<std::string>> Launch::build_args_from_yaml(
       exe_args.insert(exe_args.begin(), "--instance-id");
     }
     
-    exe_args.insert(exe_args.begin(), log_level);
-    exe_args.insert(exe_args.begin(), "--log-level");
+    // Ensure log-level is included
+    bool has_log_level = false;
+    for (const auto& arg : exe_args) {
+      if (arg == "--log-level" || arg.find("--log-level") == 0) {
+        has_log_level = true;
+        break;
+      }
+    }
+    if (!has_log_level) {
+      exe_args.insert(exe_args.begin(), log_level);
+      exe_args.insert(exe_args.begin(), "--log-level");
+    }
     args.push_back(exe_args);
   }
   return args;
@@ -156,23 +169,24 @@ int Launch::run_executable(const std::string& name,
                            const std::vector<std::string>& args) {
   auto it = executables.find(name);
   if (it == executables.end()) {
+    std::lock_guard<std::mutex> lock(log_mutex);
     _logger.error("Executable not found: %s", name.c_str());
     return -1;
   }
   
   try {
-    _logger.info("Starting %s at %s", name.c_str(), it->second.c_str());
-    
-    // Build command string
     std::string command = it->second;
     for (const std::string& arg : args) {
       command += " " + arg;
     }
-    
-    // Debug: log the full command that will be executed
-    _logger.debug("[LAUNCH] exec command: %s", command.c_str());
+    {
+      std::lock_guard<std::mutex> lock(log_mutex);
+      _logger.info("Starting %s at %s", name.c_str(), it->second.c_str());
+      _logger.debug("[LAUNCH] exec command: %s", command.c_str());
+    }
     return system(command.c_str());
   } catch (const std::exception& e) {
+    std::lock_guard<std::mutex> lock(log_mutex);
     _logger.error("Error running %s: %s", name.c_str(), e.what());
     return -1;
   }
