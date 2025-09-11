@@ -118,36 +118,50 @@ void Registry::handle_request(RouterEvent event) {
                           color_topic(request.getPath().cStr()).c_str(),
                           node.port);
 
-      ::capnp::MallocMessageBuilder message;
-      RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
-      res.setCode(200);
-      auto host = res.initHost();
-
       // check if request has networks in which case the request came from
       // another registry and we should find a common network
       if (request.hasNetworks()) {
+        ::capnp::MallocMessageBuilder message;
+        RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
         auto local_networks = get_ipv4_networks();
         auto remote_networks = request.getNetworks();
+        bool found = false;
+        uint32_t ip;
         for (auto remote_network : remote_networks) {
           try {
-            uint32_t ip = local_networks.at(remote_network.getNetwork());
-            struct in_addr network_addr;
-            network_addr.s_addr = ip;
-            host.setAddress(std::string(inet_ntoa(network_addr)));
-            this->_logger.debug("should connect to: %s",
-                               host.getAddress().asString().cStr());
+            ip = local_networks.at(remote_network.getNetwork());
+            res.setCode(200);
+            found = true;
             break;
           } catch (std::out_of_range &) {
           }
         }
-        // what if at this point we dont find it? add to waiters but keep in
-        // mind that we need to return an ip (different from the loopback one)
+
+        if (found) {
+          auto host = res.initHost();
+          host.setPort(node.port);
+          struct in_addr network_addr;
+          network_addr.s_addr = ip;
+          host.setAddress(std::string(inet_ntoa(network_addr)));
+          this->_logger.debug("should connect to: %s",
+                              host.getAddress().asString().cStr());
+        } else {
+          res.setCode(404);
+          std::string error_message = "topic was not found";
+          res.initErrorMessage(error_message.size());
+          res.setErrorMessage(error_message);
+        }
+        respond_event(event, message_from_builder(message));
       } else {
+        ::capnp::MallocMessageBuilder message;
+        RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
+        res.setCode(200);
+        auto host = res.initHost();
         host.setAddress(node.host);
+        host.setPort(node.port);
+        respond_event(event, message_from_builder(message));
       }
 
-      host.setPort(node.port);
-      respond_event(event, message_from_builder(message));
     } catch (const std::out_of_range &) {
       auto response = this->check_with_other_registries(path);
       if (response.has_value()) {
