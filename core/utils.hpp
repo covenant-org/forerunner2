@@ -168,8 +168,8 @@ inline std::optional<uint32_t> register_topic(const std::string& topic,
   }
 }
 
-inline std::optional<uint32_t> query_topic(const std::string& topic,
-                                           const std::string& uri) {
+inline std::optional<std::tuple<std::string, uint32_t>> query_topic(
+    const std::string& topic, const std::string& uri) {
   try {
     auto msg = _make_request_to_registry(topic, RequestType::QUERY_NODE, uri);
     if (msg.content.which() == RegistryResponse::ERROR_MESSAGE) {
@@ -177,7 +177,8 @@ inline std::optional<uint32_t> query_topic(const std::string& topic,
                 << msg.content.getErrorMessage().cStr() << std::endl;
       return std::nullopt;
     }
-    return msg.content.getHost().getPort();
+    auto host = msg.content.getHost();
+    return std::make_tuple(host.getAddress(), host.getPort());
   } catch (std::runtime_error& error) {
     std::cerr << "Error while querying topic: " << error.what() << std::endl;
     return std::nullopt;

@@ -36,7 +36,9 @@ class Subscriber {
   bool query_registry(const std::string& registry_uri) {
     auto res = query_topic(_topic, registry_uri);
     if (!res.has_value()) return false;
-    sprintf(_pub_add, "tcp://127.0.0.1:%d", res.value());
+    auto value = res.value();
+    sprintf(_pub_add, "tcp://%s:%d", std::get<0>(value).c_str(),
+            std::get<1>(value));
     return true;
   }
 

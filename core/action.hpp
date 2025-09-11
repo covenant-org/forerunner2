@@ -145,7 +145,7 @@ class ActionClient : public ITransaction<K> {
   bool query_registry(const std::string& registry_uri) {
     auto res = query_topic(_topic, registry_uri);
     if (!res.has_value()) return false;
-    _port = res.value();
+    _port = std::get<1>(res.value());
     return true;
   }
 
