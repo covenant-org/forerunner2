@@ -23,10 +23,12 @@ FtpBridge::FtpBridge(const Core::ArgumentParser& args)
       _mavsdk(
           mavsdk::Mavsdk::Configuration{mavsdk::ComponentType::GroundStation}) {
   this->_map_sub = nullptr;
+  _logger.debug("FtpBridge initialized");
   if (auto uri = args.present("--mavlink-uri")) {
+    _logger.debug("Connecting to MAVLink URI: %s", uri.value().c_str());
     this->_map_pub = this->create_publisher<PointCloudChunk>("map");
-    mavsdk::ConnectionResult connres =
-        this->_mavsdk.add_any_connection(uri.value());
+  mavsdk::ConnectionResult connres =
+    this->_mavsdk.add_any_connection(uri.value());
     if (connres != mavsdk::ConnectionResult::Success) {
       this->_logger.error("Error connecting to %s with code: %d", uri.value(),
                           connres);
@@ -42,9 +44,10 @@ FtpBridge::FtpBridge(const Core::ArgumentParser& args)
                             this->_ftp_folder.c_str());
               return;
             }
-            this->_ftp_client =
-                std::make_shared<mavsdk::Ftp>(this->_system.value());
-            this->_ftp_client->set_target_compid(id);
+      this->_ftp_client =
+        std::make_shared<mavsdk::Ftp>(this->_system.value());
+      this->_ftp_client->set_target_compid(id);
+      _logger.info("FTP client initialized for CompanionComputer id=%d", (int)id);
           }
         });
     if (!this->_system) {
@@ -60,7 +63,11 @@ FtpBridge::FtpBridge(const Core::ArgumentParser& args)
 }
 
 void FtpBridge::poll_files() {
-  if (!this->_ftp_client) return;
+  _logger.debug("Polling files from FTP server");
+  if (!this->_ftp_client) {
+    _logger.info("FTP client not initialized");
+    return;
+  }
   auto list = this->_ftp_client->list_directory("/");
   if (list.first != mavsdk::Ftp::Result::Success) {
     _logger.error("Error while listing FTP directory");
@@ -79,6 +86,7 @@ void FtpBridge::poll_files() {
     _logger.debug("%s", filelist.str().c_str());
   }
   for (const auto& item : list.second.files) {
+    _logger.debug("Downloading file: %s", item.c_str());
     lock.busy();
     this->_logger.debug("%s", item.c_str());
     std::string local_path = this->_tmp_folder;
@@ -160,9 +168,12 @@ void FtpBridge::poll_files() {
 
 void FtpBridge::config_cb(const Core::IncomingMessage<KeyValue>& msg) {
   auto key = msg.content.getKey();
+  std::string key_str = std::string(key);
+  std::string value_str = std::string(msg.content.getValue());
+  _logger.debug("Received config message: key=%s, value=%s", key_str.c_str(), value_str.c_str());
   if (key != "FTP_DIR") return;
   this->_ftp_folder = msg.content.getValue();
-  this->_logger.debug("Found ftp folder at %s", _ftp_folder.c_str());
+  this->_logger.info("FTP folder set to %s", _ftp_folder.c_str());
   if (this->_map_sub == nullptr) {
     this->_logger.debug("Created map subscriber");
     this->_map_sub = this->create_subscriber<PointCloudChunk>(
@@ -180,6 +191,7 @@ void FtpBridge::map_cb(const Core::IncomingMessage<PointCloudChunk>& msg) {
 }
 
 void FtpBridge::run() {
+  _logger.debug("Starting FtpBridge main loop");
   if (auto uri = this->_args.present("--mavlink-uri")) {
     while (true) {
       this->poll_files();
