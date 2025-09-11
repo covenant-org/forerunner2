@@ -205,8 +205,12 @@ inline InterfaceMap get_ipv4_networks() {
     struct sockaddr_in* addr = (struct sockaddr_in*)ifa->ifa_addr;
 
     uint32_t ip = addr->sin_addr.s_addr;
+    uint32_t ip_host = ntohl(ip);
     uint32_t mask = netmask->sin_addr.s_addr;
     uint32_t network = ip & mask;
+    if ((ip_host >> 24) == 127) continue;     // localhost
+    if ((ip_host >> 16) == 0xAC11) continue;  // docker bridge
+
     map.insert_or_assign(network, ip);
   }
   freeifaddrs(ifaddr);

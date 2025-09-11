@@ -134,6 +134,8 @@ void Registry::handle_request(RouterEvent event) {
             struct in_addr network_addr;
             network_addr.s_addr = ip;
             host.setAddress(std::string(inet_ntoa(network_addr)));
+            this->_logger.debug("should connect to: %s",
+                               host.getAddress().asString().cStr());
             break;
           } catch (std::out_of_range &) {
           }
@@ -150,6 +152,9 @@ void Registry::handle_request(RouterEvent event) {
       auto response = this->check_with_other_registries(path);
       if (response.has_value()) {
         auto value = response.value();
+        this->_logger.debug(
+            "another query returned following values: %s at port %d",
+            std::get<0>(value).c_str(), std::get<1>(value));
         ::capnp::MallocMessageBuilder message;
         RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
         res.setCode(200);
