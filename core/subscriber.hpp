@@ -37,8 +37,7 @@ class Subscriber {
     auto res = query_topic(_topic, registry_uri);
     if (!res.has_value()) return false;
     auto value = res.value();
-    sprintf(_pub_add, "tcp://%s:%d", std::get<0>(value).c_str(),
-            std::get<1>(value));
+    sprintf(_pub_add, "tcp://%s:%d", value.first.c_str(), value.second);
     return true;
   }
 

@@ -168,7 +168,7 @@ inline std::optional<uint32_t> register_topic(const std::string& topic,
   }
 }
 
-inline std::optional<std::tuple<std::string, uint32_t>> query_topic(
+inline std::optional<std::pair<std::string, uint32_t>> query_topic(
     const std::string& topic, const std::string& uri) {
   try {
     auto msg = _make_request_to_registry(topic, RequestType::QUERY_NODE, uri);
@@ -178,7 +178,7 @@ inline std::optional<std::tuple<std::string, uint32_t>> query_topic(
       return std::nullopt;
     }
     auto host = msg.content.getHost();
-    return std::make_tuple(host.getAddress(), host.getPort());
+    return std::make_pair(host.getAddress(), host.getPort());
   } catch (std::runtime_error& error) {
     std::cerr << "Error while querying topic: " << error.what() << std::endl;
     return std::nullopt;
@@ -219,7 +219,7 @@ inline InterfaceMap get_ipv4_networks() {
   return map;
 }
 
-inline std::optional<std::tuple<std::string, uint32_t>> query_another_registry(
+inline std::optional<std::pair<std::string, uint32_t>> query_another_registry(
     const std::string& topic, const std::string& uri) {
   auto networks = get_ipv4_networks();
   try {
@@ -230,7 +230,7 @@ inline std::optional<std::tuple<std::string, uint32_t>> query_another_registry(
                 << msg.content.getErrorMessage().cStr() << std::endl;
       return std::nullopt;
     }
-    return std::make_tuple(msg.content.getHost().getAddress(),
+    return std::make_pair(msg.content.getHost().getAddress(),
                            msg.content.getHost().getPort());
   } catch (std::runtime_error& error) {
     std::cerr << "Error while querying topic: " << error.what() << std::endl;

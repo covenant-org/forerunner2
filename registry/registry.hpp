@@ -53,7 +53,7 @@ class Registry : public Vertex {
 
   void respond_event(RouterEvent& event, zmq::message_t data);
   zmq::message_t message_from_builder(::capnp::MallocMessageBuilder& msg);
-  std::optional<std::tuple<std::string, uint32_t>> check_with_other_registries(
+  std::optional<std::pair<std::string, uint32_t>> check_with_other_registries(
       const std::string&);
   void notify_waiters(std::string path);
 

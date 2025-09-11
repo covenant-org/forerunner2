@@ -154,7 +154,7 @@ void Registry::handle_request(RouterEvent event) {
         auto value = response.value();
         this->_logger.debug(
             "another query returned following values: %s at port %d",
-            std::get<0>(value).c_str(), std::get<1>(value));
+            value.first.c_str(), value.second);
         ::capnp::MallocMessageBuilder message;
         RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
         res.setCode(200);
@@ -193,7 +193,7 @@ void Registry::handle_request(RouterEvent event) {
   }
 }
 
-std::optional<std::tuple<std::string, uint32_t>>
+std::optional<std::pair<std::string, uint32_t>>
 Registry::check_with_other_registries(const std::string &path) {
   std::string other_registry =
       this->get_argument<std::string>("--registry-uri");
