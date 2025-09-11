@@ -2,21 +2,21 @@
 #include "message.hpp"
 #include "subscriber.hpp"
 #include "vertex.hpp"
-#include <capnp_schemas/sensors.capnp.h>
+#include <capnp_schemas/zed.capnp.h>
 #include <memory>
 #include <unistd.h>
 
 class Remote : Core::Vertex {
  private:
-  std::shared_ptr<Core::Subscriber<StereoMic>> _mic_sub;
-  void mic_cb(const Core::IncomingMessage<StereoMic> &msg) {
-    this->_logger.info("mic: %d", msg.content.getLeft());
+  std::shared_ptr<Core::Subscriber<PointCloud>> _pt_sub;
+  void pt_cb(const Core::IncomingMessage<PointCloud> &msg) {
+    this->_logger.info("pt of size: %d", msg.content.getSize());
   }
 
  public:
   Remote(Core::ArgumentParser args) : Core::Vertex(args) {
-    this->_mic_sub = this->create_subscriber<StereoMic>(
-        "mic", std::bind(&Remote::mic_cb, this, std::placeholders::_1));
+    this->_pt_sub = this->create_subscriber<PointCloud>(
+        "point_cloud", std::bind(&Remote::pt_cb, this, std::placeholders::_1));
   }
 
   void run() {
