@@ -6,9 +6,16 @@ enum RequestType {
   addHost @2;
 }
 
+struct Interface {
+  ip      @0 :UInt32;
+  network @1 :UInt32;
+}
+
 struct RegistryRequest {
-  type @0 :RequestType;
-  path @1 :Text;
+  type     @0 :RequestType;
+  path     @1 :Text;
+  networks @6 :List(Interface);
+
   union {
     addNode @2 :Void;
     queryNode @3 :Void;

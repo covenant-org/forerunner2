@@ -4,19 +4,30 @@
 #include "capnp_schemas/registry.capnp.h"
 #include "logger.hpp"
 #include "message.hpp"
+#include <arpa/inet.h>
 #include <cmath>
 #include <condition_variable>
 #include <cstdint>
 #include <filesystem>
+#include <ifaddrs.h>
 #include <iostream>
 #include <kj/common.h>
+#include <linux/if_link.h>
+#include <map>
 #include <mutex>
+#include <netdb.h>
+#include <netinet/in.h>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <sys/socket.h>
 #include <zmq.hpp>
 
 namespace Core {
+
+typedef uint32_t Ip;
+typedef uint32_t Network;
+typedef std::map<Network, Ip> InterfaceMap;
 
 class WorkLock {
  private:
@@ -97,6 +108,50 @@ inline IncomingMessage<RegistryResponse> _make_request_to_registry(
                                            read.value());
 }
 
+inline IncomingMessage<RegistryResponse> _make_request_to_registry(
+    const std::string& topic, RequestType type, const std::string& uri,
+    InterfaceMap& interfaces) {
+  // Create capnp message
+  ::capnp::MallocMessageBuilder msg;
+  RegistryRequest::Builder req = msg.initRoot<RegistryRequest>();
+  req.setType(type);
+  req.setPath(topic);
+
+  auto networks = req.initNetworks(interfaces.size());
+  size_t i = 0;
+  for (auto it = interfaces.begin(); it != interfaces.end(); ++it) {
+    networks[i].setNetwork(it->first);
+    networks[i].setIp(it->second);
+    ++i;
+  }
+
+  // Backend to copy later to zmq (trying to not reallocate in the heap)
+  std::string ptr(
+      ::capnp::computeSerializedSizeInWords(msg) * sizeof(::capnp::word), '\0');
+  auto array = ::kj::arrayPtr((::kj::byte*)ptr.data(), ptr.size());
+  ::kj::ArrayOutputStream stream(array);
+  ::capnp::writePackedMessage(stream, msg);
+
+  // Copy message, connect and send
+  zmq::context_t ctx(1);
+  zmq::message_t zreq(ptr.data(), stream.getArray().size());
+  zmq::socket_t registry_sock(ctx, ZMQ_REQ);
+  registry_sock.connect(uri);
+  registry_sock.send(zreq, zmq::send_flags::none);
+
+  // Preallocate memory and receive message
+  // TODO: This is not the best way to do this
+  zmq::message_t zres(::capnp::sizeInWords<RegistryResponse>() *
+                      sizeof(::capnp::word));
+  auto read = registry_sock.recv(zres);
+  if (read.value_or(0) == 0)
+    throw std::runtime_error("Empty response from registry");
+
+  // Deserialize the message
+  return IncomingMessage<RegistryResponse>((unsigned char*)zres.data(),
+                                           read.value());
+}
+
 inline std::optional<uint32_t> register_topic(const std::string& topic,
                                               const std::string& uri) {
   try {
@@ -113,8 +168,8 @@ inline std::optional<uint32_t> register_topic(const std::string& topic,
   }
 }
 
-inline std::optional<uint32_t> query_topic(const std::string& topic,
-                                           const std::string& uri) {
+inline std::optional<std::pair<std::string, uint32_t>> query_topic(
+    const std::string& topic, const std::string& uri) {
   try {
     auto msg = _make_request_to_registry(topic, RequestType::QUERY_NODE, uri);
     if (msg.content.which() == RegistryResponse::ERROR_MESSAGE) {
@@ -122,11 +177,66 @@ inline std::optional<uint32_t> query_topic(const std::string& topic,
                 << msg.content.getErrorMessage().cStr() << std::endl;
       return std::nullopt;
     }
-    return msg.content.getHost().getPort();
+    auto host = msg.content.getHost();
+    return std::make_pair(host.getAddress(), host.getPort());
   } catch (std::runtime_error& error) {
     std::cerr << "Error while querying topic: " << error.what() << std::endl;
     return std::nullopt;
   }
+}
+
+inline InterfaceMap get_ipv4_networks() {
+  InterfaceMap map;
+
+  struct ifaddrs* ifaddr;
+  int family;
+
+  if (getifaddrs(&ifaddr) == -1) {
+    return map;
+  }
+
+  for (struct ifaddrs* ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+    if (ifa->ifa_addr == NULL || ifa->ifa_netmask == NULL) continue;
+
+    family = ifa->ifa_addr->sa_family;
+    // we only care about ipv4
+    if (family != AF_INET) continue;
+
+    struct sockaddr_in* netmask = (struct sockaddr_in*)ifa->ifa_netmask;
+    struct sockaddr_in* addr = (struct sockaddr_in*)ifa->ifa_addr;
+
+    uint32_t ip = addr->sin_addr.s_addr;
+    uint32_t ip_host = ntohl(ip);
+    uint32_t mask = netmask->sin_addr.s_addr;
+    uint32_t network = ip & mask;
+    if ((ip_host >> 24) == 127) continue;     // localhost
+    if ((ip_host >> 16) == 0xAC11) continue;  // docker bridge
+
+    map.insert_or_assign(network, ip);
+  }
+  freeifaddrs(ifaddr);
+
+  return map;
+}
+
+inline std::optional<std::pair<std::string, uint32_t>> query_another_registry(
+    const std::string& topic, const std::string& uri) {
+  auto networks = get_ipv4_networks();
+  try {
+    auto msg = _make_request_to_registry(topic, RequestType::QUERY_NODE, uri,
+                                         networks);
+    if (msg.content.which() == RegistryResponse::ERROR_MESSAGE) {
+      std::cerr << "Error while querying topic: "
+                << msg.content.getErrorMessage().cStr() << std::endl;
+      return std::nullopt;
+    }
+    return std::make_pair(msg.content.getHost().getAddress(),
+                           msg.content.getHost().getPort());
+  } catch (std::runtime_error& error) {
+    std::cerr << "Error while querying topic: " << error.what() << std::endl;
+    return std::nullopt;
+  }
+  return std::nullopt;
 }
 
 template <unsigned int N>
