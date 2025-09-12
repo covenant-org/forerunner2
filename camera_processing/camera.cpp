@@ -1,414 +1,92 @@
+#include <sl/Camera.hpp>
 #include "camera.hpp"
-#include <fstream> 
-#include <opencv2/imgproc.hpp>
-#include <signal.h>
-#include <thread>
-#include <chrono>
-#include <NvInfer.h>
-#include <NvInferRuntime.h>
-#include <cuda_runtime_api.h>
 #include <opencv2/opencv.hpp>
-#include <vector>
-#include <algorithm>
-#include <cmath>
-#include <fstream>
-#include <iostream>
+#include "../people-detection/src/camera_tracking/camera_tracking.hpp"
 
-using namespace nvinfer1;
+void PeopleDetector::ftp_upload(std::list<cv::Mat>& images, std::list<int>& ids) {
+    // Implementation for FTP upload
+    for(int i = 0; i < images.size(); i++) {
+        try {
+                std::vector<uchar> buf;
+                cv::Mat image = images.front();
+                cv::imencode(".jpg", image, buf);
+                // Upload buf to FTP server
+                auto msg = this->_people_image_pub->new_msg();
+                msg.content.setId(ids.front());
+                msg.content.setWidth(image.cols);
+                msg.content.setHeight(image.rows);
+                
+                auto reader = ::capnp::Data::Reader(buf.data(), buf.size());
+                msg.content.setData(reader);
 
-class TrtLogger : public ILogger {
-    void log(Severity severity, const char* msg) noexcept override {
-        if (severity <= Severity::kWARNING)
-            std::cout << "[TRT] " << msg << std::endl;
-    }
-};
+                msg.publish();
 
-class TrtLogger : public ILogger {
-    void log(Severity severity, const char* msg) noexcept override {
-        if (severity <= Severity::kWARNING)
-            std::cout << "[TRT] " << msg << std::endl;
-    }
-};
-
-class YoloTRT {
-public:
-    YoloTRT(const std::string& engineFile) {
-        TrtLogger logger;
-        std::ifstream file(engineFile, std::ios::binary);
-        if (!file.good()) throw std::runtime_error("Could not read engine file!");
-
-        file.seekg(0, std::ifstream::end);
-        size_t size = file.tellg();
-        file.seekg(0, std::ifstream::beg);
-
-        std::vector<char> trtModelStream(size);
-        file.read(trtModelStream.data(), size);
-        file.close();
-
-        runtime = createInferRuntime(logger);
-        engine = runtime->deserializeCudaEngine(trtModelStream.data(), size);
-        context = engine->createExecutionContext();
-    }
-
-    ~YoloTRT() {
-        context->destroy();
-        engine->destroy();
-        runtime->destroy();
-    }
-
-    std::vector<float> infer(const cv::Mat& input) {
-        // preprocess to 640x640, normalize
-        cv::Mat resized;
-        cv::resize(input, resized, cv::Size(640, 640));
-        resized.convertTo(resized, CV_32F, 1.0/255);
-
-        // Allocate GPU buffers
-        void* buffers[2];
-        int inputIndex = engine->getBindingIndex("images");   // check binding names
-        int outputIndex = engine->getBindingIndex("output0");
-
-        size_t inputSize = 1 * 3 * 640 * 640 * sizeof(float);
-        size_t outputSize = 25200 * 85 * sizeof(float); // YOLO output size
-
-        cudaMalloc(&buffers[inputIndex], inputSize);
-        cudaMalloc(&buffers[outputIndex], outputSize);
-
-        // Copy input
-        std::vector<float> inputTensor(3 * 640 * 640);
-        std::memcpy(inputTensor.data(), resized.data, inputTensor.size() * sizeof(float));
-        cudaMemcpy(buffers[inputIndex], inputTensor.data(), inputSize, cudaMemcpyHostToDevice);
-
-        // Run inference
-        context->enqueueV2(buffers, 0, nullptr);
-
-        // Copy output
-        std::vector<float> outputTensor(25200 * 85);
-        cudaMemcpy(outputTensor.data(), buffers[outputIndex], outputSize, cudaMemcpyDeviceToHost);
-
-        cudaFree(buffers[inputIndex]);
-        cudaFree(buffers[outputIndex]);
-
-        return outputTensor;
-    }
-
-private:
-    IRuntime* runtime{nullptr};
-    ICudaEngine* engine{nullptr};
-    IExecutionContext* context{nullptr};
-};
-
-float IoU(const cv::Rect& a, const cv::Rect& b) {
-    int interArea = (a & b).area();
-    int unionArea = a.area() + b.area() - interArea;
-    return (unionArea > 0) ? (float)interArea / unionArea : 0.0f;
-}
-
-std::vector<Detection> parseYoloOutput(const float* output,
-                                       int num_preds,   // e.g. 25200
-                                       int num_attrs,   // 85 = 4 box + 1 obj + 80 classes
-                                       int img_w,
-                                       int img_h,
-                                       float conf_thresh = 0.25f,
-                                       float iou_thresh = 0.45f) {
-    std::vector<Detection> detections;
-
-    for (int i = 0; i < num_preds; i++) {
-        const float* row = output + i * num_attrs;
-
-        float x = row[0];
-        float y = row[1];
-        float w = row[2];
-        float h = row[3];
-        float obj_conf = row[4];
-
-        if (obj_conf < conf_thresh) continue;
-
-        // find best class
-        int class_id = -1;
-        float max_class_score = -1;
-        for (int c = 5; c < num_attrs; c++) {
-            if (row[c] > max_class_score) {
-                max_class_score = row[c];
-                class_id = c - 5;
-            }
+        } catch (const std::exception& e) {
+            std::cerr << e.what() << std::endl;
         }
 
-        float final_conf = obj_conf * max_class_score;
-        if (final_conf < conf_thresh) continue;
-
-        // xywh → xyxy
-        int left   = std::max(int((x - w/2.0f) * img_w), 0);
-        int top    = std::max(int((y - h/2.0f) * img_h), 0);
-        int right  = std::min(int((x + w/2.0f) * img_w), img_w - 1);
-        int bottom = std::min(int((y + h/2.0f) * img_h), img_h - 1);
-
-        detections.push_back({cv::Rect(left, top, right - left, bottom - top), final_conf, class_id});
     }
-
-    // --- NMS ---
-    std::sort(detections.begin(), detections.end(),
-              [](const Detection& a, const Detection& b){ return a.confidence > b.confidence; });
-
-    std::vector<Detection> final_dets;
-    std::vector<bool> removed(detections.size(), false);
-
-    for (size_t i = 0; i < detections.size(); i++) {
-        if (removed[i]) continue;
-        final_dets.push_back(detections[i]);
-        for (size_t j = i + 1; j < detections.size(); j++) {
-            if (removed[j]) continue;
-            if (detections[i].class_id == detections[j].class_id &&
-                IoU(detections[i].box, detections[j].box) > iou_thresh) {
-                removed[j] = true;
-            }
-        }
-    }
-
-    return final_dets;
 }
 
-std::vector<std::string> load_class_list()
-{
-    std::vector<std::string> class_list;
-    // change this txt file  to your txt file that contains labels 
-    std::ifstream ifs("model/coco-classes.txt");
-    std::string line;
-    while (getline(ifs, line))
-    {
-        class_list.push_back(line);
-    }
-    return class_list;
-}
+void PeopleDetector::run() {
 
-void load_net(cv::dnn::Net &net)
-{   
-    // change this path to your model path 
-    auto result = cv::dnn::readNet("/workspaces/forerunner2/camera_processing/model/yolo11n.onnx");
-
-    std::cout << "Running on CPU/n";
-    result.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
-    result.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
- 
-    net = result;
-}
-
-const std::vector<cv::Scalar> colors = {cv::Scalar(255, 255, 0), cv::Scalar(0, 255, 0), cv::Scalar(0, 255, 255), cv::Scalar(255, 0, 0)};
-
-const float INPUT_WIDTH = 640.0;
-const float INPUT_HEIGHT = 640.0;
-const float SCORE_THRESHOLD = 0.5;
-const float NMS_THRESHOLD = 0.5;
-const float CONFIDENCE_THRESHOLD = 0.5;
-
-struct Detection
-{
-    int class_id;
-    float confidence;
-    cv::Rect box;
-};
-
-cv::Mat format_yolov11(const cv::Mat &source) {
-    int col = source.cols;
-    int row = source.rows;
-    int _max = MAX(col, row);
-    cv::Mat result = cv::Mat::zeros(_max, _max, CV_8UC3);
-    source.copyTo(result(cv::Rect(0, 0, col, row)));
-    return result;
-}
-
-void detect(cv::Mat &image, cv::dnn::Net &net, std::vector<Detection> &output, const std::vector<std::string> &className) {
-    cv::Mat blob;
-
-    // Format the input image to fit the model input requirements
-    auto input_image = format_yolov11(image);
+    std::unordered_set<int> saved_ids;
     
-    // Convert the image into a blob and set it as input to the network
-    cv::dnn::blobFromImage(input_image, blob, 1./255., cv::Size(INPUT_WIDTH, INPUT_HEIGHT), cv::Scalar(), true, false);
-    net.setInput(blob);
-    std::vector<cv::Mat> outputs;
-    net.forward(outputs, net.getUnconnectedOutLayersNames());
+    this->_people_image_pub = this->create_publisher<cv::Mat>("people_image");
 
-    // Scaling factors to map the bounding boxes back to original image size
-    float x_factor = input_image.cols / INPUT_WIDTH;
-    float y_factor = input_image.rows / INPUT_HEIGHT;
-    
-    float *data = (float *)outputs[0].data;
+    initZed(zed, svo2_path);
 
-    const int dimensions = 85;
-    const int rows = 25200;
-    
-    std::vector<int> class_ids; // Stores class IDs of detections
-    std::vector<float> confidences; // Stores confidence scores of detections
-    std::vector<cv::Rect> boxes;   // Stores bounding boxes
+    // run detection for every Camera grab
+    // track detects object accross time and space
+    initDetectionParameters(zed, detection_parameters);
+    // detection runtime parameters
+    setObjectDetectionRuntimeParameters(zed, detection_parameters_rt);
 
-   // Loop through all the rows to process predictions
-    for (int i = 0; i < rows; ++i) {
+    // detection output
+    Objects objects;
+    cout << setprecision(3);
+    float depth_value = 0.0f;
+    list<cv::Mat> images;
+    auto start_time = std::chrono::steady_clock::now();
+    while (true) {
+      if(zed.grab() == ERROR_CODE::SUCCESS){
 
-        // Get the confidence of the current detection
-        float confidence = data[4];
+        processDetections(zed, detection_parameters_rt, objects, saved_ids, depth_value, images);
 
-        // Process only detections with confidence above the threshold
-        if (confidence >= CONFIDENCE_THRESHOLD) {
-            
-            // Get class scores and find the class with the highest score
-            float * classes_scores = data + 5;
-            cv::Mat scores(1, className.size(), CV_32FC1, classes_scores);
-            cv::Point class_id;
-            double max_class_score;
-            minMaxLoc(scores, 0, &max_class_score, 0, &class_id);
 
-            // If the class score is above the threshold, store the detection
-            if (max_class_score > SCORE_THRESHOLD) {
-
-                confidences.push_back(confidence);
-                class_ids.push_back(class_id.x);
-
-                // Calculate the bounding box coordinates
-                float x = data[0];
-                float y = data[1];
-                float w = data[2];
-                float h = data[3];
-                int left = int((x - 0.5 * w) * x_factor);
-                int top = int((y - 0.5 * h) * y_factor);
-                int width = int(w * x_factor);
-                int height = int(h * y_factor);
-                boxes.push_back(cv::Rect(left, top, width, height));
+        auto end_time = std::chrono::steady_clock::now(); // Capture end time
+        auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (elapsed_time.count() >= 5000) {
+            saved_ids.clear();
+            start_time = end_time; // Reset start time
             }
+        }else {
+            std::cerr << "Error during camera grab." << std::endl;
+            break;
         }
-
-        data += 85;
-    }
-
-    // Apply Non-Maximum Suppression
-    std::vector<int> nms_result;
-    cv::dnn::NMSBoxes(boxes, confidences, SCORE_THRESHOLD, NMS_THRESHOLD, nms_result);
-
-    // Draw the NMS filtered boxes and push results to output
-    for (int i = 0; i < nms_result.size(); i++) {
-        int idx = nms_result[i];
-
-        // Only push the filtered detections
-        Detection result;
-        result.class_id = class_ids[idx];
-        result.confidence = confidences[idx];
-        result.box = boxes[idx];
-        output.push_back(result);
-
-        // Draw the final NMS bounding box and label
-        cv::rectangle(image, boxes[idx], cv::Scalar(0, 255, 0), 3);
-        std::string label = className[class_ids[idx]];
-        cv::putText(image, label, cv::Point(boxes[idx].x, boxes[idx].y - 5), cv::FONT_HERSHEY_SIMPLEX, 2, cv::Scalar(255, 255, 255), 2);
-    }
-}
-
-
-static std::atomic<bool> g_running{true};
-
-static void sigint_handler(int) { g_running = false; }
-
-CameraViewer::CameraViewer() = default;
-CameraViewer::~CameraViewer() { stop(); }
-
-void CameraViewer::onImage(const gz::msgs::Image &msg,
-                           const gz::transport::MessageInfo &) {
-  const int w = msg.width();
-  const int h = msg.height();
-  const int step = msg.step();
-  const std::string &data = msg.data();
-
-  if (data.empty() || w == 0 || h == 0) return;
-
-  // Common cases: 3 channels (RGB8) or 1 channel (GRAY8)
-  cv::Mat frame;
-  if (step == w * 3) {
-    // Interpret as RGB8
-    frame = cv::Mat(h, w, CV_8UC3, const_cast<char *>(data.data()), step).clone();
-    cv::cvtColor(frame, frame, cv::COLOR_RGB2BGR);  // Convert to BGR for OpenCV
-  } else if (step == w) {
-    // Grayscale
-    frame = cv::Mat(h, w, CV_8UC1, const_cast<char *>(data.data()), step).clone();
-  } else if (step == w * 4) {
-    // Possibly RGBA
-    frame = cv::Mat(h, w, CV_8UC4, const_cast<char *>(data.data()), step).clone();
-    cv::cvtColor(frame, frame, cv::COLOR_RGBA2BGR);
-  } else {
-    // Fallback: try to create a single-channel image
-    frame = cv::Mat(h, w, CV_8UC1, const_cast<char *>(data.data()), step).clone();
-  }
-
-  {
-    std::lock_guard<std::mutex> lock(_frame_mtx);
-    _latest_frame = frame;
-  }
-}
-
-bool CameraViewer::start(cv::dnn::Net &net, const std::vector<std::string> &class_list) {
-  if (_running) return true;
-  _running = true;
-
-  // Subscribe to the /camera topic (matches your request)
-  if (!_node.Subscribe("/camera", &CameraViewer::onImage, this)) {
-    return false;
-  }
-
-  YoloTRT yolo("yolo11n.engine");
-  int num_preds = 25200;    // YOLOv8n default
-  int num_attrs = 85;       // [x, y, w, h, obj_conf, 80 class scores]
-
-  int input_w = 640;
-  int input_h = 640;
-
-  // Main display loop on the main thread
-  std::thread([this, &net, &class_list]() {
-    cv::namedWindow("camera", cv::WINDOW_AUTOSIZE);
-    while (_running && g_running) {
-      std::vector<Detection> output;
-      cv::Mat frame;
-      {
-        std::lock_guard<std::mutex> lock(_frame_mtx);
-        if (!_latest_frame.empty()) frame = _latest_frame.clone();
-      }
-      if (!frame.empty()) {
-        detect(frame, net, output, class_list);
-        /*
-          auto output = yolo.infer(frame); 
-          int* output_ptr = &output;
-          auto detections = parseYoloOutput(output_ptr, num_preds, num_attrs, input_h, input_w);
-        */
-        cv::imshow("camera", frame);
-        // waitKey with small delay to keep UI responsive
-        if (cv::waitKey(1) == 27) {  // ESC to quit
-          g_running = false;
-          break;
+        auto end_time = std::chrono::steady_clock::now(); // Capture end time
+        auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        if (elapsed_time.count() >= 5000) {
+            ftp_upload(images, saved_ids);
+            saved_ids.clear();
+            start_time = end_time; // Reset start time
         }
-      } else {
-        // no frame yet
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-      }
     }
-    cv::destroyWindow("camera");
-    _running = false;
-  }).detach();
-
-  return true;
 }
 
-void CameraViewer::stop() { _running = false; }
- 
-int main(int argc, char **argv) {
-  signal(SIGINT, sigint_handler);
-  std::vector<std::string> class_list = load_class_list();
-  cv::dnn::Net net;
-  load_net(net);
-  CameraViewer viewer;
-  if (!viewer.start(net, class_list)) {
-    fprintf(stderr, "Failed to subscribe to /camera\n");
-    return 1;
+int main(int argc, char** argv) {
+
+    if (argc < 3) {
+        std::cerr << "Usage: " << argv[0] << "<svo2_path>" << std::endl;
+        return 1;
+    }
+    std::string svo2_path = argv[2];
+    for (int i = 2; i < argc; ++i) {
+        description += " ";
+        description += argv[i];
+    }
+
+    PeopleDetector detector();
+    detector.run();
+  
   }
-
-  // Keep process alive until SIGINT or window closed
-  while (g_running) std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  viewer.stop();
-  return 0;
-}
-

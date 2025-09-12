@@ -1,24 +1,18 @@
-#pragma once
-
+#include "argument_parser.hpp"
 #include <opencv2/opencv.hpp>
-#include <gz/msgs/image.pb.h>
-#include <gz/transport/Node.hh>
-#include <mutex>
-#include <atomic>
+#include "publisher.hpp"
+#include "vertex.hpp"
+#include <sl/Camera.hpp>
 
-class CameraViewer {
- public:
-  CameraViewer();
-  ~CameraViewer();
-  bool start(cv::dnn::Net &net, const std::vector<std::string> &class_list);
-  void stop();
 
- private:
-  void onImage(const gz::msgs::Image &msg,
-               const gz::transport::MessageInfo &info);
-
-  gz::transport::Node _node;
-  std::mutex _frame_mtx;
-  cv::Mat _latest_frame;
-  std::atomic<bool> _running{false};
-};
+class PeopleDetector : Core::Vertex{
+  private:
+    sl::Camera zed;
+    std::shared_ptr<Core::Publisher<cv::Mat>> _people_image_pub;
+    ObjectDetectionParameters detection_parameters;
+    ObjectDetectionRuntimeParameters detection_parameters_rt;  
+  public:
+    PeopleDetector(const Core::ArgumentParser&);
+    void run();
+    void ftp_upload();
+}
