@@ -47,8 +47,8 @@ class Vertex {
  public:
   Vertex(ArgumentParser args)
       : _args(args),
-        _registry(DEFAULT_REGISTRY_URI),
-        _logger(LogLevel::INFO, "app.log", typeid(this).name()) {
+        _logger(LogLevel::INFO, "app.log", typeid(this).name()),
+        _registry(DEFAULT_REGISTRY_URI) {
     _args.parse();
     
     // Set logger classname with instance ID if provided

@@ -115,15 +115,21 @@ void Zed::run() {
       msg.content.setWidth(default_image_size.width);
       msg.content.setHeight(default_image_size.height);
 
-      auto ptr = point_cloud.getPtr<float>();
       pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
           new pcl::PointCloud<pcl::PointXYZRGBA>(default_image_size.width,
                                                  default_image_size.height));
       cloud->width = default_image_size.width;
       cloud->height = default_image_size.height;
 
-      memcpy(cloud->points.data(), point_cloud.getPtr<sl::float4>(),
-             sizeof(sl::float4) * default_image_size.area());
+      // Copy point data manually to avoid memcpy warning with non-trivial types
+      auto zed_points = point_cloud.getPtr<sl::float4>();
+      for (size_t i = 0; i < static_cast<size_t>(default_image_size.area()); i++) {
+        cloud->points[i].x = zed_points[i].x;
+        cloud->points[i].y = zed_points[i].y;
+        cloud->points[i].z = zed_points[i].z;
+        // Copy the color data as well
+        std::memcpy(&cloud->points[i].rgba, &zed_points[i].w, sizeof(float));
+      }
 
       Eigen::Affine3f transform = Eigen::Affine3f::Identity();
       transform.rotate(Eigen::AngleAxisf(-M_PI_2f, Eigen::Vector3f::UnitX()));
@@ -189,8 +195,10 @@ void Zed::run() {
               color_uint =
                   ((uint32_t)color_uchar[2] << 16 |
                    (uint32_t)color_uchar[1] << 8 | (uint32_t)color_uchar[0]);
-              chunk_cloud->points[i].rgb =
-                  *reinterpret_cast<float *>(&color_uint);
+              // Use memcpy to avoid strict-aliasing warning
+              float rgb_float;
+              std::memcpy(&rgb_float, &color_uint, sizeof(float));
+              chunk_cloud->points[i].rgb = rgb_float;
             }
 
             Eigen::Affine3f chunk_transform = Eigen::Affine3f::Identity();
