@@ -29,6 +29,20 @@ FILE(GLOB_RECURSE HDR_FILES *.hpp)
 ADD_EXECUTABLE(${PROJECT_NAME} zed.cpp)
 ADD_EXECUTABLE(ftp_bridge ftp_bridge.cpp)
 
+# Suppress warnings from external ZED SDK headers
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(${PROJECT_NAME} PRIVATE 
+        -Wno-deprecated-copy
+        -Wno-unused-parameter
+        -Wno-ignored-qualifiers
+        -Wno-class-memaccess
+        -Wno-strict-aliasing)
+    target_compile_options(ftp_bridge PRIVATE 
+        -Wno-deprecated-copy
+        -Wno-unused-parameter
+        -Wno-ignored-qualifiers)
+endif()
+
 if (LINK_SHARED_ZED)
     SET(ZED_LIBS ${ZED_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${CUDA_CUDART_LIBRARY})
 else()
