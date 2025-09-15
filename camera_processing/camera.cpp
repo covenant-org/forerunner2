@@ -3,8 +3,14 @@
 #include <opencv2/opencv.hpp>
 #include "../people-detection/src/camera_tracking/camera_tracking.hpp"
 
-void PeopleDetector::ftp_upload(std::list<cv::Mat>& images, std::list<int>& ids) {
+PeopleDetector::PeopleDetector(const Core::ArgumentParser& parser) : Core::Vertex(parser) {
+    this->_people_image_pub = this->create_publisher<ImageData>("people_image");
+
+}
+
+void PeopleDetector::ftp_upload(std::list<cv::Mat>& images, std::unordered_set<int>& ids) {
     // Implementation for FTP upload
+    
     for(int i = 0; i < images.size(); i++) {
         try {
                 std::vector<uchar> buf;
@@ -12,7 +18,10 @@ void PeopleDetector::ftp_upload(std::list<cv::Mat>& images, std::list<int>& ids)
                 cv::imencode(".jpg", image, buf);
                 // Upload buf to FTP server
                 auto msg = this->_people_image_pub->new_msg();
-                msg.content.setId(ids.front());
+                auto id_ = ids.begin();
+                std::advance(id_, i);
+                auto id = *id_;
+                msg.content.setId(id);
                 msg.content.setWidth(image.cols);
                 msg.content.setHeight(image.rows);
                 
@@ -28,13 +37,13 @@ void PeopleDetector::ftp_upload(std::list<cv::Mat>& images, std::list<int>& ids)
     }
 }
 
-void PeopleDetector::run() {
+void PeopleDetector::run(std::string svo2_path) {
 
     std::unordered_set<int> saved_ids;
     
-    this->_people_image_pub = this->create_publisher<cv::Mat>("people_image");
-
     initZed(zed, svo2_path);
+    ObjectDetectionParameters detection_parameters;
+    ObjectDetectionRuntimeParameters detection_parameters_rt;  
 
     // run detection for every Camera grab
     // track detects object accross time and space
@@ -48,10 +57,11 @@ void PeopleDetector::run() {
     float depth_value = 0.0f;
     list<cv::Mat> images;
     auto start_time = std::chrono::steady_clock::now();
+    bool save_image = false;
     while (true) {
       if(zed.grab() == ERROR_CODE::SUCCESS){
 
-        processDetections(zed, detection_parameters_rt, objects, saved_ids, depth_value, images);
+        processDetections(zed, detection_parameters_rt, objects, saved_ids, depth_value, images, save_image);
 
 
         auto end_time = std::chrono::steady_clock::now(); // Capture end time
@@ -80,13 +90,9 @@ int main(int argc, char** argv) {
         std::cerr << "Usage: " << argv[0] << "<svo2_path>" << std::endl;
         return 1;
     }
-    std::string svo2_path = argv[2];
-    for (int i = 2; i < argc; ++i) {
-        description += " ";
-        description += argv[i];
-    }
+    std::string svo2_path = argv[1];
 
-    PeopleDetector detector();
-    detector.run();
+    PeopleDetector detector(Core::ArgumentParser(argc, argv));
+    detector.run(svo2_path);
   
   }
