@@ -42,6 +42,7 @@ struct RegistryResponse {
 enum RegistryNotificationType {
   nodeAdded @0;
   nodeDeleted @1;
+  heartbeat @2;
 }
 
 struct RegistryNotification {
@@ -55,5 +56,6 @@ struct RegistryNotification {
       path @3 :Text;
       port @4 :UInt32;
     }
+    heartbeat @5 :Void;
   }
 }

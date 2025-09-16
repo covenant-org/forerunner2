@@ -81,12 +81,15 @@ class Vertex : public BaseVertex {
   std::string _registry;
   std::map<std::string, std::shared_ptr<ISubscriber>> _subscribed_topics;
   std::shared_ptr<Subscriber<RegistryNotification>> _sub_registry;
+  std::shared_ptr<Subscriber<RegistryNotification>> _sub_heartbeat;
+  std::thread _heartbeat_thread;
+
+  void run_heartbeat() {}
 
  public:
   Vertex(ArgumentParser args)
       : BaseVertex(args), _registry(DEFAULT_REGISTRY_URI) {
     _registry = _args.get_argument("--registry-uri");
-    _logger.debug("Registry: %s", _registry.c_str());
     _sub_registry = std::make_shared<Subscriber<RegistryNotification>>(
         "registry/notifications",
         std::bind(&Vertex::notification_cb, this, std::placeholders::_1));
