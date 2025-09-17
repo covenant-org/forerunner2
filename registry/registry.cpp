@@ -265,10 +265,23 @@ void Registry::run() {
   this->_logger.debug("Registry %s on %d", notifications_topic.c_str(),
                       port.value());
 
+  this->_heartbeat_thread = std::thread(std::bind(&Registry::heartbeat, this));
+
   while (true) {
     auto event = wait_for_message(_router);
     if (!event.has_value()) continue;
     handle_request(std::move(event.value()));
+  }
+}
+
+void Registry::heartbeat() {
+  RateKeeper ratekeeper(2);
+  while (true) {
+    auto msg = this->_pub_notifications.new_msg();
+    msg.content.setType(RegistryNotificationType::HEARTBEAT);
+    msg.content.setHeartbeat();
+    msg.publish();
+    ratekeeper.keep();
   }
 }
 

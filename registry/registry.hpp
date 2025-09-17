@@ -40,6 +40,7 @@ class Registry : public BaseVertex {
   explicit Registry(ArgumentParser);
 
   void run();
+  void heartbeat();
   void register_topic(const std::string topic, const Endpoint& host);
   void deregister_topic(const std::string topic);
   std::optional<uint32_t> get_free_port();
@@ -64,6 +65,7 @@ class Registry : public BaseVertex {
   std::unordered_map<std::string, Endpoint> _topic_to_endpoint;
   std::map<std::string, std::vector<std::string>> _topic_to_waiters;
   Publisher<RegistryNotification> _pub_notifications;
+  std::thread _heartbeat_thread;
 };
 }  // namespace Core
 

@@ -13,6 +13,7 @@ class ISender {
  public:
   virtual ~ISender() = default;
   virtual uint32_t publish(::capnp::MallocMessageBuilder& builder) = 0;
+  virtual uint32_t reset_connection() = 0;
 };
 
 template <typename T>

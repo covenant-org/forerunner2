@@ -74,6 +74,8 @@ class Publisher : public ISender {
   }
 
   std::string get_topic() { return this->_topic; }
+
+  uint32_t reset_connection() {}
 };
 };  // namespace Core
 
