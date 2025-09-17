@@ -1,11 +1,21 @@
+#include "argument_parser.hpp"
 #include <sl/Camera.hpp>
 #include "camera.hpp"
 #include <opencv2/opencv.hpp>
 #include "../people-detection/src/camera_tracking/camera_tracking.hpp"
 
-PeopleDetector::PeopleDetector(const Core::ArgumentParser& parser) : Core::Vertex(parser) {
-    this->_people_image_pub = this->create_publisher<ImageData>("people_image");
-
+PeopleDetector::PeopleDetector(const Core::ArgumentParser& parser)
+    : Core::Vertex(parser) {
+    std::cout << "PeopleDetector: Base class Core::Vertex initialized" << std::endl;
+    try {
+        std::cout << "PeopleDetector: Creating publisher instance..." << std::endl;
+        this->_people_image_pub = this->create_publisher<ImageData>("people_image");
+        std::cout << "PeopleDetector: Publisher created successfully." << std::endl;
+        // ...existing code...
+    } catch (const std::exception& e) {
+        std::cerr << "PeopleDetector: Failed to create publisher: " << e.what() << std::endl;
+        throw;
+    }
 }
 
 void PeopleDetector::ftp_upload(std::list<cv::Mat>& images, std::unordered_set<int>& ids) {
@@ -38,8 +48,10 @@ void PeopleDetector::ftp_upload(std::list<cv::Mat>& images, std::unordered_set<i
 }
 
 void PeopleDetector::run(std::string svo2_path) {
+    this->_people_image_pub = this->create_publisher<ImageData>("people_image");
 
     std::unordered_set<int> saved_ids;
+    std::cout << "SVO2 file path: " << svo2_path << std::endl;
     
     initZed(zed, svo2_path);
     ObjectDetectionParameters detection_parameters;
@@ -58,6 +70,7 @@ void PeopleDetector::run(std::string svo2_path) {
     list<cv::Mat> images;
     auto start_time = std::chrono::steady_clock::now();
     bool save_image = false;
+    std::cout << "Starting main loop..." << std::endl;
     while (true) {
       if(zed.grab() == ERROR_CODE::SUCCESS){
 
@@ -77,6 +90,7 @@ void PeopleDetector::run(std::string svo2_path) {
         auto end_time = std::chrono::steady_clock::now(); // Capture end time
         auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         if (elapsed_time.count() >= 5000) {
+            std::cout << "Uploading images via FTP..." << std::endl;
             ftp_upload(images, saved_ids);
             saved_ids.clear();
             start_time = end_time; // Reset start time
@@ -85,14 +99,30 @@ void PeopleDetector::run(std::string svo2_path) {
 }
 
 int main(int argc, char** argv) {
-
-    if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << "<svo2_path>" << std::endl;
+    Core::BaseArgumentParser arguments(argc, argv);
+    
+    // Change to match the style used in zed.cpp
+    auto& group = arguments.add_mutually_exclusive_group();
+    group.add_argument("--svo")
+         .help("SVO2 Recording File Path");
+    
+    Core::ArgumentParser args(arguments);
+    
+    try {
+        std::cout << "Initializing People Detector..." << std::endl;
+        PeopleDetector detector(args);
+        std::cout << "People Detector initialized." << std::endl;
+        // Get the SVO path from the argument
+        if (auto svo_path = args.present("--svo")) {
+            std::cout << "Running People Detector with SVO2 file: " << *svo_path << std::endl;
+            detector.run(*svo_path);
+        } else {
+            throw std::runtime_error("SVO2 file path is required");
+        }
+        
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
         return 1;
     }
-    std::string svo2_path = argv[1];
-
-    PeopleDetector detector(Core::ArgumentParser(argc, argv));
-    detector.run(svo2_path);
-  
-  }
+}
