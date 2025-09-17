@@ -4,6 +4,8 @@
 #include "vertex.hpp"
 #include <sl/Camera.hpp>
 #include <memory>
+#include <unordered_set>  // Add this include
+#include <list>          // Add this for std::list
 #include "../messages/build/generated/sensors.capnp.h"
 
 #ifndef CAMERA_HPP
@@ -12,7 +14,7 @@
 class PeopleDetector : Core::Vertex {
  private:
   sl::Camera zed;
-  std::shared_ptr<Core::Publisher<ImageData>> _people_image_pub;  // use Reader
+  std::shared_ptr<Core::Publisher<ImageData>> _people_image_pub;
  public:
   PeopleDetector(const Core::ArgumentParser&);
   void run(std::string svo2_path);

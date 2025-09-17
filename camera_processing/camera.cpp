@@ -49,7 +49,7 @@ void PeopleDetector::run(std::string svo2_path) {
     // track detects object accross time and space
     initDetectionParameters(zed, detection_parameters);
     // detection runtime parameters
-    setObjectDetectionRuntimeParameters(zed, detection_parameters_rt);
+    setObjectDetectionRuntimeParameters(detection_parameters_rt);
 
     // detection output
     Objects objects;
