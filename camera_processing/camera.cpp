@@ -58,42 +58,35 @@ void PeopleDetector::run(std::string svo2_path) {
     ObjectDetectionRuntimeParameters detection_parameters_rt;  
 
     // run detection for every Camera grab
-    // track detects object accross time and space
     initDetectionParameters(zed, detection_parameters);
-    // detection runtime parameters
     setObjectDetectionRuntimeParameters(detection_parameters_rt);
 
-    // detection output
     Objects objects;
-    cout << setprecision(3);
+    std::cout << std::setprecision(3);
     float depth_value = 0.0f;
-    list<cv::Mat> images;
+    std::list<cv::Mat> images;
     auto start_time = std::chrono::steady_clock::now();
     bool save_image = false;
     std::cout << "Starting main loop..." << std::endl;
+
     while (true) {
-      if(zed.grab() == ERROR_CODE::SUCCESS){
-
-        processDetections(zed, detection_parameters_rt, objects, saved_ids, depth_value, images, save_image);
-
-
-        auto end_time = std::chrono::steady_clock::now(); // Capture end time
-        auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        if (elapsed_time.count() >= 5000) {
-            saved_ids.clear();
-            start_time = end_time; // Reset start time
+        auto grab_result = zed.grab();
+        if (grab_result == ERROR_CODE::SUCCESS) {
+            processDetections(zed, detection_parameters_rt, objects, saved_ids, depth_value, images, save_image);
+            auto end_time = std::chrono::steady_clock::now();
+            auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            if (elapsed_time.count() >= 5000) {
+                std::cout << "Uploading images via FTP..." << std::endl;
+                ftp_upload(images, saved_ids);
+                saved_ids.clear();
+                start_time = end_time; // Reset start time
+                std::cout << "Upload complete. Continuing detection..." << std::endl;
+                images.clear();
             }
-        }else {
-            std::cerr << "Error during camera grab." << std::endl;
+
+        } else {
+            std::cerr << "Error during camera grab: " << grab_result << std::endl;
             break;
-        }
-        auto end_time = std::chrono::steady_clock::now(); // Capture end time
-        auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        if (elapsed_time.count() >= 5000) {
-            std::cout << "Uploading images via FTP..." << std::endl;
-            ftp_upload(images, saved_ids);
-            saved_ids.clear();
-            start_time = end_time; // Reset start time
         }
     }
 }
