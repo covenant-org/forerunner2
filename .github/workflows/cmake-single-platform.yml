@@ -16,6 +16,14 @@ jobs:
         submodules: true
         fetch-depth: 0    
 
+    - name: Cache APT packages
+      uses: actions/cache@v4
+      with:
+        path: /var/cache/apt/archives
+        key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/cmake-single-platform.yml') }}
+        restore-keys: |
+          ${{ runner.os }}-apt-
+
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -36,8 +44,35 @@ jobs:
         # Install Gazebo Garden (includes gz-msgs10 and gz-transport13)
         sudo apt-get install -y gz-garden || echo "Gazebo installation failed, continuing without it"
 
+    - name: Cache vendor dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          vendor/build
+          vendor/argparse
+          vendor/capnproto
+          vendor/cppzmq
+          vendor/eigen
+          vendor/flann
+          vendor/libzmq
+          vendor/MAVSDK
+          vendor/pcl
+          vendor/yaml-cpp
+          vendor/zlib
+        key: ${{ runner.os }}-vendor-${{ hashFiles('build_vendor.sh', 'vendor/**/*.cmake', 'vendor/**/CMakeLists.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-vendor-
+
     - name: Run vendor build
       run: ./build_vendor.sh
+
+    - name: Cache messages build
+      uses: actions/cache@v4
+      with:
+        path: messages/build
+        key: ${{ runner.os }}-messages-${{ hashFiles('messages/**/*.cpp', 'messages/**/*.hpp', 'messages/**/*.cmake', 'messages/**/CMakeLists.txt', 'messages/schemas/**') }}
+        restore-keys: |
+          ${{ runner.os }}-messages-
 
     - name: Build and install messages
       run: |
@@ -45,6 +80,14 @@ jobs:
         cmake -Bbuild -DCMAKE_BUILD_TYPE=Release
         cmake --build build -j$(nproc)
         sudo cmake --install build
+
+    - name: Cache main project build
+      uses: actions/cache@v4
+      with:
+        path: build
+        key: ${{ runner.os }}-main-${{ hashFiles('**/*.cpp', '**/*.hpp', '**/CMakeLists.txt', '!vendor/**', '!messages/**', '!build/**') }}
+        restore-keys: |
+          ${{ runner.os }}-main-
 
     - name: Build and install main project
       run: |
