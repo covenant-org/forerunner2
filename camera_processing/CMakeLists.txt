@@ -13,6 +13,10 @@ endif()
 find_package(ZED REQUIRED)
 find_package(CUDA ${ZED_CUDA_VERSION} REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(capnp_schemas REQUIRED)
+find_package(MAVSDK REQUIRED)
+find_package(PCL 1.15 REQUIRED)
+find_package(cppzmq REQUIRED)
 
 include_directories(${CUDA_INCLUDE_DIRS})
 include_directories(${ZED_INCLUDE_DIRS})
@@ -30,10 +34,26 @@ ADD_EXECUTABLE(${PROJECT_NAME}
                 ../people-detection/src/camera_tracking/camera_tracking.cpp
                 )
 
+ADD_EXECUTABLE(ftp_bridge ftp_bridge_pd.cpp)
+
 if (LINK_SHARED_ZED)
     SET(ZED_LIBS ${ZED_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${CUDA_CUDART_LIBRARY})
 else()
     SET(ZED_LIBS ${ZED_STATIC_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${CUDA_LIBRARY})
 endif()
 
-TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${ZED_LIBS} ${OpenCV_LIBS} curl core capnp capnp_schemas)
+TARGET_LINK_LIBRARIES(${PROJECT_NAME} 
+                        ${ZED_LIBS} 
+                        ${OpenCV_LIBS} 
+                        curl 
+                        core 
+                        capnp capnp_schemas)
+
+TARGET_LINK_LIBRARIES(ftp_bridge
+                        core
+                        cppzmq 
+                        capnp 
+                        capnp_schemas 
+                        kj
+	                    MAVSDK::mavsdk
+                        ${PCL_LIBRARIES})

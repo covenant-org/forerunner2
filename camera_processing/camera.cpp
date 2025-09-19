@@ -18,7 +18,7 @@ PeopleDetector::PeopleDetector(const Core::ArgumentParser& parser)
     }
 }
 
-void PeopleDetector::ftp_upload(std::list<cv::Mat>& images, std::unordered_set<int>& ids) {
+void PeopleDetector::image_publisher(std::list<cv::Mat>& images, std::unordered_set<int>& ids) {
     // Implementation for FTP upload
     
     for(int i = 0; i < images.size(); i++) {
@@ -46,6 +46,8 @@ void PeopleDetector::ftp_upload(std::list<cv::Mat>& images, std::unordered_set<i
 
     }
 }
+
+
 
 void PeopleDetector::run(std::string svo2_path) {
     this->_people_image_pub = this->create_publisher<ImageData>("people_image");
@@ -77,7 +79,7 @@ void PeopleDetector::run(std::string svo2_path) {
             auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
             if (elapsed_time.count() >= 5000) {
                 std::cout << "Uploading images via FTP..." << std::endl;
-                ftp_upload(images, saved_ids);
+                image_publisher(images, saved_ids);
                 saved_ids.clear();
                 start_time = end_time; // Reset start time
                 std::cout << "Upload complete. Continuing detection..." << std::endl;

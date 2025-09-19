@@ -18,7 +18,7 @@ class PeopleDetector : public Core::Vertex {
  public:
   PeopleDetector(const Core::ArgumentParser& args);
   void run(std::string svo2_path);
-  void ftp_upload(std::list<cv::Mat>& images, std::unordered_set<int>& ids);
+  void image_publisher(std::list<cv::Mat>& images, std::unordered_set<int>& ids);
 };
 
 #endif
