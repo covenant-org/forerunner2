@@ -1,0 +1,41 @@
+name: Build Forerunner2
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential cmake pkg-config \
+          libzmq3-dev \
+          protobuf-compiler libprotobuf-dev \
+          libcurl4-openssl-dev \
+          libeigen3-dev libflann-dev libvtk9-dev \
+          libpcl-dev
+
+    - name: Run vendor build
+      run: ./build_vendor.sh
+
+    - name: Build and install messages
+      run: |
+        cd messages
+        cmake -Bbuild -DCMAKE_BUILD_TYPE=Release
+        cmake --build build -j$(nproc)
+        sudo cmake --install build
+
+    - name: Build and install main project
+      run: |
+        cmake -Bbuild -DCMAKE_BUILD_TYPE=Release
+        cmake --build build -j$(nproc)
+        sudo cmake --install build
