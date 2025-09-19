@@ -2,9 +2,9 @@ name: Build Forerunner2
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "Cmake-compilation" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "Cmake-compilation" ]
 
 jobs:
   build:
