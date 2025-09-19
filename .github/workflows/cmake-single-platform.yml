@@ -20,8 +20,9 @@ jobs:
       uses: actions/cache@v4
       with:
         path: /var/cache/apt/archives
-        key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/cmake-single-platform.yml') }}
+        key: ${{ runner.os }}-apt-packages-v1
         restore-keys: |
+          ${{ runner.os }}-apt-packages-
           ${{ runner.os }}-apt-
 
     - name: Install dependencies
@@ -59,9 +60,20 @@ jobs:
           vendor/pcl
           vendor/yaml-cpp
           vendor/zlib
-        key: ${{ runner.os }}-vendor-${{ hashFiles('build_vendor.sh', 'vendor/**/*.cmake', 'vendor/**/CMakeLists.txt') }}
+        key: ${{ runner.os }}-vendor-${{ hashFiles('build_vendor.sh') }}-v1
         restore-keys: |
+          ${{ runner.os }}-vendor-${{ hashFiles('build_vendor.sh') }}-
           ${{ runner.os }}-vendor-
+
+    - name: Check vendor cache status
+      run: |
+        echo "Vendor cache check:"
+        if [ -d "vendor/build" ]; then
+          echo "✅ Vendor build directory found (cache restored)"
+          ls -la vendor/build/ | head -10
+        else
+          echo "❌ Vendor build directory not found (building from scratch)"
+        fi
 
     - name: Run vendor build
       run: ./build_vendor.sh
@@ -70,9 +82,19 @@ jobs:
       uses: actions/cache@v4
       with:
         path: messages/build
-        key: ${{ runner.os }}-messages-${{ hashFiles('messages/**/*.cpp', 'messages/**/*.hpp', 'messages/**/*.cmake', 'messages/**/CMakeLists.txt', 'messages/schemas/**') }}
+        key: ${{ runner.os }}-messages-${{ hashFiles('messages/**') }}-v1
         restore-keys: |
+          ${{ runner.os }}-messages-${{ hashFiles('messages/**') }}-
           ${{ runner.os }}-messages-
+
+    - name: Check messages cache status
+      run: |
+        echo "Messages cache check:"
+        if [ -d "messages/build" ]; then
+          echo "✅ Messages build directory found (cache restored)"
+        else
+          echo "❌ Messages build directory not found (building from scratch)"
+        fi
 
     - name: Build and install messages
       run: |
@@ -85,9 +107,21 @@ jobs:
       uses: actions/cache@v4
       with:
         path: build
-        key: ${{ runner.os }}-main-${{ hashFiles('**/*.cpp', '**/*.hpp', '**/CMakeLists.txt', '!vendor/**', '!messages/**', '!build/**') }}
+        key: ${{ runner.os }}-main-${{ hashFiles('**/*.cpp', '**/*.hpp', 'CMakeLists.txt', '*/CMakeLists.txt') }}-v1
         restore-keys: |
+          ${{ runner.os }}-main-${{ hashFiles('**/*.cpp', '**/*.hpp', 'CMakeLists.txt', '*/CMakeLists.txt') }}-
           ${{ runner.os }}-main-
+
+    - name: Check main build cache status
+      run: |
+        echo "Main build cache check:"
+        if [ -d "build" ]; then
+          echo "✅ Build directory found (cache restored)"
+          echo "Build directory contents:"
+          ls -la build/ | head -5
+        else
+          echo "❌ Build directory not found (building from scratch)"
+        fi
 
     - name: Build and install main project
       run: |
