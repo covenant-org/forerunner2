@@ -5,6 +5,7 @@
 #include "publisher.hpp"
 #include "subscriber.hpp"
 #include <argparse/argparse.hpp>
+#include <chrono>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -83,6 +84,7 @@ class Vertex : public BaseVertex {
   std::shared_ptr<Subscriber<RegistryNotification>> _sub_registry;
   std::shared_ptr<Subscriber<RegistryNotification>> _sub_heartbeat;
   std::thread _heartbeat_thread;
+  std::chrono::time_point<std::chorno::system_clock> _last_registry_heartbeat;
 
   void run_heartbeat() {}
 
@@ -108,6 +110,10 @@ class Vertex : public BaseVertex {
       } catch (const std::out_of_range &) {
         return;
       }
+    }
+    if (msg.content.getType() == RegistryNotificationType::HEARTBEAT) {
+      this->_last_registry_heartbeat =
+          std::chrono::high_resolution_clock::now();
     }
   }
 

@@ -275,7 +275,7 @@ void Registry::run() {
 }
 
 void Registry::heartbeat() {
-  RateKeeper ratekeeper(2);
+  RateKeeper ratekeeper(3);
   while (true) {
     auto msg = this->_pub_notifications.new_msg();
     msg.content.setType(RegistryNotificationType::HEARTBEAT);
