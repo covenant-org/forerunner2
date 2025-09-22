@@ -150,14 +150,32 @@ jobs:
       run: |
         echo "🔧 Installing cached messages to system..."
         cd messages
-        if [ -d "build" ]; then
-          echo "📦 Installing messages build..."
-          sudo cmake --install build
-          echo "✅ Messages installed from cache"
-        else
-          echo "❌ Messages build directory not found in cache"
-          exit 1
-        fi
+        echo "📦 Installing messages build..."
+        sudo cmake --install build
+        echo "✅ Messages installed from cache"
+
+    - name: Build additional dependencies (not cached)
+      run: |
+        echo "🏗️ Building additional dependencies..."
+        cd vendor
+        
+        # Build argparse (needed by core)
+        echo "Building argparse..."
+        cmake -DCMAKE_BUILD_TYPE=Release -Bbuildarg -Sargparse && sudo cmake --build buildarg -j$(nproc) --target install && sudo ldconfig
+        
+        # Build yaml-cpp (if needed)
+        echo "Building yaml-cpp..."
+        cmake -DCMAKE_BUILD_TYPE=Release -Bbuildyaml -Syaml-cpp && sudo cmake --build buildyaml -j$(nproc) --target install
+        
+        # Build MAVSDK (if needed)
+        echo "Building MAVSDK..."
+        cmake -DCMAKE_BUILD_TYPE=Release -Bbuildmav -SMAVSDK && sudo cmake --build buildmav -j$(nproc) --target install && sudo ldconfig
+        
+        # Build PCL (if needed)
+        echo "Building PCL..."
+        cmake -DCMAKE_BUILD_TYPE=Release -Bbuildpcl -Spcl && sudo cmake --build buildpcl -j$(nproc) && sudo cmake --install buildpcl
+        
+        echo "✅ Additional dependencies built and installed"
 
     - name: Verify capnp_schemas installation
       run: |
