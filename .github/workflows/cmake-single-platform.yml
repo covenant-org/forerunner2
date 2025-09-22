@@ -145,6 +145,37 @@ jobs:
         cmake --build build -j$(nproc)
         sudo cmake --install build
 
+    - name: Install messages from cache
+      if: steps.cache-messages.outputs.cache-hit == 'true'
+      run: |
+        echo "🔧 Installing cached messages to system..."
+        cd messages
+        if [ -d "build" ]; then
+          echo "📦 Installing messages build..."
+          sudo cmake --install build
+          echo "✅ Messages installed from cache"
+        else
+          echo "❌ Messages build directory not found in cache"
+          exit 1
+        fi
+
+    - name: Verify capnp_schemas installation
+      run: |
+        echo "🔍 Verifying capnp_schemas installation:"
+        
+        # Check for capnp_schemas config files
+        if [ -f "/usr/local/lib/cmake/capnp_schemas/capnp_schemasConfig.cmake" ]; then
+          echo "✅ capnp_schemasConfig.cmake found"
+        else
+          echo "❌ capnp_schemasConfig.cmake NOT found"
+          echo "📂 Searching for capnp_schemas files:"
+          find /usr/local -name "*capnp_schemas*" 2>/dev/null || echo "No capnp_schemas files found"
+        fi
+        
+        # Check CMAKE_PREFIX_PATH
+        echo "📁 CMAKE_PREFIX_PATH: $CMAKE_PREFIX_PATH"
+        echo "📁 PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
+
     - name: Cache main project build
       id: cache-main
       uses: actions/cache@v4
