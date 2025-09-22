@@ -2,9 +2,9 @@ name: Build Forerunner2
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "Cmake-compilation" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "Cmake-compilation" ]
 
 jobs:
   build:
@@ -17,26 +17,26 @@ jobs:
         fetch-depth: 0    
 
     - name: Cache APT packages
-      uses: actions/cache@v4
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      id: apt-cache
       with:
-        path: /var/cache/apt/archives
-        key: ${{ runner.os }}-apt-packages-v1
-        restore-keys: |
-          ${{ runner.os }}-apt-packages-
-          ${{ runner.os }}-apt-
+        packages: build-essential cmake pkg-config libzmq3-dev protobuf-compiler libprotobuf-dev libcurl4-openssl-dev libeigen3-dev libflann-dev libvtk9-dev libpcl-dev lsb-release wget gnupg
+        version: 1.0
+        execute_install_scripts: true
 
-    - name: Install dependencies
+    - name: Check APT cache status
       run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          build-essential cmake pkg-config \
-          libzmq3-dev \
-          protobuf-compiler libprotobuf-dev \
-          libcurl4-openssl-dev \
-          libeigen3-dev libflann-dev libvtk9-dev \
-          libpcl-dev \
-          lsb-release wget gnupg
-        
+        echo "APT cache check:"
+        if [[ "${{ steps.apt-cache.outputs.cache-hit }}" == "true" ]]; then
+          echo "✅ APT packages restored from cache"
+          echo "📦 Cached packages: ${{ steps.apt-cache.outputs.package-version-list }}"
+        else
+          echo "❌ APT packages installed fresh (no cache found)"
+          echo "📦 Installed packages: ${{ steps.apt-cache.outputs.package-version-list }}"
+        fi
+
+    - name: Install additional dependencies
+      run: |
         # Add Gazebo official repository
         sudo wget https://packages.osrfoundation.org/gazebo.gpg -O /usr/share/keyrings/pkgs-osrf-archive-keyring.gpg
         echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/pkgs-osrf-archive-keyring.gpg] http://packages.osrfoundation.org/gazebo/ubuntu-stable $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/gazebo-stable.list > /dev/null
