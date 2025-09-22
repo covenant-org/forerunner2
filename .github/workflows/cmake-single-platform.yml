@@ -46,6 +46,7 @@ jobs:
         sudo apt-get install -y gz-garden || echo "Gazebo installation failed, continuing without it"
 
     - name: Cache vendor dependencies
+      id: cache-vendor
       uses: actions/cache@v4
       with:
         path: |
@@ -60,9 +61,9 @@ jobs:
           vendor/pcl
           vendor/yaml-cpp
           vendor/zlib
-        key: ${{ runner.os }}-vendor-${{ hashFiles('build_vendor.sh') }}-v1
+        key: ${{ runner.os }}-vendor-${{ hashFiles('build_vendor.sh', 'vendor/CMakeLists.txt') }}-v1
         restore-keys: |
-          ${{ runner.os }}-vendor-${{ hashFiles('build_vendor.sh') }}-
+          ${{ runner.os }}-vendor-${{ hashFiles('build_vendor.sh', 'vendor/CMakeLists.txt') }}-
           ${{ runner.os }}-vendor-
 
     - name: Check vendor cache status
@@ -76,9 +77,11 @@ jobs:
         fi
 
     - name: Run vendor build
+      if: steps.cache-vendor.outputs.cache-hit != 'true'
       run: ./build_vendor.sh
 
     - name: Cache messages build
+      id: cache-messages
       uses: actions/cache@v4
       with:
         path: messages/build
@@ -97,6 +100,7 @@ jobs:
         fi
 
     - name: Build and install messages
+      if: steps.cache-messages.outputs.cache-hit != 'true'
       run: |
         cd messages
         cmake -Bbuild -DCMAKE_BUILD_TYPE=Release
@@ -104,6 +108,7 @@ jobs:
         sudo cmake --install build
 
     - name: Cache main project build
+      id: cache-main
       uses: actions/cache@v4
       with:
         path: build
@@ -124,6 +129,7 @@ jobs:
         fi
 
     - name: Build and install main project
+      if: steps.cache-main.outputs.cache-hit != 'true'
       run: |
         cmake -Bbuild -DCMAKE_BUILD_TYPE=Release
         cmake --build build -j$(nproc)
