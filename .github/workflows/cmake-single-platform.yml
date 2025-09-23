@@ -50,7 +50,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: vendor/build
-        key: Linux-vendor-${{ hashFiles('vendor/**', 'build_vendor.sh') }}-v1
+        key: Linux-vendor-${{ hashFiles('vendor/CMakeLists.txt', 'build_vendor.sh') }}-v2
 
     - name: Cache additional dependencies
       id: cache-additional
@@ -61,13 +61,14 @@ jobs:
           vendor/buildyaml
           vendor/buildmav
           vendor/buildpcl
-        key: Linux-additional-${{ hashFiles('vendor/argparse/**', 'vendor/yaml-cpp/**', 'vendor/MAVSDK/**', 'vendor/pcl/**', 'build_vendor.sh') }}-v1
+        key: Linux-additional-${{ hashFiles('build_vendor.sh') }}-v2
 
     - name: Check cache status
       run: |
         echo "Cache status:"
         echo "🔍 Vendor cache hit: ${{ steps.cache-vendor.outputs.cache-hit }}"
         echo "🔍 Additional deps cache hit: ${{ steps.cache-additional.outputs.cache-hit }}"
+        echo "⏰ Build optimization: This run should be much faster if caches hit!"
         
         if [ -d "vendor/build" ]; then
           echo "✅ Vendor build directory found (cache restored)"
@@ -173,9 +174,9 @@ jobs:
       uses: actions/cache@v4
       with:
         path: messages/build
-        key: ${{ runner.os }}-messages-${{ hashFiles('messages/**') }}-v1
+        key: ${{ runner.os }}-messages-${{ hashFiles('messages/CMakeLists.txt', 'messages/schemas/**') }}-v2
         restore-keys: |
-          ${{ runner.os }}-messages-${{ hashFiles('messages/**') }}-
+          ${{ runner.os }}-messages-${{ hashFiles('messages/CMakeLists.txt', 'messages/schemas/**') }}-
           ${{ runner.os }}-messages-
 
     - name: Check messages cache status
@@ -226,9 +227,9 @@ jobs:
       uses: actions/cache@v4
       with:
         path: build
-        key: ${{ runner.os }}-main-${{ hashFiles('**/*.cpp', '**/*.hpp', 'CMakeLists.txt', '*/CMakeLists.txt') }}-v1
+        key: ${{ runner.os }}-main-${{ hashFiles('CMakeLists.txt', '*/CMakeLists.txt', '**/*.cpp', '**/*.hpp') }}-v2
         restore-keys: |
-          ${{ runner.os }}-main-${{ hashFiles('**/*.cpp', '**/*.hpp', 'CMakeLists.txt', '*/CMakeLists.txt') }}-
+          ${{ runner.os }}-main-${{ hashFiles('CMakeLists.txt', '*/CMakeLists.txt') }}-
           ${{ runner.os }}-main-
 
     - name: Check main build cache status
