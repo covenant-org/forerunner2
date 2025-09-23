@@ -10,6 +10,25 @@
 #include <sstream>
 #include <array>
 #include <capnp_schemas/mavlink.capnp.h>
+#include <sstream>
+#include <vector>
+#include <array>
+#include <cmath>
+#include <mutex>
+
+// Simple conversion lat/lon/alt -> NED relative to home 
+static void latlon_to_ned_simple(double lat, double lon, double alt,
+                                 double home_lat, double home_lon, double home_alt,
+                                 double &north_m, double &east_m, double &down_m) {
+  const double R = 6378137.0; // WGS84 equatorial radius (m)
+  double dLat = (lat - home_lat) * M_PI / 180.0;
+  double dLon = (lon - home_lon) * M_PI / 180.0;
+  double lat_avg = (lat + home_lat) * M_PI / 360.0;
+  north_m = dLat * R;
+  east_m = dLon * R * std::cos(lat_avg);
+  // down is positive downward; alt & home_alt are "up" positive -> down = -(alt - home_alt)
+  down_m = -(alt - home_alt);
+}
 
 Commander::Commander(Core::ArgumentParser parser) : Core::Vertex(parser) {
   this->_mission_client =
@@ -30,6 +49,22 @@ Commander::Commander(Core::ArgumentParser parser) : Core::Vertex(parser) {
         
         this->_logger.debug("Updated odometry: x=%f y=%f z=%f heading=%f", 
                             this->_current_x, this->_current_y, this->_current_z, this->_current_heading);
+
+  // Subscriber for home_position published by Mavlink
+  this->_home_subscriber = this->create_subscriber<HomePosition>(
+      "home_position",
+      [this](const Core::IncomingMessage<HomePosition> &msg) {
+        auto GPS = msg.content.getGps();
+        std::lock_guard<std::mutex> lk(this->_home_mutex);
+        // Only accept the first home_position message
+        if (this->_home.set) {
+          return;
+        }
+        this->_home.set = true;
+        this->_home.pos.lat = GPS.getLatitude() / 1e7;
+        this->_home.pos.lon = GPS.getLongitude() / 1e7;
+        this->_home.pos.alt = GPS.getAltitude() / 1000.0;
+        this->_logger.debug("Home received: Lat=%f Lon=%f Alt=%f", this->_home.pos.lat, this->_home.pos.lon, this->_home.pos.alt);
       });
 }
 
@@ -55,6 +90,7 @@ void Commander::run() {
     this->_logger.debug("Command: %s", command.c_str());
 
     if (command == "takeoff") {
+      // Usage: takeoff [altitude]
       float desired_alt = 2.0f;
       if (!args.empty()) {
         try {
@@ -89,6 +125,7 @@ void Commander::run() {
               if (!coords_str.empty()) coords_str += ' ';
               coords_str += args[i];
             }
+            // Normalize commas to spaces so we can parse with >>
             for (char &c : coords_str) {
               if (c == ',') c = ' ';
             }
@@ -117,6 +154,7 @@ void Commander::run() {
               if (args.size() > 3 && args[3] != "~") z = coords[2];
               if (args.size() > 4 && args[4] != "~") yaw = coords[3];
 
+              // Update last used values
               this->_last_local.x = x;
               this->_last_local.y = y;
               this->_last_local.z = z;
@@ -134,6 +172,7 @@ void Commander::run() {
               if (resp.getCode() != 200) {
                 this->_logger.error("Controller refused waypoint: Code=%d, Message=%s", 
                                     resp.getCode(), resp.getMessage().cStr());
+                this->_logger.error("Controller refused waypoint: %s", resp.getMessage());
               }
             }
             else if (args[0] == "global") {
@@ -269,6 +308,49 @@ void Commander::run() {
     } else {
       this->_logger.warn("Unknown command: %s", command.c_str());
       std::cout << "Type 'help' for available commands." << std::endl;
+              if (!this->_home.set) {
+                this->_logger.error("Home not set.");
+              } else {
+                double lat = this->_last_global.pos.lat;
+                double lon = this->_last_global.pos.lon;
+                double alt = this->_last_global.pos.alt;
+                double yaw = this->_last_global.yaw;
+                if (args.size() > 1 && args[1] != "~") lat = coords[0];
+                if (args.size() > 2 && args[2] != "~") lon = coords[1];
+                if (args.size() > 3 && args[3] != "~") alt = coords[2];
+                if (args.size() > 4 && args[4] != "~") yaw = coords[3];
+
+                // Update last used values
+                this->_last_global.pos.lat = lat;
+                this->_last_global.pos.lon = lon;
+                this->_last_global.pos.alt = alt;
+                this->_last_global.yaw = yaw;
+
+                double north, east, down;
+                latlon_to_ned_simple(lat, lon, alt, this->_home.pos.lat, this->_home.pos.lon, this->_home.pos.alt, north, east, down);
+
+                // Forward as local waypoint
+                auto cmd_req = this->_controller_client->new_msg();
+                auto wp = cmd_req.content.initWaypoint();
+                wp.setX(static_cast<float>(north));
+                wp.setY(static_cast<float>(east));
+                wp.setZ(static_cast<float>(down));
+                wp.setR(static_cast<float>(yaw));
+
+                auto cmd_res = cmd_req.send();
+                auto resp = cmd_res.value().content;
+                if (resp.getCode() != 200) {
+                  this->_logger.error("Controller refused waypoint: %s", resp.getMessage());
+                } else {
+                  this->_logger.debug("Global -> NED: north=%f east=%f down=%f yaw=%f", north, east, down, yaw);
+                }
+              }
+            }
+          } else {
+            
+          }
+    } else {
+      this->_logger.warn("Unknown command: %s", command.c_str());
     }
   }
 }

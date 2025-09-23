@@ -14,17 +14,14 @@
 #include <mavsdk/plugins/mission/mission.h>
 #include <mavsdk/plugins/offboard/offboard.h>
 #include <mavsdk/plugins/telemetry/telemetry.h>
-#include <memory>
-#include <plugins/ftp_server/ftp_server.h>
 #include <plugins/mavlink_passthrough/mavlink_passthrough.h>
 #include <server_component.h>
 #include <thread>
 
 Mavlink::Mavlink(Core::ArgumentParser parser)
     : Core::Vertex(std::move(parser)),
-      _mavsdk(mavsdk::Mavsdk::Configuration{
-          mavsdk::ComponentType::CompanionComputer}) {
-  this->_ftp_dir = this->get_argument<std::string>("--ftp-dir");
+      _mavsdk(
+          mavsdk::Mavsdk::Configuration{mavsdk::ComponentType::GroundStation}) {
   auto uri = this->get_argument<std::string>("--mavlink-uri");
   auto result = this->init_mavlink_connection(uri);
   if (!result) {
@@ -32,27 +29,17 @@ Mavlink::Mavlink(Core::ArgumentParser parser)
   }
 
   _command_action_server = create_action_server<Command, GenericResponse>(
-      "controller", std::bind(&Mavlink::command_cb, this, std::placeholders::_1,
-                              std::placeholders::_2));
+      "controller", std::bind(&Mavlink::command_cb, this,
+                              std::placeholders::_1, std::placeholders::_2));
   this->_home_position_publisher =
       this->create_publisher<HomePosition>("home_position");
   this->_odometry_publisher = this->create_publisher<Odometry>("odometry");
   this->_telemetry_publisher = this->create_publisher<Telemetry>("telemetry");
   this->_altitude_publisher = this->create_publisher<Altitude>("altitude");
-  this->_config_publisher = this->create_publisher<KeyValue>("config/ftp");
-}
-
-void Mavlink::publish_config() {
-  if (this->_ftp_dir.empty()) return;
-  auto msg = this->_config_publisher->new_msg();
-  this->_logger.debug("FTP DIR at %s", _ftp_dir.c_str());
-  msg.content.setKey("FTP_DIR");
-  msg.content.setValue(_ftp_dir);
-  msg.publish();
 }
 
 void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
-                         GenericResponse::Builder &res) {
+                               GenericResponse::Builder &res) {
   this->_logger.debug("Requested command");
   res.setCode(200);
   res.setMessage("OK");
@@ -179,6 +166,39 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
         this->_logger.error("Drone must be armed for waypoint commands");
         res.setCode(400);
         res.setMessage("Drone not armed - cannot set waypoints");
+      // Try to set an initial setpoint (recommended before starting Offboard)
+      const auto pre_set_res = this->_offboard->set_position_ned({
+          .north_m = waypoint.getX(),
+          .east_m = waypoint.getY(),
+          .down_m = waypoint.getZ(),
+          .yaw_deg = waypoint.getR()});
+      if (pre_set_res != mavsdk::Offboard::Result::Success) {
+        this->_logger.warn("pre-start set_position_ned returned %d",
+                           static_cast<int>(pre_set_res));
+        // continue and try to start Offboard anyway
+      }
+
+      // TODO: Agregar un modo en commander para cambiar de modo (Cambiar manualmente a offboard)
+      const auto start_res = this->_offboard->start();
+      if (start_res != mavsdk::Offboard::Result::Success) {
+        this->_logger.error("Failed to start Offboard: %d",
+                            static_cast<int>(start_res));
+        res.setCode(500);
+        res.setMessage("Failed to start offboard");
+        return;
+      }
+
+      // Ensure setpoint is applied after Offboard is started
+      const auto set_res = this->_offboard->set_position_ned({
+          .north_m = waypoint.getX(),
+          .east_m = waypoint.getY(),
+          .down_m = waypoint.getZ(),
+          .yaw_deg = waypoint.getR()});
+      if (set_res != mavsdk::Offboard::Result::Success) {
+        this->_logger.error("set_position_ned after start failed: %d",
+                            static_cast<int>(set_res));
+        res.setCode(500);
+        res.setMessage("Failed to set position after starting offboard");
         return;
       }
 
@@ -457,14 +477,6 @@ bool Mavlink::init_mavlink_connection(const std::string &uri) {
   this->_offboard = std::make_shared<mavsdk::Offboard>(this->_system.value());
   this->_passthrough =
       std::make_shared<mavsdk::MavlinkPassthrough>(this->_system.value());
-  this->_ftp_server =
-      std::make_shared<mavsdk::FtpServer>(this->_mavsdk.server_component());
-  _logger.debug("%s", _ftp_dir.c_str());
-  if (mkdtemp(_ftp_dir.data()) == nullptr) {
-    _logger.error("Could not make a tempdir for FtpServer");
-    return false;
-  }
-  this->_ftp_server->set_root_dir(_ftp_dir);
 
   return true;
 }
@@ -563,8 +575,7 @@ void Mavlink::run() {
       });
 
   while (true) {
-    publish_config();
-    sleep(3);
+    sleep(1);
   }
 }
 
@@ -574,11 +585,9 @@ int main(int argc, char **argv) {
       .help("ip where the mavlink instance is running")
       .nargs(1)
       .default_value(MAVLINK_URI);
-  base.add_argument("--ftp-dir")
-      .help("Root directory for the ftp server")
-      .default_value("/tmp/mavlink.XXXXXX");
 
-  std::shared_ptr<Mavlink> mavlink = std::make_shared<Mavlink>(std::move(base));
+  std::shared_ptr<Mavlink> mavlink =
+      std::make_shared<Mavlink>(std::move(base));
   mavlink->run();
   return 0;
 }
