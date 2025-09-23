@@ -27,12 +27,13 @@ inline std::string color_topic(const std::string &topic) {
   return std::string(TOPIC_COLOR) + topic + "\033[0m";
 }
 Registry::Registry(ArgumentParser args)
-    : Vertex(args),
+    : BaseVertex(args),
       _config({.port = (int16_t)args.get_argument<int>("--port"),
                .threads = (uint8_t)args.get_argument<int>("--threads")}),
       _ctx(_config.threads),
       _router(_ctx, ZMQ_ROUTER),
-      _last_free_port(_config.port) {}
+      _last_free_port(_config.port),
+      _pub_notifications("registry/notifications") {}
 
 zmq::message_t Registry::message_from_builder(
     ::capnp::MallocMessageBuilder &message) {
@@ -105,7 +106,7 @@ void Registry::handle_request(RouterEvent event) {
     notify_waiters(path);
     if (!insert_res.second) {
       auto msg = this->_pub_notifications.new_msg();
-      msg.content.setType(RegistryNotificationType::NodeAdded);
+      msg.content.setType(RegistryNotificationType::NODE_ADDED);
       auto node = msg.content.initNodeAdded();
       node.setPath(path);
       node.setPort(endpoint.port);
@@ -190,27 +191,6 @@ void Registry::handle_request(RouterEvent event) {
     }
     return;
   }
-
-  // NOTE: Not so sure about this one
-  if (request.getType() == RequestType::ADD_HOST) {
-    ::capnp::MallocMessageBuilder message;
-    RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
-    auto obj = request.getAddHost();
-    auto path = request.getPath();
-    Endpoint endpoint{
-        .host = obj.getAddress(),
-        .port = obj.getPort(),
-    };
-    _topic_to_endpoint.insert_or_assign(request.getPath(), endpoint);
-    this->_logger.info("New Host: %s at %d", color_topic(path.cStr()).c_str(),
-                       endpoint.port);
-    res.setCode(201);
-    auto host = res.initHost();
-    host.setAddress(endpoint.host);
-    host.setPort(endpoint.port);
-    respond_event(event, message_from_builder(message));
-    notify_waiters(path);
-  }
 }
 
 std::optional<std::pair<std::string, uint32_t>>
@@ -272,6 +252,19 @@ void Registry::run() {
   sprintf(bind_dir, "tcp://*:%d", _config.port);
   _router.bind(std::string(bind_dir));
   this->_logger.info("Listening to %s", bind_dir);
+
+  auto port = this->get_free_port();
+  if (!port.has_value()) {
+    throw std::runtime_error(
+        "Cannot find free port for registry notifications");
+  }
+  this->_pub_notifications._bind_to_port(port.value());
+  auto notifications_topic = this->_pub_notifications.get_topic();
+  this->_topic_to_endpoint.insert_or_assign(
+      notifications_topic, Endpoint{.host = "127.0.0.1", .port = port.value()});
+  this->_logger.debug("Registry %s on %d", notifications_topic.c_str(),
+                      port.value());
+
   while (true) {
     auto event = wait_for_message(_router);
     if (!event.has_value()) continue;

@@ -18,6 +18,8 @@
 namespace Core {
 template <typename T>
 class Publisher : public ISender {
+  friend class Registry;
+
  private:
   std::string _topic;
   uint32_t _port;
@@ -29,6 +31,13 @@ class Publisher : public ISender {
     if (!res.has_value()) return false;
     _port = res.value();
     return true;
+  }
+
+ protected:
+  void _bind_to_port(uint32_t port) {
+    char buffer[20];
+    sprintf(buffer, "tcp://0.0.0.0:%d", port);
+    _socket.bind(buffer);
   }
 
  public:
@@ -43,10 +52,7 @@ class Publisher : public ISender {
     if (!success) {
       throw std::runtime_error("error with registry");
     }
-
-    char buffer[20];
-    sprintf(buffer, "tcp://0.0.0.0:%d", _port);
-    _socket.bind(buffer);
+    this->_bind_to_port(_port);
   }
 
   OutgoingMessage<T> new_msg() { return OutgoingMessage<T>(this); }
@@ -66,6 +72,8 @@ class Publisher : public ISender {
     memcpy(zmq_message.data(), data, len);
     return this->_socket.send(zmq_message, zmq::send_flags::none);
   }
+
+  std::string get_topic() { return this->_topic; }
 };
 };  // namespace Core
 

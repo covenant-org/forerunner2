@@ -6,9 +6,9 @@
 #include "subscriber.hpp"
 #include <argparse/argparse.hpp>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <unistd.h>
-#include <vector>
 #ifndef VERTEX_HPP
 #define VERTEX_HPP
 
@@ -80,26 +80,29 @@ class Vertex : public BaseVertex {
  protected:
   std::string _registry;
   std::map<std::string, std::shared_ptr<ISubscriber>> _subscribed_topics;
-  std::Subscriber<RegistryNotification> _sub_registry;
+  std::shared_ptr<Subscriber<RegistryNotification>> _sub_registry;
 
  public:
   Vertex(ArgumentParser args)
-      : BaseVertex(args),
-        _registry(DEFAULT_REGISTRY_URI),
-        _sub_registry(
-            "registry/notifications",
-            std::bind(&Vertex::notification_cb, this, std::placeholders::_1)) {
+      : BaseVertex(args), _registry(DEFAULT_REGISTRY_URI) {
     _registry = _args.get_argument("--registry-uri");
+    _logger.debug("Registry: %s", _registry.c_str());
+    _sub_registry = std::make_shared<Subscriber<RegistryNotification>>(
+        "registry/notifications",
+        std::bind(&Vertex::notification_cb, this, std::placeholders::_1));
+    this->_sub_registry->setup(_registry);
   }
 
   void notification_cb(const IncomingMessage<RegistryNotification> &msg) {
-    if (msg.content.getType() == RegistryNotificationType::NodeAdded) {
-      auto node = msg.getNodeAdded();
-      auto path = msg.getPath();
+    if (msg.content.getType() == RegistryNotificationType::NODE_ADDED) {
+      auto node = msg.content.getNodeAdded().getPath();
+      auto path = std::string(node.cStr(), node.size());
       try {
         auto sub = this->_subscribed_topics[path];
+        if (sub.get() == nullptr) return;
+        this->_logger.debug("Received node added event for %s", path.c_str());
         sub->reset_connection();
-      } catch (...) {
+      } catch (const std::out_of_range &) {
         return;
       }
     }
@@ -107,8 +110,10 @@ class Vertex : public BaseVertex {
 
   template <typename T>
   std::shared_ptr<Publisher<T>> create_publisher(const std::string &topic) {
+    _logger.debug("Creating '%s' publisher", topic.c_str());
     auto publisher = std::make_shared<Publisher<T>>(topic);
     publisher->setup(this->_registry);
+    _logger.debug("Setup ready for '%s' publisher", topic.c_str());
     return publisher;
   }
 
@@ -116,8 +121,10 @@ class Vertex : public BaseVertex {
   std::shared_ptr<Subscriber<T>> create_subscriber(
       const std::string &topic,
       std::function<void(IncomingMessage<T>)> callback) {
-    auto subscriber = std::make_shared<Subscriber<T>>(topic, callback);
+    auto subscriber = std::make_shared<Subscriber<T>>(
+        topic, callback, this->_logger.get_classname());
     subscriber->setup(this->_registry);
+    subscriber->set_loglevel(this->_logger.get_level());
     this->_subscribed_topics[topic] = subscriber;
     return subscriber;
   }

@@ -1,6 +1,7 @@
 #ifndef SUBSCRIBER_HPP
 #define SUBSCRIBER_HPP
 
+#include "logger.hpp"
 #include "message.hpp"
 #include "utils.hpp"
 #include <atomic>
@@ -31,7 +32,7 @@ class ISubscriber {
 };
 
 template <typename T>
-class Subscriber : ISubscriber {
+class Subscriber : public ISubscriber {
  private:
   std::string _topic;
   zmq::context_t _context;
@@ -40,6 +41,7 @@ class Subscriber : ISubscriber {
   std::thread* _listener_thread;
   std::string uri;
   std::atomic_bool _exit;
+  uint32_t _rate = 10000;
   Logger _logger;
 
   // TODO: Should we make this in another thread so it won't block?
@@ -63,7 +65,7 @@ class Subscriber : ISubscriber {
     // TODO: Cleaner exit?
     while (!this->_exit) {
       zmq::message_t msg;
-      auto res = socket.recv(msg);
+      auto res = socket.recv(msg, zmq::recv_flags::dontwait);
       if (res.has_value()) {
         try {
           _callback(
@@ -71,6 +73,8 @@ class Subscriber : ISubscriber {
         } catch (kj::Exception ex) {
           _logger.error("Error while deserializing: %s", ex.getDescription());
         }
+      } else {
+        usleep(_rate);
       }
     }
     socket.close();
@@ -89,12 +93,16 @@ class Subscriber : ISubscriber {
     this->_logger.set_classname(vertex_name + "-Subscriber-" + this->_topic);
   }
 
+  void set_loglevel(LogLevel level) { this->_logger.set_level(level); }
+  void set_rate(uint32_t rate) { this->_rate = rate; }
+
   uint32_t reset_connection() {
     this->_logger.debug("Requested reconnection");
     this->stop();
+    this->_exit = false;
     this->_logger.debug("Stopped current thread");
     this->setup(this->uri);
-    this->_logger.debug("Ready Suybscriber");
+    this->_logger.debug("Ready Subscriber");
     return 0;
   }
 
@@ -109,6 +117,6 @@ class Subscriber : ISubscriber {
     if (this->_listener_thread->joinable()) this->_listener_thread->join();
   }
 };
-}  // namespace Core
 
+}  // namespace Core
 #endif

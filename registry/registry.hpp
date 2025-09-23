@@ -2,7 +2,6 @@
 #define REGISTRY_HPP
 
 #include "argument_parser.hpp"
-#include "logger.hpp"
 #include <capnp/message.h>
 #include <capnp_schemas/registry.capnp.h>
 #include <cstdint>
@@ -36,7 +35,7 @@ struct RouterEvent {
   zmq::message_t data;
 };
 
-class Registry : public Vertex {
+class Registry : public BaseVertex {
  public:
   explicit Registry(ArgumentParser);
 
