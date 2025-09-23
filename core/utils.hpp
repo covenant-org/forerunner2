@@ -46,7 +46,10 @@ class RateKeeper {
     long long deltaTimeMS =
         std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
     auto period = 1000 / rate;
-    if (deltaTimeMS > period) return;
+    if (deltaTimeMS > period) {
+      last = std::chrono::high_resolution_clock::now();
+      return;
+    }
     std::this_thread::sleep_for(
         std::chrono::milliseconds(period - deltaTimeMS));
     last = std::chrono::high_resolution_clock::now();

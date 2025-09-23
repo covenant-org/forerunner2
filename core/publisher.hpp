@@ -75,7 +75,12 @@ class Publisher : public ISender {
 
   std::string get_topic() { return this->_topic; }
 
-  uint32_t reset_connection() {}
+  uint32_t reset_connection(const std::string& uri) {
+    char buffer[20];
+    sprintf(buffer, "tcp://0.0.0.0:%d", this->_port);
+    this->_socket.unbind(buffer);
+    this->setup(uri);
+  }
 };
 };  // namespace Core
 

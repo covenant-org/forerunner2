@@ -4,6 +4,7 @@
 #include "message.hpp"
 #include "publisher.hpp"
 #include "subscriber.hpp"
+#include "utils.hpp"
 #include <argparse/argparse.hpp>
 #include <chrono>
 #include <memory>
@@ -39,6 +40,11 @@ class BaseArgumentParser : public ArgumentParser {
             "Unique identifier for this instance (useful for distinguishing "
             "duplicate processes)")
         .nargs(1);
+    this->add_argument("--ignore-heartbeat")
+        .help("Do not verify registry heartbeat")
+        .default_value(false)
+        .implicit_value(true)
+        .flag();
   }
 };
 
@@ -81,16 +87,35 @@ class Vertex : public BaseVertex {
  protected:
   std::string _registry;
   std::map<std::string, std::shared_ptr<ISubscriber>> _subscribed_topics;
+  std::vector<std::shared_ptr<ISender>> _publishers;
   std::shared_ptr<Subscriber<RegistryNotification>> _sub_registry;
   std::shared_ptr<Subscriber<RegistryNotification>> _sub_heartbeat;
   std::thread _heartbeat_thread;
-  std::chrono::time_point<std::chorno::system_clock> _last_registry_heartbeat;
+  std::chrono::time_point<std::chrono::system_clock> _last_registry_heartbeat;
 
-  void run_heartbeat() {}
+  void run_heartbeat() {
+    RateKeeper keeper(1);
+    while (true) {
+      auto duration = std::chrono::high_resolution_clock::now() -
+                      this->_last_registry_heartbeat;
+      auto seconds =
+          std::chrono::duration_cast<std::chrono::seconds>(duration).count();
+      if (seconds > 0) {
+        this->_logger.error("Registry heartbeat timeout");
+        for (const std::shared_ptr<ISender> &publisher : this->_publishers) {
+          publisher->reset_connection(this->_registry);
+        }
+        this->_logger.info("Registry back online");
+        _last_registry_heartbeat = std::chrono::high_resolution_clock::now();
+      }
+      keeper.keep();
+    }
+  }
 
  public:
   Vertex(ArgumentParser args)
       : BaseVertex(args), _registry(DEFAULT_REGISTRY_URI) {
+    _last_registry_heartbeat = std::chrono::high_resolution_clock::now();
     _registry = _args.get_argument("--registry-uri");
     _sub_registry = std::make_shared<Subscriber<RegistryNotification>>(
         "registry/notifications",
@@ -122,6 +147,13 @@ class Vertex : public BaseVertex {
     _logger.debug("Creating '%s' publisher", topic.c_str());
     auto publisher = std::make_shared<Publisher<T>>(topic);
     publisher->setup(this->_registry);
+    if (this->_publishers.size() == 0) {
+      if (!this->_args.get_argument<bool>("--ignore-heartbeat")) {
+        this->_heartbeat_thread =
+            std::thread(std::bind(&Vertex::run_heartbeat, this));
+      }
+    }
+    this->_publishers.push_back(publisher);
     _logger.debug("Setup ready for '%s' publisher", topic.c_str());
     return publisher;
   }
