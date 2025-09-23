@@ -24,15 +24,12 @@ jobs:
         version: 1.0
         execute_install_scripts: true
 
-    - name: Install additional dependencies
+    - name: Install dependencies
       run: |
-        # Add Gazebo official repository
+        # Add Gazebo repo and install packages
         sudo wget https://packages.osrfoundation.org/gazebo.gpg -O /usr/share/keyrings/pkgs-osrf-archive-keyring.gpg
         echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/pkgs-osrf-archive-keyring.gpg] http://packages.osrfoundation.org/gazebo/ubuntu-stable $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/gazebo-stable.list > /dev/null
-        sudo apt-get update
-        
-        # Install Gazebo Garden (includes gz-msgs10 and gz-transport13)
-        sudo apt-get install -y gz-garden || echo "Gazebo installation failed, continuing without it"
+        sudo apt-get update && sudo apt-get install -y gz-garden || echo "Gazebo installation failed, continuing without it"
 
     - name: Cache vendor dependencies
       id: cache-vendor
@@ -53,36 +50,29 @@ jobs:
         key: Linux-additional-${{ hashFiles('vendor/CMakeLists.txt', 'build_vendor.sh') }}-v1
 
     - name: Build vendor dependencies
-      if: steps.cache-vendor.outputs.cache-hit != 'true'
+      if: steps.cache-vendor.outputs.cache-hit != 'true' || steps.cache-additional.outputs.cache-hit != 'true'
       run: |
         cd vendor
-        cmake -Bbuild -DCMAKE_BUILD_TYPE=Release -DCPPZMQ_BUILD_TESTS=OFF && cmake --build build -j$(nproc)
-
-    - name: Build additional dependencies
-      if: steps.cache-additional.outputs.cache-hit != 'true'
-      run: |
-        cd vendor
-        cmake -DCMAKE_BUILD_TYPE=Release -Bbuildarg -Sargparse && cmake --build buildarg -j$(nproc)
-        cmake -DCMAKE_BUILD_TYPE=Release -Bbuildyaml -Syaml-cpp && cmake --build buildyaml -j$(nproc)
-        cmake -DCMAKE_BUILD_TYPE=Release -Bbuildmav -SMAVSDK && cmake --build buildmav -j$(nproc)
-        cmake -DCMAKE_BUILD_TYPE=Release -Bbuildpcl -Spcl && cmake --build buildpcl -j$(nproc)
+        # Build main vendor deps if needed
+        if [ "${{ steps.cache-vendor.outputs.cache-hit }}" != "true" ]; then
+          cmake -Bbuild -DCMAKE_BUILD_TYPE=Release -DCPPZMQ_BUILD_TESTS=OFF && cmake --build build -j$(nproc)
+        fi
+        # Build additional deps if needed
+        if [ "${{ steps.cache-additional.outputs.cache-hit }}" != "true" ]; then
+          cmake -DCMAKE_BUILD_TYPE=Release -Bbuildarg -Sargparse && cmake --build buildarg -j$(nproc)
+          cmake -DCMAKE_BUILD_TYPE=Release -Bbuildyaml -Syaml-cpp && cmake --build buildyaml -j$(nproc)
+          cmake -DCMAKE_BUILD_TYPE=Release -Bbuildmav -SMAVSDK && cmake --build buildmav -j$(nproc)
+          cmake -DCMAKE_BUILD_TYPE=Release -Bbuildpcl -Spcl && cmake --build buildpcl -j$(nproc)
+        fi
 
     - name: Install vendor dependencies
       run: |
         cd vendor
-        
-        # Install main vendor dependencies
-        if [ -d "build" ]; then
-          sudo cmake --install build
-        fi
-        
-        # Install additional dependencies
-        for builddir in buildarg buildyaml buildmav buildpcl; do
-          if [ -d "$builddir" ]; then
-            sudo cmake --install $builddir
-          fi
+        # Install all available builds
+        [ -d "build" ] && sudo cmake --install build
+        for dir in buildarg buildyaml buildmav buildpcl; do
+          [ -d "$dir" ] && sudo cmake --install $dir
         done
-        
         sudo ldconfig
 
     - name: Cache messages build
@@ -92,16 +82,13 @@ jobs:
         path: messages/build
         key: Linux-messages-${{ hashFiles('messages/**') }}-v1
 
-    - name: Build messages
-      if: steps.cache-messages.outputs.cache-hit != 'true'
+    - name: Build and install messages
       run: |
         cd messages
-        cmake -Bbuild -DCMAKE_BUILD_TYPE=Release
-        cmake --build build -j$(nproc)
-
-    - name: Install messages
-      run: |
-        cd messages
+        if [ "${{ steps.cache-messages.outputs.cache-hit }}" != "true" ]; then
+          cmake -Bbuild -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j$(nproc)
+        fi
         sudo cmake --install build
 
     - name: Cache main project build
