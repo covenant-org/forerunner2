@@ -64,6 +64,7 @@ class Registry : public Vertex {
   uint32_t _last_free_port;
   std::unordered_map<std::string, Endpoint> _topic_to_endpoint;
   std::map<std::string, std::vector<std::string>> _topic_to_waiters;
+  Publisher<RegistryNotification> _pub_notifications;
 };
 }  // namespace Core
 

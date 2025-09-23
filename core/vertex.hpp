@@ -8,6 +8,7 @@
 #include <memory>
 #include <string>
 #include <unistd.h>
+#include <vector>
 #ifndef VERTEX_HPP
 #define VERTEX_HPP
 
@@ -78,11 +79,30 @@ class BaseVertex {
 class Vertex : public BaseVertex {
  protected:
   std::string _registry;
+  std::map<std::string, std::shared_ptr<ISubscriber>> _subscribed_topics;
+  std::Subscriber<RegistryNotification> _sub_registry;
 
  public:
   Vertex(ArgumentParser args)
-      : BaseVertex(args), _registry(DEFAULT_REGISTRY_URI) {
+      : BaseVertex(args),
+        _registry(DEFAULT_REGISTRY_URI),
+        _sub_registry(
+            "registry/notifications",
+            std::bind(&Vertex::notification_cb, this, std::placeholders::_1)) {
     _registry = _args.get_argument("--registry-uri");
+  }
+
+  void notification_cb(const IncomingMessage<RegistryNotification> &msg) {
+    if (msg.content.getType() == RegistryNotificationType::NodeAdded) {
+      auto node = msg.getNodeAdded();
+      auto path = msg.getPath();
+      try {
+        auto sub = this->_subscribed_topics[path];
+        sub->reset_connection();
+      } catch (...) {
+        return;
+      }
+    }
   }
 
   template <typename T>
@@ -98,6 +118,7 @@ class Vertex : public BaseVertex {
       std::function<void(IncomingMessage<T>)> callback) {
     auto subscriber = std::make_shared<Subscriber<T>>(topic, callback);
     subscriber->setup(this->_registry);
+    this->_subscribed_topics[topic] = subscriber;
     return subscriber;
   }
 

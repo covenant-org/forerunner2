@@ -94,7 +94,7 @@ void Registry::handle_request(RouterEvent event) {
         .host = "127.0.0.1",
         .port = free_port.value(),
     };
-    _topic_to_endpoint.insert_or_assign(path, endpoint);
+    auto const insert_res = _topic_to_endpoint.insert_or_assign(path, endpoint);
     this->_logger.info("New topic: %s at %d", color_topic(path).c_str(),
                        endpoint.port);
     res.setCode(201);
@@ -103,6 +103,14 @@ void Registry::handle_request(RouterEvent event) {
     host.setPort(endpoint.port);
     respond_event(event, message_from_builder(message));
     notify_waiters(path);
+    if (!insert_res.second) {
+      auto msg = this->_pub_notifications.new_msg();
+      msg.content.setType(RegistryNotificationType::NodeAdded);
+      auto node = msg.content.initNodeAdded();
+      node.setPath(path);
+      node.setPort(endpoint.port);
+      msg.publish();
+    }
     return;
   }
 

@@ -27,6 +27,7 @@ class ISubscriber {
  public:
   virtual ~ISubscriber() = default;
   virtual uint32_t reset_connection() = 0;
+  virtual void stop() = 0;
 };
 
 template <typename T>
