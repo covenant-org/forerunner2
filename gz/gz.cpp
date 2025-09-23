@@ -19,6 +19,7 @@
 
 GZ::GZ(Core::ArgumentParser args) : Core::Vertex(args) {
   _point_cloud_publisher = this->create_publisher<PointCloud>("point_cloud");
+  _camera_publisher = this->create_publisher<ImageData>("camera_image");
   _mic_publisher = this->create_publisher<StereoMic>("mic");
 
   _gz_node = std::make_shared<gz::transport::Node>();
@@ -74,8 +75,13 @@ void GZ::on_camera_cb(const gz::msgs::Image &msg,
   auto out = this->_camera_publisher->new_msg();
   out.content.setWidth(msg.width());
   out.content.setHeight(msg.height());
-  out.content.setData(msg.data());
-  out.content.setFormat(msg.format());
+  out.content.setType(0);  // Set to appropriate OpenCV type if needed
+  
+  // Convert std::string to capnp::Data::Reader
+  const std::string& data_str = msg.data();
+  auto reader = ::capnp::Data::Reader(reinterpret_cast<const uint8_t*>(data_str.data()), data_str.size());
+  out.content.setData(reader);
+  
   out.publish();
 }
 

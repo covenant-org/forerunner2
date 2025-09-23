@@ -34,7 +34,7 @@ ADD_EXECUTABLE(${PROJECT_NAME}
                 ../people-detection/src/camera_tracking/camera_tracking.cpp
                 )
 
-ADD_EXECUTABLE(ftp_bridge ftp_bridge_pd.cpp)
+ADD_EXECUTABLE(ftp_bridge_pd ftp_bridge_pd.cpp)
 
 if (LINK_SHARED_ZED)
     SET(ZED_LIBS ${ZED_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${CUDA_CUDART_LIBRARY})
@@ -49,7 +49,7 @@ TARGET_LINK_LIBRARIES(${PROJECT_NAME}
                         core 
                         capnp capnp_schemas)
 
-TARGET_LINK_LIBRARIES(ftp_bridge
+TARGET_LINK_LIBRARIES(ftp_bridge_pd
                         core
                         cppzmq 
                         capnp 

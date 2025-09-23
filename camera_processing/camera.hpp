@@ -14,7 +14,7 @@
 class PeopleDetector : public Core::Vertex {
  private:
   sl::Camera zed;
-  std::shared_ptr<Core::Publisher<ImageData>> _people_image_pub;
+  std::shared_ptr<Core::Publisher<DetectionRawImage>> _people_image_pub;
  public:
   PeopleDetector(const Core::ArgumentParser& args);
   void run(std::string svo2_path);

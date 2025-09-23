@@ -9,7 +9,7 @@ PeopleDetector::PeopleDetector(const Core::ArgumentParser& parser)
     std::cout << "PeopleDetector: Base class Core::Vertex initialized" << std::endl;
     try {
         std::cout << "PeopleDetector: Creating publisher instance..." << std::endl;
-        this->_people_image_pub = this->create_publisher<ImageData>("people_image");
+        this->_people_image_pub = this->create_publisher<DetectionRawImage>("people_image");
         std::cout << "PeopleDetector: Publisher created successfully." << std::endl;
         // ...existing code...
     } catch (const std::exception& e) {
@@ -34,6 +34,7 @@ void PeopleDetector::image_publisher(std::list<cv::Mat>& images, std::unordered_
                 msg.content.setId(id);
                 msg.content.setWidth(image.cols);
                 msg.content.setHeight(image.rows);
+                msg.content.setType(image.type());  // OpenCV type
                 
                 auto reader = ::capnp::Data::Reader(buf.data(), buf.size());
                 msg.content.setData(reader);
@@ -50,7 +51,7 @@ void PeopleDetector::image_publisher(std::list<cv::Mat>& images, std::unordered_
 
 
 void PeopleDetector::run(std::string svo2_path) {
-    this->_people_image_pub = this->create_publisher<ImageData>("people_image");
+    this->_people_image_pub = this->create_publisher<DetectionRawImage>("people_image");
 
     std::unordered_set<int> saved_ids;
     std::cout << "SVO2 file path: " << svo2_path << std::endl;
@@ -61,7 +62,7 @@ void PeopleDetector::run(std::string svo2_path) {
 
     // run detection for every Camera grab
     initDetectionParameters(zed, detection_parameters);
-    setObjectDetectionRuntimeParameters(detection_parameters_rt);
+    setObjectDetectionRuntimeParameters(zed, detection_parameters_rt);
 
     Objects objects;
     std::cout << std::setprecision(3);

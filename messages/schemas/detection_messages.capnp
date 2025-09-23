@@ -2,14 +2,13 @@
 
 using Sensors = import "sensors.capnp";
 using Geometry = import "geometry_msgs.capnp";
-using ImageData = Sensors.ImageData;
 using Point = Geometry.Point;
 
 struct DetectionImage {
-    image @0 :ImageData;        # Imagen recortada de la detección
-    coordinates @1 :Point;      # Coordenadas 3D (x, y, z)
-    description @2 :Text;       # Descripción a validar con LLM
-    objectId @3 :UInt32;        # ID único de la detección
+    image @0 :Sensors.ImageData;        # Imagen recortada de la detección
+    coordinates @1 :Point;              # Coordenadas 3D (x, y, z)
+    description @2 :Text;               # Descripción a validar con LLM
+    objectId @3 :UInt32;                # ID único de la detección
 }
 
 struct LLMResult {
