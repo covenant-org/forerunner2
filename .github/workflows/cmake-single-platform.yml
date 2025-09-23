@@ -3,7 +3,7 @@ name: Build Forerunner2
 on:
   push:
     branches: [ "Cmake-compilation" ]
-    
+
   pull_request:
     branches: [ "Cmake-compilation" ]
 
@@ -24,17 +24,6 @@ jobs:
         packages: build-essential cmake pkg-config libzmq3-dev protobuf-compiler libprotobuf-dev libcurl4-openssl-dev libeigen3-dev libflann-dev libvtk9-dev libpcl-dev lsb-release wget gnupg
         version: 1.0
         execute_install_scripts: true
-
-    - name: Check APT cache status
-      run: |
-        echo "APT cache check:"
-        if [[ "${{ steps.apt-cache.outputs.cache-hit }}" == "true" ]]; then
-          echo "✅ APT packages restored from cache"
-          echo "📦 Cached packages: ${{ steps.apt-cache.outputs.package-version-list }}"
-        else
-          echo "❌ APT packages installed fresh (no cache found)"
-          echo "📦 Installed packages: ${{ steps.apt-cache.outputs.package-version-list }}"
-        fi
 
     - name: Install additional dependencies
       run: |
@@ -62,199 +51,69 @@ jobs:
           vendor/buildyaml
           vendor/buildmav
           vendor/buildpcl
-        key: Linux-additional-${{ hashFiles('build_vendor.sh') }}-v2
-
-    - name: Check cache status
-      run: |
-        echo "Cache status:"
-        echo "🔍 Vendor cache hit: ${{ steps.cache-vendor.outputs.cache-hit }}"
-        echo "🔍 Additional deps cache hit: ${{ steps.cache-additional.outputs.cache-hit }}"
-        echo "⏰ Build optimization: This run should be much faster if caches hit!"
-        
-        if [ -d "vendor/build" ]; then
-          echo "✅ Vendor build directory found (cache restored)"
-          ls -la vendor/build/ | head -10
-        else
-          echo "❌ Vendor build directory not found (building from scratch)"
-        fi
-        
-        if [ -d "vendor/buildarg" ]; then
-          echo "✅ Additional dependencies found (cache restored)"
-          ls -la vendor/ | grep build
-        else
-          echo "❌ Additional dependencies not found (building from scratch)"
-        fi
+        key: Linux-additional-${{ hashFiles('vendor/CMakeLists.txt', 'build_vendor.sh') }}-v1
 
     - name: Build vendor dependencies
       if: steps.cache-vendor.outputs.cache-hit != 'true'
       run: |
-        echo "🏗️ Building main vendor dependencies from source..."
         cd vendor
         cmake -Bbuild -DCMAKE_BUILD_TYPE=Release -DCPPZMQ_BUILD_TESTS=OFF && cmake --build build -j$(nproc)
 
     - name: Build additional dependencies
       if: steps.cache-additional.outputs.cache-hit != 'true'
       run: |
-        echo "🏗️ Building additional dependencies from source..."
         cd vendor
         cmake -DCMAKE_BUILD_TYPE=Release -Bbuildarg -Sargparse && cmake --build buildarg -j$(nproc)
         cmake -DCMAKE_BUILD_TYPE=Release -Bbuildyaml -Syaml-cpp && cmake --build buildyaml -j$(nproc)
         cmake -DCMAKE_BUILD_TYPE=Release -Bbuildmav -SMAVSDK && cmake --build buildmav -j$(nproc)
         cmake -DCMAKE_BUILD_TYPE=Release -Bbuildpcl -Spcl && cmake --build buildpcl -j$(nproc)
 
-    - name: Install vendor dependencies from cache
-      if: steps.cache-vendor.outputs.cache-hit == 'true'
+    - name: Install vendor dependencies
       run: |
-        echo "🔄 Installing cached vendor dependencies to system..."
         cd vendor
+        
+        # Install main vendor dependencies
         if [ -d "build" ]; then
-          echo "📦 Installing main vendor build..."
           sudo cmake --install build
-          echo "✅ Main vendor dependencies installed from cache"
         fi
-
-    - name: Install additional dependencies from cache
-      if: steps.cache-additional.outputs.cache-hit == 'true'
-      run: |
-        echo "🔄 Installing cached additional dependencies to system..."
-        cd vendor
-        # Install additional cached builds
+        
+        # Install additional dependencies
         for builddir in buildarg buildyaml buildmav buildpcl; do
           if [ -d "$builddir" ]; then
-            echo "📦 Installing $builddir..."
             sudo cmake --install $builddir
-            echo "✅ $builddir installed from cache"
           fi
         done
         
-        # Update library cache
         sudo ldconfig
-        echo "🔄 Library cache updated"
-
-    - name: Install dependencies from fresh builds
-      if: steps.cache-vendor.outputs.cache-hit != 'true' || steps.cache-additional.outputs.cache-hit != 'true'
-      run: |
-        echo "🔧 Installing dependencies from fresh builds..."
-        cd vendor
-        
-        # Install main vendor build if it was just built
-        if [ "${{ steps.cache-vendor.outputs.cache-hit }}" != "true" ] && [ -d "build" ]; then
-          echo "📦 Installing fresh vendor build..."
-          sudo cmake --install build
-        fi
-        
-        # Install additional builds if they were just built
-        if [ "${{ steps.cache-additional.outputs.cache-hit }}" != "true" ]; then
-          for builddir in buildarg buildyaml buildmav buildpcl; do
-            if [ -d "$builddir" ]; then
-              echo "📦 Installing fresh $builddir..."
-              sudo cmake --install $builddir
-            fi
-          done
-        fi
-        
-        # Update library cache
-        sudo ldconfig
-        echo "🔄 Library cache updated"
-
-    - name: Verify vendor installation
-      run: |
-        echo "Checking vendor installation:"
-        echo "📁 Vendor build directory:"
-        ls -la vendor/build/ 2>/dev/null || echo "❌ vendor/build not found"
-        
-        echo "🔍 Looking for capnp_schemas installation:"
-        find /usr/local -name "*capnp_schemas*" 2>/dev/null || echo "❌ capnp_schemas not found in /usr/local"
-        find vendor/build -name "*capnp_schemas*" 2>/dev/null || echo "❌ capnp_schemas not found in vendor/build"
-        
-        echo "📦 CMake modules in /usr/local/lib/cmake:"
-        ls -la /usr/local/lib/cmake/ 2>/dev/null || echo "❌ /usr/local/lib/cmake not found"
 
     - name: Cache messages build
       id: cache-messages
       uses: actions/cache@v4
       with:
         path: messages/build
-        key: ${{ runner.os }}-messages-${{ hashFiles('messages/CMakeLists.txt', 'messages/schemas/**') }}-v2
-        restore-keys: |
-          ${{ runner.os }}-messages-${{ hashFiles('messages/CMakeLists.txt', 'messages/schemas/**') }}-
-          ${{ runner.os }}-messages-
+        key: Linux-messages-${{ hashFiles('messages/**') }}-v1
 
-    - name: Check messages cache status
-      run: |
-        echo "Messages cache check:"
-        if [ -d "messages/build" ]; then
-          echo "✅ Messages build directory found (cache restored)"
-        else
-          echo "❌ Messages build directory not found (building from scratch)"
-        fi
-
-    - name: Build and install messages
+    - name: Build messages
       if: steps.cache-messages.outputs.cache-hit != 'true'
       run: |
         cd messages
         cmake -Bbuild -DCMAKE_BUILD_TYPE=Release
         cmake --build build -j$(nproc)
-        sudo cmake --install build
 
-    - name: Install messages from cache
-      if: steps.cache-messages.outputs.cache-hit == 'true'
+    - name: Install messages
       run: |
-        echo "🔧 Installing cached messages to system..."
         cd messages
-        echo "📦 Installing messages build..."
         sudo cmake --install build
-        echo "✅ Messages installed from cache"
-
-    - name: Verify capnp_schemas installation
-      run: |
-        echo "🔍 Verifying capnp_schemas installation:"
-        
-        # Check for capnp_schemas config files
-        if [ -f "/usr/local/lib/cmake/capnp_schemas/capnp_schemasConfig.cmake" ]; then
-          echo "✅ capnp_schemasConfig.cmake found"
-        else
-          echo "❌ capnp_schemasConfig.cmake NOT found"
-          echo "📂 Searching for capnp_schemas files:"
-          find /usr/local -name "*capnp_schemas*" 2>/dev/null || echo "No capnp_schemas files found"
-        fi
-        
-        # Check CMAKE_PREFIX_PATH
-        echo "📁 CMAKE_PREFIX_PATH: $CMAKE_PREFIX_PATH"
-        echo "📁 PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
 
     - name: Cache main project build
       id: cache-main
       uses: actions/cache@v4
       with:
         path: build
-        key: ${{ runner.os }}-main-${{ hashFiles('CMakeLists.txt', '*/CMakeLists.txt', '**/*.cpp', '**/*.hpp') }}-v2
-        restore-keys: |
-          ${{ runner.os }}-main-${{ hashFiles('CMakeLists.txt', '*/CMakeLists.txt') }}-
-          ${{ runner.os }}-main-
+        key: ${{ runner.os }}-main-${{ hashFiles('CMakeLists.txt', '*/CMakeLists.txt') }}-v2
 
-    - name: Check main build cache status
-      run: |
-        echo "Main build cache check:"
-        if [ -d "build" ]; then
-          echo "✅ Build directory found (cache restored)"
-          echo "Build directory contents:"
-          ls -la build/ | head -5
-        else
-          echo "❌ Build directory not found (building from scratch)"
-        fi
-
-    - name: Build and install main project
+    - name: Build main project
       if: steps.cache-main.outputs.cache-hit != 'true'
       run: |
-        echo "🔍 Pre-build diagnostics:"
-        echo "CMAKE_PREFIX_PATH: $CMAKE_PREFIX_PATH"
-        echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
-        
-        echo "📦 Checking for capnp_schemas again:"
-        find /usr/local -name "*capnp_schemas*" 2>/dev/null | head -10
-        
-        echo "🚀 Starting main build:"
         cmake -Bbuild -DCMAKE_BUILD_TYPE=Release
         cmake --build build -j$(nproc)
-        sudo cmake --install build
