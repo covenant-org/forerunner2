@@ -16,6 +16,79 @@ jobs:
         submodules: true
         fetch-depth: 0    
 
+    # Check all cache statuses first (lookup-only)
+    - name: Check vendor cache status
+      id: check-vendor-cache
+      uses: actions/cache@v4
+      with:
+        path: vendor/build
+        key: Linux-vendor-${{ hashFiles('vendor/CMakeLists.txt', 'build_vendor.sh') }}-v2
+        lookup-only: true
+
+    - name: Check additional cache status  
+      id: check-additional-cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          vendor/buildarg
+          vendor/buildyaml
+          vendor/buildmav
+          vendor/buildpcl
+        key: Linux-additional-${{ hashFiles('vendor/CMakeLists.txt', 'build_vendor.sh') }}-v1
+        lookup-only: true
+
+    - name: Check messages cache status
+      id: check-messages-cache
+      uses: actions/cache@v4
+      with:
+        path: messages/build
+        key: Linux-messages-${{ hashFiles('messages/**') }}-v1
+        lookup-only: true
+
+    - name: Check main cache status
+      id: check-main-cache
+      uses: actions/cache@v4
+      with:
+        path: build
+        key: ${{ runner.os }}-main-${{ hashFiles('CMakeLists.txt', '*/CMakeLists.txt') }}-v2
+        lookup-only: true
+
+    - name: Cache Status Report
+      run: |
+        echo "🔍 Cache Status Overview"
+        echo "======================="
+        
+        # Vendor cache
+        if [ "${{ steps.check-vendor-cache.outputs.cache-hit }}" == "true" ]; then
+          echo "✅ Vendor dependencies: Cache found"
+        else
+          echo "❌ Vendor dependencies: Cache miss (will build ~15min)"
+        fi
+        
+        # Additional cache  
+        if [ "${{ steps.check-additional-cache.outputs.cache-hit }}" == "true" ]; then
+          echo "✅ Additional dependencies: Cache found"
+        else
+          echo "❌ Additional dependencies: Cache miss (will build ~30min)"
+        fi
+        
+        # Messages cache
+        if [ "${{ steps.check-messages-cache.outputs.cache-hit }}" == "true" ]; then
+          echo "✅ Messages build: Cache found"
+        else
+          echo "❌ Messages build: Cache miss (will build ~2min)"
+        fi
+        
+        # Main cache
+        if [ "${{ steps.check-main-cache.outputs.cache-hit }}" == "true" ]; then
+          echo "✅ Main project: Cache found"
+        else
+          echo "❌ Main project: Cache miss (will build ~5min)"
+        fi
+        
+        echo "======================="
+        echo ""
+
     - name: Cache APT packages
       uses: awalsh128/cache-apt-pkgs-action@latest
       id: apt-cache
