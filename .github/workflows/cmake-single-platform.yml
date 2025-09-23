@@ -49,36 +49,56 @@ jobs:
       id: cache-vendor
       uses: actions/cache@v4
       with:
-        path: |
-          vendor/build
-          vendor/argparse
-          vendor/capnproto
-          vendor/cppzmq
-          vendor/eigen
-          vendor/flann
-          vendor/libzmq
-          vendor/MAVSDK
-          vendor/pcl
-          vendor/yaml-cpp
-          vendor/zlib
-        key: ${{ runner.os }}-vendor-${{ hashFiles('build_vendor.sh', 'vendor/CMakeLists.txt') }}-v1
-        restore-keys: |
-          ${{ runner.os }}-vendor-${{ hashFiles('build_vendor.sh', 'vendor/CMakeLists.txt') }}-
-          ${{ runner.os }}-vendor-
+        path: vendor/build
+        key: Linux-vendor-${{ hashFiles('vendor/**', 'build_vendor.sh') }}-v1
 
-    - name: Check vendor cache status
+    - name: Cache additional dependencies
+      id: cache-additional
+      uses: actions/cache@v4
+      with:
+        path: |
+          vendor/buildarg
+          vendor/buildyaml
+          vendor/buildmav
+          vendor/buildpcl
+        key: Linux-additional-${{ hashFiles('vendor/argparse/**', 'vendor/yaml-cpp/**', 'vendor/MAVSDK/**', 'vendor/pcl/**', 'build_vendor.sh') }}-v1
+
+    - name: Check cache status
       run: |
-        echo "Vendor cache check:"
+        echo "Cache status:"
+        echo "🔍 Vendor cache hit: ${{ steps.cache-vendor.outputs.cache-hit }}"
+        echo "🔍 Additional deps cache hit: ${{ steps.cache-additional.outputs.cache-hit }}"
+        
         if [ -d "vendor/build" ]; then
           echo "✅ Vendor build directory found (cache restored)"
           ls -la vendor/build/ | head -10
         else
           echo "❌ Vendor build directory not found (building from scratch)"
         fi
+        
+        if [ -d "vendor/buildarg" ]; then
+          echo "✅ Additional dependencies found (cache restored)"
+          ls -la vendor/ | grep build
+        else
+          echo "❌ Additional dependencies not found (building from scratch)"
+        fi
 
-    - name: Run vendor build
+    - name: Build vendor dependencies
       if: steps.cache-vendor.outputs.cache-hit != 'true'
-      run: ./build_vendor.sh
+      run: |
+        echo "🏗️ Building main vendor dependencies from source..."
+        cd vendor
+        cmake -Bbuild -DCMAKE_BUILD_TYPE=Release -DCPPZMQ_BUILD_TESTS=OFF && cmake --build build -j$(nproc)
+
+    - name: Build additional dependencies
+      if: steps.cache-additional.outputs.cache-hit != 'true'
+      run: |
+        echo "🏗️ Building additional dependencies from source..."
+        cd vendor
+        cmake -DCMAKE_BUILD_TYPE=Release -Bbuildarg -Sargparse && cmake --build buildarg -j$(nproc)
+        cmake -DCMAKE_BUILD_TYPE=Release -Bbuildyaml -Syaml-cpp && cmake --build buildyaml -j$(nproc)
+        cmake -DCMAKE_BUILD_TYPE=Release -Bbuildmav -SMAVSDK && cmake --build buildmav -j$(nproc)
+        cmake -DCMAKE_BUILD_TYPE=Release -Bbuildpcl -Spcl && cmake --build buildpcl -j$(nproc)
 
     - name: Install vendor dependencies from cache
       if: steps.cache-vendor.outputs.cache-hit == 'true'
@@ -90,8 +110,13 @@ jobs:
           sudo cmake --install build
           echo "✅ Main vendor dependencies installed from cache"
         fi
-        
-        # Install other cached builds if they exist
+
+    - name: Install additional dependencies from cache
+      if: steps.cache-additional.outputs.cache-hit == 'true'
+      run: |
+        echo "🔄 Installing cached additional dependencies to system..."
+        cd vendor
+        # Install additional cached builds
         for builddir in buildarg buildyaml buildmav buildpcl; do
           if [ -d "$builddir" ]; then
             echo "📦 Installing $builddir..."
@@ -99,6 +124,32 @@ jobs:
             echo "✅ $builddir installed from cache"
           fi
         done
+        
+        # Update library cache
+        sudo ldconfig
+        echo "🔄 Library cache updated"
+
+    - name: Install dependencies from fresh builds
+      if: steps.cache-vendor.outputs.cache-hit != 'true' || steps.cache-additional.outputs.cache-hit != 'true'
+      run: |
+        echo "🔧 Installing dependencies from fresh builds..."
+        cd vendor
+        
+        # Install main vendor build if it was just built
+        if [ "${{ steps.cache-vendor.outputs.cache-hit }}" != "true" ] && [ -d "build" ]; then
+          echo "📦 Installing fresh vendor build..."
+          sudo cmake --install build
+        fi
+        
+        # Install additional builds if they were just built
+        if [ "${{ steps.cache-additional.outputs.cache-hit }}" != "true" ]; then
+          for builddir in buildarg buildyaml buildmav buildpcl; do
+            if [ -d "$builddir" ]; then
+              echo "📦 Installing fresh $builddir..."
+              sudo cmake --install $builddir
+            fi
+          done
+        fi
         
         # Update library cache
         sudo ldconfig
@@ -152,29 +203,6 @@ jobs:
         echo "📦 Installing messages build..."
         sudo cmake --install build
         echo "✅ Messages installed from cache"
-
-    - name: Build additional dependencies (not cached)
-      run: |
-        echo "🏗️ Building additional dependencies..."
-        cd vendor
-        
-        # Build argparse (needed by core)
-        echo "Building argparse..."
-        cmake -DCMAKE_BUILD_TYPE=Release -Bbuildarg -Sargparse && sudo cmake --build buildarg -j$(nproc) --target install && sudo ldconfig
-        
-        # Build yaml-cpp (if needed)
-        echo "Building yaml-cpp..."
-        cmake -DCMAKE_BUILD_TYPE=Release -Bbuildyaml -Syaml-cpp && sudo cmake --build buildyaml -j$(nproc) --target install
-        
-        # Build MAVSDK (if needed)
-        echo "Building MAVSDK..."
-        cmake -DCMAKE_BUILD_TYPE=Release -Bbuildmav -SMAVSDK && sudo cmake --build buildmav -j$(nproc) --target install && sudo ldconfig
-        
-        # Build PCL (if needed)
-        echo "Building PCL..."
-        cmake -DCMAKE_BUILD_TYPE=Release -Bbuildpcl -Spcl && sudo cmake --build buildpcl -j$(nproc) && sudo cmake --install buildpcl
-        
-        echo "✅ Additional dependencies built and installed"
 
     - name: Verify capnp_schemas installation
       run: |
