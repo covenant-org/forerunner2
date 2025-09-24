@@ -36,18 +36,7 @@ Registry::Registry(ArgumentParser args)
       _ctx(_config.threads),
       _router(_ctx, ZMQ_ROUTER),
       _last_free_port(_config.port),
-      _pub_notifications("registry/notifications") {
-  std::string external_uri =
-      this->_args.get_argument<std::string>("--registry-uri");
-  if (external_uri.size() > 0) {
-    this->_sub_registry = std::make_shared<Subscriber<RegistryNotification>>(
-        "registry/notifications",
-        std::bind(&Registry::notification_cb, this, std::placeholders::_1));
-    this->_sub_registry->setup(external_uri);
-    this->_external_heartbeat_thread =
-        std::thread(std::bind(&Registry::check_heartbeat, this));
-  }
-}
+      _pub_notifications("registry/notifications") {}
 
 void Registry::check_heartbeat() {
   RateKeeper keeper(1);
@@ -316,6 +305,17 @@ void Registry::run() {
       notifications_topic, Endpoint{.host = "127.0.0.1", .port = port.value()});
   this->_logger.debug("Registry %s on %d", notifications_topic.c_str(),
                       port.value());
+
+  std::string external_uri =
+      this->_args.get_argument<std::string>("--registry-uri");
+  if (external_uri.size() > 0) {
+    this->_sub_registry = std::make_shared<Subscriber<RegistryNotification>>(
+        "registry/notifications",
+        std::bind(&Registry::notification_cb, this, std::placeholders::_1));
+    this->_sub_registry->setup(external_uri);
+    this->_external_heartbeat_thread =
+        std::thread(std::bind(&Registry::check_heartbeat, this));
+  }
 
   this->_heartbeat_thread = std::thread(std::bind(&Registry::heartbeat, this));
 
