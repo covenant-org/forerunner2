@@ -20,7 +20,7 @@ struct RegistryRequest {
   union {
     addNode @2 :Void;
     queryNode @3 :Void;
-    heartbeat @6 :Void;
+    heartbeat @7 :Void;
     addHost :group{
       address @4 :Text;
       port    @5 :UInt32;

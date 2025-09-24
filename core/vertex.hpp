@@ -176,6 +176,7 @@ class Vertex : public BaseVertex {
       std::function<void(IncomingMessage<T>, typename K::Builder &)> callback) {
     auto server = std::make_shared<ActionServer<T, K>>(topic, callback);
     server->setup(this->_registry);
+    this->_publishers.push_back(server);
     return server;
   }
 
@@ -184,6 +185,7 @@ class Vertex : public BaseVertex {
       const std::string &topic) {
     auto client = std::make_shared<ActionClient<T, K>>(topic);
     client->setup(this->_registry);
+    this->_subscribed_topics[topic] = client;
     return client;
   }
 };

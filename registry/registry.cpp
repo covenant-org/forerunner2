@@ -12,11 +12,14 @@
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
+#include <functional>
 #include <kj/common.h>
 #include <kj/io.h>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <zmq.h>
 #include <zmq.hpp>
 
@@ -33,7 +36,34 @@ Registry::Registry(ArgumentParser args)
       _ctx(_config.threads),
       _router(_ctx, ZMQ_ROUTER),
       _last_free_port(_config.port),
-      _pub_notifications("registry/notifications") {}
+      _pub_notifications("registry/notifications") {
+  std::string external_uri =
+      this->_args.get_argument<std::string>("--registry-uri");
+  if (external_uri.size() > 0) {
+    this->_sub_registry = std::make_shared<Subscriber<RegistryNotification>>(
+        "registry/notifications",
+        std::bind(&Registry::notification_cb, this, std::placeholders::_1));
+    this->_sub_registry->setup(external_uri);
+    this->_external_heartbeat_thread =
+        std::thread(std::bind(&Registry::check_heartbeat, this));
+  }
+}
+
+void Registry::check_heartbeat() {
+  RateKeeper keeper(1);
+  while (true) {
+    auto duration = std::chrono::high_resolution_clock::now() -
+                    this->_last_external_registry_heartbeat;
+    auto seconds =
+        std::chrono::duration_cast<std::chrono::seconds>(duration).count();
+    if (seconds > 0) {
+      this->_sub_registry->reset_connection();
+      _last_external_registry_heartbeat =
+          std::chrono::high_resolution_clock::now();
+    }
+    keeper.keep();
+  }
+}
 
 zmq::message_t Registry::message_from_builder(
     ::capnp::MallocMessageBuilder &message) {
@@ -46,6 +76,28 @@ zmq::message_t Registry::message_from_builder(
   auto packed_size = output.getArray().size();
 
   return zmq::message_t(ptr.data(), packed_size);
+}
+
+void Registry::notification_cb(
+    const IncomingMessage<RegistryNotification> &msg) {
+  if (msg.content.getType() == RegistryNotificationType::NODE_ADDED) {
+    auto node = msg.content.getNodeAdded().getPath();
+    auto path = std::string(node.cStr(), node.size());
+    try {
+      this->_logger.debug("Received node added event for %s", path.c_str());
+      auto msg = this->_pub_notifications.new_msg();
+      msg.content.setType(RegistryNotificationType::NODE_ADDED);
+      auto node = msg.content.initNodeAdded();
+      node.setPath(path);
+      msg.publish();
+    } catch (const std::out_of_range &) {
+      return;
+    }
+  }
+  if (msg.content.getType() == RegistryNotificationType::HEARTBEAT) {
+    this->_last_external_registry_heartbeat =
+        std::chrono::high_resolution_clock::now();
+  }
 }
 
 void Registry::respond_event(RouterEvent &event, zmq::message_t msg) {

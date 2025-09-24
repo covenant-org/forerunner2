@@ -94,8 +94,8 @@ class Subscriber : public ISubscriber {
   }
 
   void set_loglevel(LogLevel level) { this->_logger.set_level(level); }
-  void set_rate(uint32_t rate) { this->_rate = rate; }
 
+  void set_rate(uint32_t rate) { this->_rate = rate; }
   uint32_t reset_connection() {
     this->_logger.debug("Requested reconnection");
     this->stop();

@@ -36,3 +36,13 @@ target_link_libraries(chatter PRIVATE
     capnp
     kj
 )
+
+add_executable(action action.cpp)
+
+target_link_libraries(action PRIVATE
+    core
+    cppzmq
+    capnp_schemas
+    capnp
+    kj
+)

@@ -43,6 +43,7 @@ class Registry : public BaseVertex {
   void heartbeat();
   void register_topic(const std::string topic, const Endpoint& host);
   void deregister_topic(const std::string topic);
+  void notification_cb(const IncomingMessage<RegistryNotification>&);
   std::optional<uint32_t> get_free_port();
 
   std::optional<Endpoint> check_topic(const std::string topic);
@@ -56,6 +57,7 @@ class Registry : public BaseVertex {
   std::optional<std::pair<std::string, uint32_t>> check_with_other_registries(
       const std::string&);
   void notify_waiters(std::string path);
+  void check_heartbeat();
 
  private:
   RegistryConfiguration _config;
@@ -66,6 +68,10 @@ class Registry : public BaseVertex {
   std::map<std::string, std::vector<std::string>> _topic_to_waiters;
   Publisher<RegistryNotification> _pub_notifications;
   std::thread _heartbeat_thread;
+  std::shared_ptr<Subscriber<RegistryNotification>> _sub_registry;
+  std::thread _external_heartbeat_thread;
+  std::chrono::time_point<std::chrono::system_clock>
+      _last_external_registry_heartbeat;
 };
 }  // namespace Core
 
