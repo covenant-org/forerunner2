@@ -20,6 +20,10 @@ public:
     // Send a single coordinate (NED) to the drone
     void send_coordinate(float north, float east, float up, float yaw_deg = 0.0f);
 
+    void move_and_wait(float x, float y, float z, float yaw_deg, int wait_sec);
+
+    void move_line_segmented(float x_start, float y, float length, float z, bool forward, float yaw, int wait);
+
     // Main loop: read coordinates from user input
     void run() override;
 };
