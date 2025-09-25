@@ -3,13 +3,31 @@
 #include <chrono>
 #include <thread>
 
-PeopleSearch::PeopleSearch(Core::ArgumentParser parser) : Core::Vertex(parser) 
-{
+PeopleSearch::PeopleSearch(Core::ArgumentParser parser) : Core::Vertex(parser) {
     this->_mission_client =
-      this->create_action_client<MissionCommand, GenericResponse>("mission_command");
+        this->create_action_client<MissionCommand, GenericResponse>("mission_command");
     this->_controller_client =
-      this->create_action_client<Command, GenericResponse>("controller");
+        this->create_action_client<Command, GenericResponse>("controller");
+
+    this->_llm_subscriber = this->create_subscriber<LLMResult>(
+        "llm_results",
+        [this](const Core::IncomingMessage<LLMResult>& msg) {
+            auto result = msg.content;
+            if (result.getIsValidPerson()) {
+                auto coords = result.getCoordinates();
+                {
+                    std::lock_guard<std::mutex> lock(this->_person_mutex);
+                    this->_person_x = coords.getX();
+                    this->_person_y = coords.getY();
+                    this->_person_z = coords.getZ();
+                    this->_valid_person_found = true;
+                }
+                this->_logger.info("✅ Valid person detected at (%.3f, %.3f, %.3f)",
+                                   coords.getX(), coords.getY(), coords.getZ());
+            }
+        });
 }
+
 
 void PeopleSearch::move_and_wait(float x, float y, float z, float yaw_deg, int wait_sec) {
     this->send_coordinate(x, y, z, yaw_deg);
@@ -111,8 +129,27 @@ void PeopleSearch::run() {
     // Start at center line, expand outwards
     for (int i = 0; i <= length / (2 * step); i++) {
     // Current Y offset (positive and negative from center)
-    float offset_up   = i * step;
-    float offset_down = -i * step;
+        float offset_up   = i * step;
+        float offset_down = -i * step;
+
+            if (_valid_person_found.load()) {
+            std::lock_guard<std::mutex> lock(this->_person_mutex);
+            std::cout << "🚨 Interrupting search! Flying to detected person at ("
+                    << _person_x << ", " << _person_y << ", " << _person_z << ")" << std::endl;
+
+            move_and_wait(_person_x, _person_y, _person_z, 0.0f, 5);
+
+            auto request = this->_mission_client->new_msg();
+            request.content.setLand();
+            request.content.getLand();
+            auto result = request.send();
+            auto response = result.value().content;
+            if (response.getCode() != 200) {
+                this->_logger.error("Landing failed with code %d and message %s",
+                                    response.getCode(), response.getMessage());
+            }
+            return; // Exit search after landing
+        }
 
         // Skip the first "down" iteration since i=0 is the center line
         if (i == 0) {
