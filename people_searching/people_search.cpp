@@ -53,9 +53,7 @@ void PeopleSearch::send_coordinate(float x, float y, float z, float yaw_deg) {
     }
 
     auto response = result.value().content;
-    if (response.getCode() == 200) {
-        std::cout << "Waypoint accepted by mavlink-mission\n";
-    } else {
+    if (response.getCode() != 200) {
         std::cerr << "Waypoint rejected! Code: " << response.getCode()
                   << " Message: " << response.getMessage().cStr() << "\n";
     }
@@ -64,9 +62,9 @@ void PeopleSearch::send_coordinate(float x, float y, float z, float yaw_deg) {
 void PeopleSearch::run() {
     float north, east, down, yaw, x, y, z;
 
-    std::vector<std::pair<float,float>> offsets = {
-    {0, 0}, {10, 0}, {10, 10}, {0, 10}, {-10, 10}, {-10, 0}, {-10, -10}, {0, -10}
-    };
+    bool valid_person_found = true;
+    float person_x = 15.0f;
+    float person_y = 11.0f;
 
     // Retrieve the GPS target location argument
     auto gps_target = this->get_argument<std::vector<std::string>>("--gps-target-location");
@@ -98,24 +96,73 @@ void PeopleSearch::run() {
                         response.getCode(), response.getMessage());}
 
     // Move to initial position
+    std::cout << "Moving to target location..." << std::endl;
     this->send_coordinate(x, y, z, 0.0f);
+    sleep(15); // Wait to reach position
 
-    // Lawn-mower pattern search
-    const float length = 40.0f;   // search box size (meters)
-    const float step   = 10.0f;   // spacing between lines
+    // Lawn-mower pattern search starting from center
+    const float length = 20.0f;   // search box size (meters)
+    const float step   = 4.0f;   // spacing between lines
     const int   wait   = 8;       // wait between moves (seconds)
 
     bool forward = true;
-    for (float offset_y = -length / 2; offset_y <= length / 2; offset_y += step) {
-        if (forward) {
-            move_and_wait(x - length / 2, y + offset_y, z, 0.0f, wait);
-            move_and_wait(x + length / 2, y + offset_y, z, 0.0f, wait);
+
+    std::cout << "Starting search pattern..." << std::endl;
+    // Start at center line, expand outwards
+    for (int i = 0; i <= length / (2 * step); i++) {
+    // Current Y offset (positive and negative from center)
+    float offset_up   = i * step;
+    float offset_down = -i * step;
+
+        // Skip the first "down" iteration since i=0 is the center line
+        if (i == 0) {
+            // Center line
+            if (forward) {
+                move_and_wait(x - length / 2, y + offset_up, z, 0.0f, wait);
+                move_and_wait(x + length / 2, y + offset_up, z, 0.0f, wait);
+            } else {
+                move_and_wait(x + length / 2, y + offset_up, z, 0.0f, wait);
+                move_and_wait(x - length / 2, y + offset_up, z, 0.0f, wait);
+            }
+            forward = !forward;
         } else {
-            move_and_wait(x + length / 2, y + offset_y, z, 0.0f, wait);
-            move_and_wait(x - length / 2, y + offset_y, z, 0.0f, wait);
+            // Upper line
+            if (forward) {
+                move_and_wait(x - length / 2, y + offset_up, z, 0.0f, wait);
+                move_and_wait(x + length / 2, y + offset_up, z, 0.0f, wait);
+            } else {
+                move_and_wait(x + length / 2, y + offset_up, z, 0.0f, wait);
+                move_and_wait(x - length / 2, y + offset_up, z, 0.0f, wait);
+            }
+            forward = !forward;
+
+            // Lower line
+            if (forward) {
+                move_and_wait(x - length / 2, y + offset_down, z, 0.0f, wait);
+                move_and_wait(x + length / 2, y + offset_down, z, 0.0f, wait);
+            } else {
+                move_and_wait(x + length / 2, y + offset_down, z, 0.0f, wait);
+                move_and_wait(x - length / 2, y + offset_down, z, 0.0f, wait);
+            }
+            forward = !forward;
         }
-        forward = !forward;
     }
+
+        // Check for valid person detection (placeholder logic)
+    if (valid_person_found) {
+        std::cout << "Person detected at (" << person_x << ", " << person_y << "). Moving to investigate..." << std::endl;
+        move_and_wait(person_x, person_y, z, 0.0f, 10);
+        auto request = this->_mission_client->new_msg();
+        request.content.setLand();
+        request.content.getLand();
+        auto result = request.send();
+        auto response = result.value().content;
+        if (response.getCode() != 200) {
+            this->_logger.error("Landing failed with code %d and message %s",
+                                response.getCode(), response.getMessage());
+        }
+    }
+
 
     std::cout << "Search pattern completed." << std::endl;
 
