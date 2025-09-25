@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.15)
 project(gz)
 
-find_package(Eigen3 3.4 REQUIRED NO_MODULE)
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 find_package(cppzmq REQUIRED)
 find_package(capnp_schemas REQUIRED)
 find_package(PCL 1.15 REQUIRED)

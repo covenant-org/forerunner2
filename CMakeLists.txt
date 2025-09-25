@@ -19,6 +19,12 @@ if(NOT DEFINED ZED_FOUND OR NOT ZED_FOUND)
   list(APPEND EXCLUDED_SUBDIRS "zed")
 endif()
 
+find_package(gz-msgs10)
+if(NOT DEFINED gz-msgs10_FOUND OR NOT gz-msgs10_FOUND)
+  message(WARNING "GZ msgs not found, ignoring gz subdir")
+  list(APPEND EXCLUDED_SUBDIRS "gz")
+endif()
+
 add_subdirectory(core)
 if(DEFINED ENV{SUBDIR})
     set(SUBDIR $ENV{SUBDIR})

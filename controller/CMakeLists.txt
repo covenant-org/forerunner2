@@ -4,7 +4,7 @@ project(controller)
 
 find_package(cppzmq REQUIRED)
 find_package(capnp_schemas REQUIRED)
-find_package(Eigen3 3.4 REQUIRED NO_MODULE)
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 
 
 add_executable(${PROJECT_NAME} controller.cpp)
