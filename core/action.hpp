@@ -29,7 +29,6 @@ class ActionServer {
   std::string _topic;
   std::uint32_t _port;
   zmq::context_t _ctx;
-  
   zmq::socket_t _router;
   zmq::socket_t _dealer;
   std::function<void(IncomingMessage<T>, typename K::Builder&)> _callback;
