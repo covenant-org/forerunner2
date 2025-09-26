@@ -3,7 +3,6 @@ name: Build Forerunner2
 on:
   push:
     branches: [ "Cmake-compilation" ]
-    
   pull_request:
     branches: [ "Cmake-compilation" ]
 
