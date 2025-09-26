@@ -8,9 +8,10 @@ PeopleSearch::PeopleSearch(Core::ArgumentParser parser) : Core::Vertex(parser) {
         this->create_action_client<MissionCommand, GenericResponse>("mission_command");
     this->_controller_client =
         this->create_action_client<Command, GenericResponse>("controller");
-
     this->_llm_subscriber = this->create_subscriber<LLMResult>(
         "llm_results", std::bind(&PeopleSearch::handle_llm_result, this, std::placeholders::_1));
+    this->_odometry_subscriber = this->create_subscriber<Odometry>(
+        "odometry", std::bind(&PeopleSearch::get_position, this, std::placeholders::_1));
 }
 
 void PeopleSearch::handle_llm_result(const Core::IncomingMessage<LLMResult>& msg) {
@@ -28,6 +29,14 @@ void PeopleSearch::handle_llm_result(const Core::IncomingMessage<LLMResult>& msg
         this->_logger.info("Valid person detected at (%.3f, %.3f, %.3f)",
                            coords.getX(), coords.getY(), coords.getZ());
     }
+}
+
+void PeopleSearch::get_position(const Core::IncomingMessage<Odometry>& msg) {
+    auto odom = msg.content;
+    auto pos = odom.getPosition();
+    this->_drone_x = pos.getX();
+    this->_drone_y = pos.getY();
+    this->_drone_z = pos.getZ();
 }
 
 
@@ -79,12 +88,31 @@ void PeopleSearch::send_coordinate(float x, float y, float z, float yaw_deg) {
     }
 }
 
-void PeopleSearch::run() {
-    float north, east, down, yaw, x, y, z;
+bool PeopleSearch::check_valid_person() {
+    if (_valid_person_found.load()){
+        std::lock_guard<std::mutex> lock(this->_person_mutex);
+            // get current drone position
+            std::cout << "Interrupting search! Flying to detected person at ("
+                    << _person_x << ", " << _person_y << ", " << _person_z << ")" << std::endl;
 
-    bool valid_person_found = true;
-    float person_x = 15.0f;
-    float person_y = 11.0f;
+            move_and_wait(_person_x + _drone_x, _person_y + _drone_y, 4.0f, 0.0f, 5);
+
+            auto request = this->_mission_client->new_msg();
+            request.content.setLand();
+            request.content.getLand();
+            auto result = request.send();
+            auto response = result.value().content;
+            if (response.getCode() != 200) {
+                this->_logger.error("Landing failed with code %d and message %s",
+                                    response.getCode(), response.getMessage());
+            }
+            return true; // Exit search after landing
+    }
+    return false;
+}   
+
+void PeopleSearch::run() {
+    float north, east, down, yaw, x, y, z, c_x, c_y;
 
     // Retrieve the GPS target location argument
     auto gps_target = this->get_argument<std::vector<std::string>>("--gps-target-location");
@@ -123,7 +151,7 @@ void PeopleSearch::run() {
     // Lawn-mower pattern search starting from center
     const float length = 20.0f;   // search box size (meters)
     const float step   = 4.0f;   // spacing between lines
-    const int   wait   = 8;       // wait between moves (seconds)
+    const int   wait   = 4;     // wait between moves (seconds)
 
     bool forward = true;
 
@@ -134,54 +162,54 @@ void PeopleSearch::run() {
         float offset_up   = i * step;
         float offset_down = -i * step;
 
-            if (_valid_person_found.load()) {
-            std::lock_guard<std::mutex> lock(this->_person_mutex);
-            std::cout << "Interrupting search! Flying to detected person at ("
-                    << _person_x << ", " << _person_y << ", " << _person_z << ")" << std::endl;
-
-            move_and_wait(_person_x, _person_y, _person_z, 0.0f, 5);
-
-            auto request = this->_mission_client->new_msg();
-            request.content.setLand();
-            request.content.getLand();
-            auto result = request.send();
-            auto response = result.value().content;
-            if (response.getCode() != 200) {
-                this->_logger.error("Landing failed with code %d and message %s",
-                                    response.getCode(), response.getMessage());
-            }
-            return; // Exit search after landing
-        }
+        check_valid_person();
 
         // Skip the first "down" iteration since i=0 is the center line
         if (i == 0) {
             // Center line
             if (forward) {
+                std::cout << "Moving x from " << (x - length / 2) << " to " << (x + length / 2) << " at y=" << (y + offset_up) << std::endl;
                 move_and_wait(x - length / 2, y + offset_up, z, 0.0f, wait);
+                check_valid_person();
                 move_and_wait(x + length / 2, y + offset_up, z, 0.0f, wait);
             } else {
+                std::cout << "Moving x from " << (x + length / 2) << " to " << (x - length / 2) << " at y=" << (y + offset_up) << std::endl;
                 move_and_wait(x + length / 2, y + offset_up, z, 0.0f, wait);
+                check_valid_person();
                 move_and_wait(x - length / 2, y + offset_up, z, 0.0f, wait);
+                check_valid_person();
             }
             forward = !forward;
         } else {
             // Upper line
             if (forward) {
+                std::cout << "Moving x from " << (x - length / 2) << " to " << (x + length / 2) << " at y=" << (y + offset_up) << std::endl;
                 move_and_wait(x - length / 2, y + offset_up, z, 0.0f, wait);
+                check_valid_person();
                 move_and_wait(x + length / 2, y + offset_up, z, 0.0f, wait);
+                check_valid_person();
             } else {
+                std::cout << "Moving x from " << (x + length / 2) << " to " << (x - length / 2) << " at y=" << (y + offset_up) << std::endl;
                 move_and_wait(x + length / 2, y + offset_up, z, 0.0f, wait);
+                check_valid_person();
                 move_and_wait(x - length / 2, y + offset_up, z, 0.0f, wait);
+                check_valid_person();
             }
             forward = !forward;
 
             // Lower line
             if (forward) {
+                std::cout << "Moving x from " << (x - length / 2) << " to " << (x + length / 2) << " at y=" << (y + offset_down) << std::endl;
                 move_and_wait(x - length / 2, y + offset_down, z, 0.0f, wait);
+                check_valid_person();
                 move_and_wait(x + length / 2, y + offset_down, z, 0.0f, wait);
+                check_valid_person();
             } else {
+                std::cout << "Moving x from " << (x + length / 2) << " to " << (x - length / 2) << " at y=" << (y + offset_down) << std::endl;
                 move_and_wait(x + length / 2, y + offset_down, z, 0.0f, wait);
+                check_valid_person();
                 move_and_wait(x - length / 2, y + offset_down, z, 0.0f, wait);
+                check_valid_person();
             }
             forward = !forward;
         }
