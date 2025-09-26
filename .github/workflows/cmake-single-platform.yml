@@ -2,9 +2,9 @@ name: Build Forerunner2
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "Cmake-compilation" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "Cmake-compilation" ]
 
 jobs:
   build:
@@ -50,7 +50,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: build
-        key: ${{ runner.os }}-main-${{ hashFiles('CMakeLists.txt', '*/CMakeLists.txt') }}-v2
+        key: ${{ runner.os }}-main-${{ hashFiles('CMakeLists.txt', '*/CMakeLists.txt', '**/*.cpp', '**/*.hpp', '**/*.h') }}-v2
         lookup-only: true
 
     - name: Cache Status Report
@@ -169,7 +169,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: build
-        key: ${{ runner.os }}-main-${{ hashFiles('CMakeLists.txt', '*/CMakeLists.txt') }}-v2
+        key: ${{ runner.os }}-main-${{ hashFiles('CMakeLists.txt', '*/CMakeLists.txt', '**/*.cpp', '**/*.hpp', '**/*.h') }}-v2
 
     - name: Build main project
       if: steps.cache-main.outputs.cache-hit != 'true'
