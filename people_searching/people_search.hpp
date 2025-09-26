@@ -31,6 +31,8 @@ public:
 
     void move_line_segmented(float x_start, float y, float length, float z, bool forward, float yaw, int wait);
 
+    void handle_llm_result(const Core::IncomingMessage<LLMResult>& msg);
+
     // Main loop: read coordinates from user input
     void run() override;
 };
