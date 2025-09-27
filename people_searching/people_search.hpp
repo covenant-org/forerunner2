@@ -39,6 +39,10 @@ public:
 
     void get_position(const Core::IncomingMessage<Odometry>& msg);
 
+    bool move_and_check(float x, float y, float z, float yaw_deg, int wait_sec);
+
+    void fly_scan_line(float x_center, float y_offset, float z, float length, bool forward, int wait);
+
     // Main loop: read coordinates from user input
     void run() override;
 };

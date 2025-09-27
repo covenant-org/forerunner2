@@ -67,6 +67,28 @@ void PeopleSearch::move_line_segmented(float x_start, float y, float length, flo
     sleep(wait);
 }
 
+bool PeopleSearch::move_and_check(float x, float y, float z, float yaw_deg, int wait_sec) {
+    this->send_coordinate(x, y, z, yaw_deg);
+    std::this_thread::sleep_for(std::chrono::seconds(wait_sec));
+    return check_valid_person();
+}
+
+void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z, float length, bool forward, int wait) {
+    float x_start = x_center - length / 2;
+    float x_end   = x_center + length / 2;
+
+    if (forward) {
+        std::cout << "Moving x from " << x_start << " to " << x_end << " at y=" << y_offset << std::endl;
+        if (move_and_check(x_start, y_offset, z, 0.0f, wait)) return;
+        if (move_and_check(x_end, y_offset, z, 0.0f, wait)) return;
+    } else {
+        std::cout << "Moving x from " << x_end << " to " << x_start << " at y=" << y_offset << std::endl;
+        if (move_and_check(x_end, y_offset, z, 0.0f, wait)) return;
+        if (move_and_check(x_start, y_offset, z, 0.0f, wait)) return;
+    }
+}
+
+
 void PeopleSearch::send_coordinate(float x, float y, float z, float yaw_deg) {
     auto request = _controller_client->new_msg();
     auto waypoint = request.content.initWaypoint();
@@ -158,62 +180,18 @@ void PeopleSearch::run() {
     std::cout << "Starting search pattern..." << std::endl;
     // Start at center line, expand outwards
     for (int i = 0; i <= length / (2 * step); i++) {
-    // Current Y offset (positive and negative from center)
-        float offset_up   = i * step;
-        float offset_down = -i * step;
+    float offset_up   = y + i * step;
+    float offset_down = y - i * step;
 
-        check_valid_person();
+    fly_scan_line(x, offset_up, z, length, forward, wait);
+    forward = !forward;
 
-        // Skip the first "down" iteration since i=0 is the center line
-        if (i == 0) {
-            // Center line
-            if (forward) {
-                std::cout << "Moving x from " << (x - length / 2) << " to " << (x + length / 2) << " at y=" << (y + offset_up) << std::endl;
-                move_and_wait(x - length / 2, y + offset_up, z, 0.0f, wait);
-                check_valid_person();
-                move_and_wait(x + length / 2, y + offset_up, z, 0.0f, wait);
-            } else {
-                std::cout << "Moving x from " << (x + length / 2) << " to " << (x - length / 2) << " at y=" << (y + offset_up) << std::endl;
-                move_and_wait(x + length / 2, y + offset_up, z, 0.0f, wait);
-                check_valid_person();
-                move_and_wait(x - length / 2, y + offset_up, z, 0.0f, wait);
-                check_valid_person();
-            }
-            forward = !forward;
-        } else {
-            // Upper line
-            if (forward) {
-                std::cout << "Moving x from " << (x - length / 2) << " to " << (x + length / 2) << " at y=" << (y + offset_up) << std::endl;
-                move_and_wait(x - length / 2, y + offset_up, z, 0.0f, wait);
-                check_valid_person();
-                move_and_wait(x + length / 2, y + offset_up, z, 0.0f, wait);
-                check_valid_person();
-            } else {
-                std::cout << "Moving x from " << (x + length / 2) << " to " << (x - length / 2) << " at y=" << (y + offset_up) << std::endl;
-                move_and_wait(x + length / 2, y + offset_up, z, 0.0f, wait);
-                check_valid_person();
-                move_and_wait(x - length / 2, y + offset_up, z, 0.0f, wait);
-                check_valid_person();
-            }
-            forward = !forward;
-
-            // Lower line
-            if (forward) {
-                std::cout << "Moving x from " << (x - length / 2) << " to " << (x + length / 2) << " at y=" << (y + offset_down) << std::endl;
-                move_and_wait(x - length / 2, y + offset_down, z, 0.0f, wait);
-                check_valid_person();
-                move_and_wait(x + length / 2, y + offset_down, z, 0.0f, wait);
-                check_valid_person();
-            } else {
-                std::cout << "Moving x from " << (x + length / 2) << " to " << (x - length / 2) << " at y=" << (y + offset_down) << std::endl;
-                move_and_wait(x + length / 2, y + offset_down, z, 0.0f, wait);
-                check_valid_person();
-                move_and_wait(x - length / 2, y + offset_down, z, 0.0f, wait);
-                check_valid_person();
-            }
-            forward = !forward;
-        }
+    if (i > 0) { // skip duplicate center
+        fly_scan_line(x, offset_down, z, length, forward, wait);
+        forward = !forward;
     }
+}
+
 
     std::cout << "Search pattern completed." << std::endl;
 
