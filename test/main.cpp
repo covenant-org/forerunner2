@@ -5,7 +5,7 @@
 #include <iostream>
 
 int main() {
-  auto fd = open("registry_request.bin", O_WRONLY | O_CREAT | O_TRUNC);
+  auto fd = open("registry_request.bin", O_WRONLY | O_CREAT | O_TRUNC, 0644);
   if (!fd) {
     std::cerr << "Failed to open file for writing." << std::endl;
     return 1;
