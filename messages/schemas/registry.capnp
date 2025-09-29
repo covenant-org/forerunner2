@@ -4,6 +4,7 @@ enum RequestType {
   addNode @0;
   queryNode @1;
   addHost @2;
+  heartbeat @3;
 }
 
 struct Interface {
@@ -19,6 +20,7 @@ struct RegistryRequest {
   union {
     addNode @2 :Void;
     queryNode @3 :Void;
+    heartbeat @7 :Void;
     addHost :group{
       address @4 :Text;
       port    @5 :UInt32;
@@ -40,6 +42,7 @@ struct RegistryResponse {
 enum RegistryNotificationType {
   nodeAdded @0;
   nodeDeleted @1;
+  heartbeat @2;
 }
 
 struct RegistryNotification {
@@ -53,5 +56,6 @@ struct RegistryNotification {
       path @3 :Text;
       port @4 :UInt32;
     }
+    heartbeat @5 :Void;
   }
 }
