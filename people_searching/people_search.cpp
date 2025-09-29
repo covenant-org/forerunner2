@@ -1,6 +1,7 @@
 #include "argument_parser.hpp"
 #include "people_search.hpp"
 #include <chrono>
+#include <cmath>
 #include <thread>
 
 PeopleSearch::PeopleSearch(Core::ArgumentParser parser) : Core::Vertex(parser) {
@@ -45,28 +46,6 @@ void PeopleSearch::move_and_wait(float x, float y, float z, float yaw_deg, int w
     std::this_thread::sleep_for(std::chrono::seconds(wait_sec));
 }
 
-void PeopleSearch::move_line_segmented(float x_start, float y, float length, float z, bool forward, float yaw, int wait) {
-    float dir = forward ? 1.0f : -1.0f;
-
-    // Segment lengths
-    float step = length / 3.0f;
-
-    // 1/3 point
-    float x1 = x_start + dir * step;
-    this->send_coordinate(x1, y, z, yaw);
-    sleep(wait);
-
-    // 2/3 point
-    float x2 = x_start + dir * 2 * step;
-    this->send_coordinate(x2, y, z, yaw);
-    sleep(wait);
-
-    // End point
-    float x3 = x_start + dir * 3 * step;
-    this->send_coordinate(x3, y, z, yaw);
-    sleep(wait);
-}
-
 bool PeopleSearch::move_and_check(float x, float y, float z, float yaw_deg, int wait_sec) {
     this->send_coordinate(x, y, z, yaw_deg);
     std::this_thread::sleep_for(std::chrono::seconds(wait_sec));
@@ -77,14 +56,24 @@ void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z, float 
     float x_start = x_center - length / 2;
     float x_end   = x_center + length / 2;
 
+    int n_div = std::ceil(abs(x_end - x_start) / (4));
+
     if (forward) {
         std::cout << "Moving x from " << x_start << " to " << x_end << " at y=" << y_offset << std::endl;
         if (move_and_check(x_start, y_offset, z, 0.0f, wait)) return;
-        if (move_and_check(x_end, y_offset, z, 0.0f, wait)) return;
+        // if (move_and_check(x_end, y_offset, z, 0.0f, wait)) return;
+        for (int i = 0; i < n_div; i++) {
+            float x_mid = x_start + (i + 1) * (length / n_div);
+            if (move_and_check(x_mid, y_offset, z, 0.0f, wait)) return;
+        }
     } else {
         std::cout << "Moving x from " << x_end << " to " << x_start << " at y=" << y_offset << std::endl;
         if (move_and_check(x_end, y_offset, z, 0.0f, wait)) return;
-        if (move_and_check(x_start, y_offset, z, 0.0f, wait)) return;
+        for (int i = 0; i < n_div; i++) {
+            float x_mid = x_end - (i + 1) * (length / n_div);
+            if (move_and_check(x_mid, y_offset, z, 0.0f, wait)) return;
+        }
+        // if (move_and_check(x_start, y_offset, z, 0.0f, wait)) return;
     }
 }
 
@@ -134,7 +123,7 @@ bool PeopleSearch::check_valid_person() {
 }   
 
 void PeopleSearch::run() {
-    float north, east, down, yaw, x, y, z, c_x, c_y;
+    float x, y, z;
 
     // Retrieve the GPS target location argument
     auto gps_target = this->get_argument<std::vector<std::string>>("--gps-target-location");
@@ -180,16 +169,16 @@ void PeopleSearch::run() {
     std::cout << "Starting search pattern..." << std::endl;
     // Start at center line, expand outwards
     for (int i = 0; i <= length / (2 * step); i++) {
-    float offset_up   = y + i * step;
-    float offset_down = y - i * step;
+        float offset_up   = y + i * step;
+        float offset_down = y - i * step;
 
-    fly_scan_line(x, offset_up, z, length, forward, wait);
-    forward = !forward;
-
-    if (i > 0) { // skip duplicate center
-        fly_scan_line(x, offset_down, z, length, forward, wait);
+        fly_scan_line(x, offset_up, z, length, forward, wait);
         forward = !forward;
-    }
+
+        if (i > 0) { // skip duplicate center
+            fly_scan_line(x, offset_down, z, length, forward, wait);
+            forward = !forward;
+        }
 }
 
 
