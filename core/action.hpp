@@ -2,6 +2,7 @@
 #define ACTION_HPP
 
 #include "message.hpp"
+#include "subscriber.hpp"
 #include "utils.hpp"
 #include <capnp/common.h>
 #include <capnp/generated-header-support.h>
@@ -24,7 +25,7 @@ namespace Core {
 using RequestID = std::string;
 
 template <typename T, typename K>
-class ActionServer {
+class ActionServer : public ISender {
  private:
   std::string _topic;
   std::uint32_t _port;
@@ -98,6 +99,20 @@ class ActionServer {
     }
   }
 
+  uint32_t publish(::capnp::MallocMessageBuilder& builder) {}
+
+  uint32_t reset_connection(const std::string& uri) {
+    char addr[20];
+    sprintf(addr, "tcp://0.0.0.0:%d", _port);
+    _router.unbind(addr);
+    auto success = this->notify_registry(uri);
+    if (!success) {
+      throw std::runtime_error("Error while creating action server");
+    }
+    sprintf(addr, "tcp://0.0.0.0:%d", _port);
+    _router.bind(addr);
+  }
+
   void setup(const std::string& uri) {
     auto success = this->notify_registry(uri);
     if (!success) {
@@ -135,9 +150,10 @@ class ActionRequest {
 };
 
 template <typename T, typename K>
-class ActionClient : public ITransaction<K> {
+class ActionClient : public ITransaction<K>, public ISubscriber {
  private:
   std::string _topic;
+  std::string _uri;
   uint32_t _port;
   zmq::context_t _context;
   zmq::socket_t _socket;
@@ -157,6 +173,7 @@ class ActionClient : public ITransaction<K> {
         _socket(_context, zmq::socket_type::dealer) {}
 
   void setup(const std::string& uri) {
+    this->_uri = uri;
     auto success = this->query_registry(uri);
     if (!success) {
       throw std::runtime_error("error with registry");
@@ -168,6 +185,16 @@ class ActionClient : public ITransaction<K> {
   }
 
   ActionRequest<T, K> new_msg() { return ActionRequest<T, K>(this); }
+
+  void stop() {}
+
+  uint32_t reset_connection() {
+    char buffer[30];
+    sprintf(buffer, "tcp://127.0.0.1:%d", _port);
+    _socket.disconnect(buffer);
+    this->setup(this->_uri);
+    return 0;
+  }
 
   std::optional<IncomingMessage<K>> send(
       ::capnp::MallocMessageBuilder& builder) {
