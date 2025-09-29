@@ -3,6 +3,7 @@ project(test)
 
 find_package(cppzmq REQUIRED)
 find_package(capnp_schemas REQUIRED)
+find_package(cppzmq REQUIRED)
 
 add_executable(test main.cpp)
 
@@ -23,5 +24,25 @@ target_link_libraries(remote PRIVATE
     cppzmq 
     capnp 
     capnp_schemas 
+    kj
+)
+
+add_executable(chatter chatter.cpp)
+
+target_link_libraries(chatter PRIVATE
+    core
+    cppzmq
+    capnp_schemas
+    capnp
+    kj
+)
+
+add_executable(action action.cpp)
+
+target_link_libraries(action PRIVATE
+    core
+    cppzmq
+    capnp_schemas
+    capnp
     kj
 )

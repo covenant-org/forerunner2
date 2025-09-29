@@ -5,6 +5,7 @@
 #include "logger.hpp"
 #include "message.hpp"
 #include <arpa/inet.h>
+#include <chrono>
 #include <cmath>
 #include <condition_variable>
 #include <cstdint>
@@ -21,6 +22,7 @@
 #include <stdexcept>
 #include <string>
 #include <sys/socket.h>
+#include <thread>
 #include <zmq.hpp>
 
 namespace Core {
@@ -28,6 +30,31 @@ namespace Core {
 typedef uint32_t Ip;
 typedef uint32_t Network;
 typedef std::map<Network, Ip> InterfaceMap;
+class RateKeeper {
+ public:
+  std::chrono::time_point<std::chrono::system_clock> last;
+  uint32_t rate;
+
+  RateKeeper(uint32_t rate) {
+    this->rate = rate;
+    last = std::chrono::high_resolution_clock::now();
+  }
+
+  void keep() {
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    auto duration = currentTime - last;
+    long long deltaTimeMS =
+        std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+    auto period = 1000 / rate;
+    if (deltaTimeMS > period) {
+      last = std::chrono::high_resolution_clock::now();
+      return;
+    }
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds(period - deltaTimeMS));
+    last = std::chrono::high_resolution_clock::now();
+  }
+};
 
 class WorkLock {
  private:

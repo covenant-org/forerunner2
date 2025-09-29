@@ -10,6 +10,7 @@ class Vertex;
 
 class ArgumentParser {
   friend class Vertex;
+  friend class BaseVertex;
 
  private:
   std::shared_ptr<argparse::ArgumentParser> _program;
