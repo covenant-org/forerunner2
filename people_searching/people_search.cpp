@@ -71,6 +71,7 @@ void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z, float 
             }
         } else if (movement_type == "v") {
             velocity_position_control(x_start, y_offset, z, 0.0f);
+            velocity_position_control(x_end, y_offset, z, 0.0f);
         }
     } else {
         std::cout << "Moving x from " << x_end << " to " << x_start << " at y=" << y_offset << std::endl;
@@ -83,6 +84,7 @@ void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z, float 
             // if (move_and_check(x_start, y_offset, z, 0.0f, wait)) return;
         } else if (movement_type == "v") {
             velocity_position_control(x_end, y_offset, z, 0.0f);
+            velocity_position_control(x_start, y_offset, z, 0.0f);
         }
     }
 }
@@ -96,14 +98,35 @@ void PeopleSearch::velocity_position_control(float x, float y, float z, float ya
                                   (y - _drone_y) * (y - _drone_y) +
                                   (z - _drone_z) * (z - _drone_z));
 
+    float vx = 0.0f, vy = 0.0f, vz = 0.0f;
+    float _vx_prev = 0.0f, _vy_prev = 0.0f, _vz_prev = 0.0f;
+
+    // acceleration limits (m/s^2)
+    float ax_max = 0.5f;
+    float ay_max = 0.5f;
+    float az_max = 0.5f;
+
+    float alpha = 0.2f; // smoothing factor 0 < alpha < 1
+
     while (total_error > threshold) {
         float error_x = x - _drone_x;
         float error_y = y - _drone_y;
         float error_z = z - _drone_z;
 
-        float vx = kp * error_x;
-        float vy = kp * error_y;
-        float vz = kp * error_z;
+        // float vx = kp * error_x;
+        // float vy = kp * error_y;
+        // float vz = kp * error_z;
+        float vx_target = max_vel * std::tanh(kp * error_x / max_vel);
+        float vy_target = max_vel * std::tanh(kp * error_y / max_vel);
+        float vz_target = max_vel * std::tanh(kp * error_z / max_vel);
+
+        vx = alpha * vx_target + (1 - alpha) * _vx_prev;
+        vy = alpha * vy_target + (1 - alpha) * _vy_prev;
+        vz = alpha * vz_target + (1 - alpha) * _vz_prev;
+
+        _vx_prev = vx;
+        _vy_prev = vy;
+        _vz_prev = vz;
 
         float vel_mag = std::sqrt(vx * vx + vy * vy + vz * vz);
         if (vel_mag > max_vel) {

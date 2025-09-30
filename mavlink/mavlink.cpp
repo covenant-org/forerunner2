@@ -465,15 +465,15 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
       float yaw  = velocity.getR();   // Yaw angle (deg)
 
       // Send pre-setpoint (before starting Offboard)
-      mavsdk::Offboard::VelocityNedYaw vel{};
-      vel.north_m_s = vx;
-      vel.east_m_s  = vy;
+      mavsdk::Offboard::VelocityBodyYawspeed vel{};
+      vel.forward_m_s = vx;
+      vel.right_m_s  = vy;
       vel.down_m_s  = vz;
-      vel.yaw_deg   = yaw;
+      vel.yawspeed_deg_s = yaw;
 
-      const auto pre_set_res = this->_offboard->set_velocity_ned(vel);
+      const auto pre_set_res = this->_offboard->set_velocity_body(vel);
       if (pre_set_res != mavsdk::Offboard::Result::Success) {
-          this->_logger.warn("pre-start set_velocity_ned failed: %d",
+          this->_logger.warn("pre-start set_velocity_body failed: %d",
                             static_cast<int>(pre_set_res));
       }
 
@@ -488,9 +488,9 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
       }
 
       // Send the actual setpoint again after starting
-      const auto set_res = this->_offboard->set_velocity_ned(vel);
+      const auto set_res = this->_offboard->set_velocity_body(vel);
       if (set_res != mavsdk::Offboard::Result::Success) {
-          this->_logger.error("set_velocity_ned after start failed: %d",
+          this->_logger.error("set_velocity_body after start failed: %d",
                               static_cast<int>(set_res));
           res.setCode(500);
           res.setMessage("Failed to set velocity after starting offboard");
