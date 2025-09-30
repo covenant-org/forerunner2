@@ -5,6 +5,7 @@
 #include <array>
 #include <cmath>
 #include <mutex>
+#include <algorithm>
 
 // Simple conversion lat/lon/alt -> NED relative to home 
 static void latlon_to_ned_simple(double lat, double lon, double alt,
@@ -152,47 +153,82 @@ void Commander::run() {
             else if (args[0] == "global") {
               // usage: waypoint global <lat> <lon> <alt> [<yaw>]
               // Support '~' to keep previous values
-              if (!this->_home.set) {
-                this->_logger.error("Home not set.");
-              } else {
-                double lat = this->_last_global.pos.lat;
-                double lon = this->_last_global.pos.lon;
-                double alt = this->_last_global.pos.alt;
-                double yaw = this->_last_global.yaw;
-                if (args.size() > 1 && args[1] != "~") lat = coords[0];
-                if (args.size() > 2 && args[2] != "~") lon = coords[1];
-                if (args.size() > 3 && args[3] != "~") alt = coords[2];
-                if (args.size() > 4 && args[4] != "~") yaw = coords[3];
+              double north, east, down;
+              bool conversion_success = false;
+              
+              {
+                std::lock_guard<std::mutex> lk(this->_home_mutex);
+                if (!this->_home.set) {
+                  this->_logger.error("Home not set.");
+                } else {
+                  double lat = this->_last_global.pos.lat;
+                  double lon = this->_last_global.pos.lon;
+                  double alt = this->_last_global.pos.alt;
+                  double yaw = this->_last_global.yaw;
+                  if (args.size() > 1 && args[1] != "~") lat = coords[0];
+                  if (args.size() > 2 && args[2] != "~") lon = coords[1];
+                  if (args.size() > 3 && args[3] != "~") alt = coords[2];
+                  if (args.size() > 4 && args[4] != "~") yaw = coords[3];
 
-                // Update last used values
-                this->_last_global.pos.lat = lat;
-                this->_last_global.pos.lon = lon;
-                this->_last_global.pos.alt = alt;
-                this->_last_global.yaw = yaw;
+                  // Update last used values
+                  this->_last_global.pos.lat = lat;
+                  this->_last_global.pos.lon = lon;
+                  this->_last_global.pos.alt = alt;
+                  this->_last_global.yaw = yaw;
 
-                double north, east, down;
-                latlon_to_ned_simple(lat, lon, alt, this->_home.pos.lat, this->_home.pos.lon, this->_home.pos.alt, north, east, down);
-
+                  // Calculate conversion with mutex protection
+                  latlon_to_ned_simple(lat, lon, alt, this->_home.pos.lat, this->_home.pos.lon, this->_home.pos.alt, north, east, down);
+                  conversion_success = true;
+                }
+              }
+              
+              if (conversion_success) {
                 // Forward as local waypoint
                 auto cmd_req = this->_controller_client->new_msg();
                 auto wp = cmd_req.content.initWaypoint();
                 wp.setX(static_cast<float>(north));
                 wp.setY(static_cast<float>(east));
                 wp.setZ(static_cast<float>(down));
-                wp.setR(static_cast<float>(yaw));
+                wp.setR(static_cast<float>(this->_last_global.yaw));
 
                 auto cmd_res = cmd_req.send();
                 auto resp = cmd_res.value().content;
                 if (resp.getCode() != 200) {
                   this->_logger.error("Controller refused waypoint: %s", resp.getMessage());
                 } else {
-                  this->_logger.debug("Global -> NED: north=%f east=%f down=%f yaw=%f", north, east, down, yaw);
+                  this->_logger.debug("Global -> NED: north=%f east=%f down=%f yaw=%f", north, east, down, this->_last_global.yaw);
                 }
               }
             }
           } else {
-            
+            this->_logger.warn("Usage: waypoint [local|global] <coords>");
           }
+    } else if (command == "offboard") {
+      // Usage: offboard [on|off|enable|disable|true|false|1|0]
+      bool enable = true; // default to enable
+      if (!args.empty()) {
+        std::string arg = args[0];
+        std::transform(arg.begin(), arg.end(), arg.begin(), ::tolower);
+        if (arg == "off" || arg == "disable" || arg == "false" || arg == "0") {
+          enable = false;
+        } else if (arg == "on" || arg == "enable" || arg == "true" || arg == "1") {
+          enable = true;
+        } else {
+          this->_logger.warn("Invalid offboard argument '%s', using default 'on'", args[0].c_str());
+        }
+      }
+      
+      auto cmd_req = this->_controller_client->new_msg();
+      auto offboard_cmd = cmd_req.content.initOffboard();
+      offboard_cmd.setEnable(enable);
+      
+      auto cmd_res = cmd_req.send();
+      auto resp = cmd_res.value().content;
+      if (resp.getCode() != 200) {
+        this->_logger.error("Offboard command failed: %s", resp.getMessage());
+      } else {
+        this->_logger.info("Offboard mode %s", enable ? "enabled" : "disabled");
+      }
     } else {
       this->_logger.warn("Unknown command: %s", command.c_str());
     }

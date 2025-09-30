@@ -30,13 +30,13 @@ struct Telemetry {
   armed   @3 :Bool;
 }
 
-
 struct Odometry {
   position @0 :Position;
   velocity @1 :Position;
   angular  @2 :Position;
   q        @3 :Quartenion;
   heading  @4 :Float32;
+  gps      @5 :GPS;
 }
 
 struct HomePosition {

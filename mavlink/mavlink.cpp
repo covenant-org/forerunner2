@@ -126,41 +126,21 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
                           waypoint.getX(), waypoint.getY(), waypoint.getZ(),
                           waypoint.getR());
 
-      // Try to set an initial setpoint (recommended before starting Offboard)
-      const auto pre_set_res = this->_offboard->set_position_ned({
-          .north_m = waypoint.getX(),
-          .east_m = waypoint.getY(),
-          .down_m = waypoint.getZ(),
-          .yaw_deg = waypoint.getR()});
-      if (pre_set_res != mavsdk::Offboard::Result::Success) {
-        this->_logger.warn("pre-start set_position_ned returned %d",
-                           static_cast<int>(pre_set_res));
-        // continue and try to start Offboard anyway
-      }
-
-      // TODO: Agregar un modo en commander para cambiar de modo (Cambiar manualmente a offboard)
-      const auto start_res = this->_offboard->start();
-      if (start_res != mavsdk::Offboard::Result::Success) {
-        this->_logger.error("Failed to start Offboard: %d",
-                            static_cast<int>(start_res));
-        res.setCode(500);
-        res.setMessage("Failed to start offboard");
-        return;
-      }
-
-      // Ensure setpoint is applied after Offboard is started
+      // Set the position setpoint - offboard mode must be started separately by client
       const auto set_res = this->_offboard->set_position_ned({
           .north_m = waypoint.getX(),
           .east_m = waypoint.getY(),
           .down_m = waypoint.getZ(),
           .yaw_deg = waypoint.getR()});
       if (set_res != mavsdk::Offboard::Result::Success) {
-        this->_logger.error("set_position_ned after start failed: %d",
+        this->_logger.error("set_position_ned failed: %d",
                             static_cast<int>(set_res));
         res.setCode(500);
-        res.setMessage("Failed to set position after starting offboard");
+        res.setMessage("Failed to set position setpoint");
         return;
       }
+      
+      this->_logger.debug("Waypoint setpoint set successfully");
       return;
     }
     default:
