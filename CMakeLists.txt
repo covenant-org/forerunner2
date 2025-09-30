@@ -19,6 +19,8 @@ if(NOT DEFINED ZED_FOUND OR NOT ZED_FOUND)
   list(APPEND EXCLUDED_SUBDIRS "zed")
 endif()
 
+add_subdirectory(messages)
+
 add_subdirectory(core)
 if(DEFINED ENV{SUBDIR})
     set(SUBDIR $ENV{SUBDIR})

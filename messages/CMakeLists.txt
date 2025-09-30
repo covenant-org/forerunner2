@@ -31,8 +31,13 @@ foreach(file ${CAPNP_FILES})
     list(APPEND CAPNP_HEADERS ${GENERATED_DIR}/${file_name}.h)
 endforeach()
 
+
 # create a library from the generated files
-add_library(capnp_schemas STATIC ${CAPNP_SOURCES} ${CAPNP_HEADERS})
+add_library(capnp_schemas STATIC ${CAPNP_SOURCES})
+target_include_directories(capnp_schemas PUBLIC
+    $<BUILD_INTERFACE:${GENERATED_DIR}>
+    $<INSTALL_INTERFACE:include/capnp_schemas>
+)
 
 install(TARGETS capnp_schemas
     EXPORT capnp_schemasTargets

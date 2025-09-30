@@ -31,6 +31,10 @@
   },
   "postCreateCommand": [
     "nvidia-smi"
+    // "./build_vendor.sh", 
+    // "cd messages && cmake -Bbuild && cd build && cmake --build . -j$(nproc) && sudo cmake --install .",
+    // "cd .. && cmake -Bbuild && cd build && cmake --build . -j$(nproc) && sudo cmake --install .",
+    // "cd /usr/local/share/px4 && PX4_GZ_WORLD=imav_indoor make px4_sitl gz_x500_lidar_down"
   ],
   "customizations": {
     "vscode": {
