@@ -29,6 +29,10 @@ public:
     // Send a single coordinate (NED) to the drone
     void send_coordinate(float north, float east, float up, float yaw_deg = 0.0f);
 
+    void send_velocity(float vx, float vy, float vz, float yaw_rate);
+
+    void velocity_position_control(float x, float y, float z, float yaw_rate);
+
     void move_and_wait(float x, float y, float z, float yaw_deg, int wait_sec);
 
     void handle_llm_result(const Core::IncomingMessage<LLMResult>& msg);

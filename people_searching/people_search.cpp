@@ -40,7 +40,6 @@ void PeopleSearch::get_position(const Core::IncomingMessage<Odometry>& msg) {
     this->_drone_z = pos.getZ();
 }
 
-
 void PeopleSearch::move_and_wait(float x, float y, float z, float yaw_deg, int wait_sec) {
     this->send_coordinate(x, y, z, yaw_deg);
     std::this_thread::sleep_for(std::chrono::seconds(wait_sec));
@@ -58,22 +57,90 @@ void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z, float 
 
     int n_div = std::ceil(abs(x_end - x_start) / (4));
 
+    auto movement_type = this->get_argument<std::string>("--movement-type");
+
     if (forward) {
         std::cout << "Moving x from " << x_start << " to " << x_end << " at y=" << y_offset << std::endl;
-        if (move_and_check(x_start, y_offset, z, 0.0f, wait)) return;
-        // if (move_and_check(x_end, y_offset, z, 0.0f, wait)) return;
-        for (int i = 0; i < n_div; i++) {
-            float x_mid = x_start + (i + 1) * (length / n_div);
-            if (move_and_check(x_mid, y_offset, z, 0.0f, wait)) return;
+        
+        if (movement_type == "p") {
+            if (move_and_check(x_start, y_offset, z, 0.0f, wait)) return;
+            // if (move_and_check(x_end, y_offset, z, 0.0f, wait)) return;
+            for (int i = 0; i < n_div; i++) {
+                float x_mid = x_start + (i + 1) * (length / n_div);
+                if (move_and_check(x_mid, y_offset, z, 0.0f, wait)) return;
+            }
+        } else if (movement_type == "v") {
+            velocity_position_control(x_start, y_offset, z, 0.0f);
         }
     } else {
         std::cout << "Moving x from " << x_end << " to " << x_start << " at y=" << y_offset << std::endl;
-        if (move_and_check(x_end, y_offset, z, 0.0f, wait)) return;
-        for (int i = 0; i < n_div; i++) {
-            float x_mid = x_end - (i + 1) * (length / n_div);
-            if (move_and_check(x_mid, y_offset, z, 0.0f, wait)) return;
+        if (movement_type == "p") {
+            if (move_and_check(x_end, y_offset, z, 0.0f, wait)) return;
+            for (int i = 0; i < n_div; i++) {
+                float x_mid = x_end - (i + 1) * (length / n_div);
+                if (move_and_check(x_mid, y_offset, z, 0.0f, wait)) return;
+            }
+            // if (move_and_check(x_start, y_offset, z, 0.0f, wait)) return;
+        } else if (movement_type == "v") {
+            velocity_position_control(x_end, y_offset, z, 0.0f);
         }
-        // if (move_and_check(x_start, y_offset, z, 0.0f, wait)) return;
+    }
+}
+
+void PeopleSearch::velocity_position_control(float x, float y, float z, float yaw_rate) {
+    float kp = 0.5f; // Proportional gain for position control
+    float threshold = 0.2f; // Position error threshold to consider as "reached"
+    // Limit maximum velocity
+    float max_vel = 2.0f; // m/s
+    float total_error = std::sqrt((x - _drone_x) * (x - _drone_x) +
+                                  (y - _drone_y) * (y - _drone_y) +
+                                  (z - _drone_z) * (z - _drone_z));
+
+    while (total_error > threshold) {
+        float error_x = x - _drone_x;
+        float error_y = y - _drone_y;
+        float error_z = z - _drone_z;
+
+        float vx = kp * error_x;
+        float vy = kp * error_y;
+        float vz = kp * error_z;
+
+        float vel_mag = std::sqrt(vx * vx + vy * vy + vz * vz);
+        if (vel_mag > max_vel) {
+            vx = (vx / vel_mag) * max_vel;
+            vy = (vy / vel_mag) * max_vel;
+            vz = (vz / vel_mag) * max_vel;
+        }
+
+        send_velocity(vx, vy, vz, yaw_rate);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+        total_error = std::sqrt((x - _drone_x) * (x - _drone_x) +
+                                (y - _drone_y) * (y - _drone_y) +
+                                (z - _drone_z) * (z - _drone_z));
+    }
+    send_velocity(0.0f, 0.0f, 0.0f, 0.0f); // Stop movement
+
+    }
+
+void PeopleSearch::send_velocity(float vx, float vy, float vz, float yaw_rate) {
+    auto request = _controller_client->new_msg();
+    auto velocity = request.content.initVelocity();
+    velocity.setX(vx);
+    velocity.setY(vy);
+    velocity.setZ(vz);
+    velocity.setR(yaw_rate);
+
+    auto result = request.send();
+    if (!result.has_value()) {
+        std::cerr << "Failed to send velocity: no response\n";
+        return;
+    }
+
+    auto response = result.value().content;
+    if (response.getCode() != 200) {
+        std::cerr << "Velocity command rejected! Code: " << response.getCode()
+                  << " Message: " << response.getMessage().cStr() << "\n";
     }
 }
 
@@ -127,6 +194,7 @@ void PeopleSearch::run() {
 
     // Retrieve the GPS target location argument
     auto gps_target = this->get_argument<std::vector<std::string>>("--gps-target-location");
+    auto movement_type = this->get_argument<std::string>("--movement-type");
     if (gps_target.size() == 2) {
         std::cout << "GPS Target Location: Latitude = " << gps_target[0]
                   << ", Longitude = " << gps_target[1] << std::endl;
@@ -144,11 +212,8 @@ void PeopleSearch::run() {
     auto request = this->_mission_client->new_msg();
     request.content.initTakeoff();
     request.content.getTakeoff().setDesiredAltitude(4.0);
-    std::cout << "1" << std::endl;
     auto result = request.send();
-    std::cout << "2" << std::endl;
     auto response = result.value().content;
-    std::cout << "3" << std::endl;
     
     if (response.getCode() != 200) {
     this->_logger.error("Takeoff failed with code %d and message %s",
@@ -179,8 +244,7 @@ void PeopleSearch::run() {
             fly_scan_line(x, offset_down, z, length, forward, wait);
             forward = !forward;
         }
-}
-
+    }
 
     std::cout << "Search pattern completed." << std::endl;
 
@@ -192,6 +256,10 @@ int main(int argc, char **argv) {
     parser.add_argument("--gps-target-location")
         .nargs(2)
         .help("GPS coordinates where the targes is likely to be (lat lon)");
+
+    parser.add_argument("--movement-type")
+        .default_value("p")
+        .help("Type of movement control: position (p) or velocity (v)");
 
     std::shared_ptr<PeopleSearch> people_search = std::make_shared<PeopleSearch>(parser);
     std::cout << "Starting People Search Node..." << std::endl;
