@@ -89,7 +89,7 @@ void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z, float 
 
 void PeopleSearch::velocity_position_control(float x, float y, float z, float yaw_rate) {
     float kp = 0.5f; // Proportional gain for position control
-    float threshold = 0.2f; // Position error threshold to consider as "reached"
+    float threshold = 0.4f; // Position error threshold to consider as "reached"
     // Limit maximum velocity
     float max_vel = 2.0f; // m/s
     float total_error = std::sqrt((x - _drone_x) * (x - _drone_x) +

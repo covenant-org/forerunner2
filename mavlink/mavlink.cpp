@@ -454,6 +454,54 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
       this->_logger.info("Mission cleared successfully");
       return;
     }
+    case Command::VELOCITY: {
+      this->_logger.debug("Entered Command::VELOCITY");
+      auto velocity = command.content.getVelocity();
+
+      // Extract setpoint values
+      float vx   = velocity.getX();   // North velocity (m/s)
+      float vy   = velocity.getY();   // East velocity (m/s)
+      float vz   = velocity.getZ();   // Down velocity (m/s)
+      float yaw  = velocity.getR();   // Yaw angle (deg)
+
+      // Send pre-setpoint (before starting Offboard)
+      mavsdk::Offboard::VelocityNedYaw vel{};
+      vel.north_m_s = vx;
+      vel.east_m_s  = vy;
+      vel.down_m_s  = vz;
+      vel.yaw_deg   = yaw;
+
+      const auto pre_set_res = this->_offboard->set_velocity_ned(vel);
+      if (pre_set_res != mavsdk::Offboard::Result::Success) {
+          this->_logger.warn("pre-start set_velocity_ned failed: %d",
+                            static_cast<int>(pre_set_res));
+      }
+
+      // Start Offboard mode
+      const auto start_res = this->_offboard->start();
+      if (start_res != mavsdk::Offboard::Result::Success) {
+          this->_logger.error("Failed to start Offboard: %d",
+                              static_cast<int>(start_res));
+          res.setCode(500);
+          res.setMessage("Failed to start Offboard for velocity control");
+          return;
+      }
+
+      // Send the actual setpoint again after starting
+      const auto set_res = this->_offboard->set_velocity_ned(vel);
+      if (set_res != mavsdk::Offboard::Result::Success) {
+          this->_logger.error("set_velocity_ned after start failed: %d",
+                              static_cast<int>(set_res));
+          res.setCode(500);
+          res.setMessage("Failed to set velocity after starting offboard");
+          return;
+      }
+
+      this->_logger.info("Velocity command applied: vx=%.2f vy=%.2f vz=%.2f yaw=%.2f",
+                        vx, vy, vz, yaw);
+      return;
+    }
+
     default:
       res.setCode(501);
       res.setMessage("Not implemented");
