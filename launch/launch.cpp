@@ -82,9 +82,14 @@ std::vector<std::string> Launch::build_registry_args(
   
   std::vector<std::string> registry_args = {"--log-level", log_level};
   
-  if (registry_port != 0 && registry_threads != 0) {
+  // Add port if specified
+  if (registry_port != 0) {
     registry_args.push_back("--port");
     registry_args.push_back(std::to_string(registry_port));
+  }
+  
+  // Add threads if specified
+  if (registry_threads != 0) {
     registry_args.push_back("--threads");
     registry_args.push_back(std::to_string(registry_threads));
   }
@@ -209,13 +214,11 @@ int main(int argc, char** argv) {
       .help("Path to the YAML configuration file");
   parser.add_argument("--registry-port")
       .default_value(0)
-      .help("Registry port (optional, requires --registry-threads)")
+      .help("Registry port (optional)")
       .nargs(1);
   parser.add_argument("--registry-threads")
       .default_value(0)
-      .help(
-          "Number of threads for the registry (optional, requires "
-          "--registry-port)")
+      .help("Number of threads for the registry (optional)")
       .nargs(1);
   parser.add_argument("--log-level")
       .default_value("info")
@@ -228,12 +231,7 @@ int main(int argc, char** argv) {
     int registry_port = parser.get<int>("--registry-port");
     int registry_threads = parser.get<int>("--registry-threads");
 
-    // Validación lógica adicional
-    if ((registry_port != 0 && registry_threads == 0) ||
-        (registry_threads != 0 && registry_port == 0)) {
-      print_argparse_help(parser);
-      return 1;
-    }
+    // Both parameters are now independent - no validation needed
 
   } catch (const std::runtime_error& err) {
     print_argparse_help(parser);
