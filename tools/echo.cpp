@@ -38,12 +38,8 @@ public:
         else if (_message_type == "HomePosition") {
             auto subscriber = this->create_subscriber<HomePosition>(_topic,
                 [this](const Core::IncomingMessage<HomePosition>& msg) {
-                    auto gps = msg.content.getGps();
                     auto pos = msg.content.getPos();
-                    std::cout << "[" << _topic << "] GPS: lat=" << gps.getLatitude()/1e7 
-                              << " lon=" << gps.getLongitude()/1e7 
-                              << " alt=" << gps.getAltitude()/1000.0
-                              << " | POS: x=" << pos.getX() 
+                    std::cout << "[" << _topic << "] POS: x=" << pos.getX() 
                               << " y=" << pos.getY() 
                               << " z=" << pos.getZ() << std::endl;
                 });
