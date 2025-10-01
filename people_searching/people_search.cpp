@@ -167,6 +167,17 @@ void PeopleSearch::send_velocity(float vx, float vy, float vz, float yaw_rate) {
     }
 }
 
+void PeopleSearch::land() {
+    auto request = this->_mission_client->new_msg();
+    request.content.setLand();
+    request.content.getLand();
+    auto result = request.send();
+    auto response = result.value().content;
+    if (response.getCode() != 200) {
+        this->_logger.error("Landing failed with code %d and message %s",
+                            response.getCode(), response.getMessage());
+    }
+}
 
 void PeopleSearch::send_coordinate(float x, float y, float z, float yaw_deg) {
     auto request = _controller_client->new_msg();
@@ -198,15 +209,7 @@ bool PeopleSearch::check_valid_person() {
 
             move_and_wait(_person_x + _drone_x, _person_y + _drone_y, 4.0f, 0.0f, 5);
 
-            auto request = this->_mission_client->new_msg();
-            request.content.setLand();
-            request.content.getLand();
-            auto result = request.send();
-            auto response = result.value().content;
-            if (response.getCode() != 200) {
-                this->_logger.error("Landing failed with code %d and message %s",
-                                    response.getCode(), response.getMessage());
-            }
+            land();
             return true; // Exit search after landing
     }
     return false;
@@ -270,6 +273,13 @@ void PeopleSearch::run() {
     }
 
     std::cout << "Search pattern completed." << std::endl;
+
+    // Go home if no person found
+    if (!check_valid_person()) {
+        std::cout << "No valid person found. Returning to launch and landing..." << std::endl;
+        velocity_position_control(0.0f, 0.0f, z, 0.0f); // Ascend to 4m
+        land();
+    }
 
 }
 

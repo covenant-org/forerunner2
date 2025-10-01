@@ -45,6 +45,8 @@ public:
 
     void fly_scan_line(float x_center, float y_offset, float z, float length, bool forward, int wait);
 
+    void land();
+
     // Main loop: read coordinates from user input
     void run() override;
 };
