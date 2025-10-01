@@ -70,8 +70,8 @@ void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z, float 
                 if (move_and_check(x_mid, y_offset, z, 0.0f, wait)) return;
             }
         } else if (movement_type == "v") {
-            velocity_position_control(x_start, y_offset, z, 0.0f);
-            velocity_position_control(x_end, y_offset, z, 0.0f);
+            if (velocity_position_control(x_start, y_offset, z, 0.0f)) return;
+            if (velocity_position_control(x_end, y_offset, z, 0.0f)) return;
         }
     } else {
         std::cout << "Moving x from " << x_end << " to " << x_start << " at y=" << y_offset << std::endl;
@@ -83,17 +83,16 @@ void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z, float 
             }
             // if (move_and_check(x_start, y_offset, z, 0.0f, wait)) return;
         } else if (movement_type == "v") {
-            velocity_position_control(x_end, y_offset, z, 0.0f);
-            velocity_position_control(x_start, y_offset, z, 0.0f);
+            if (velocity_position_control(x_end, y_offset, z, 0.0f)) return;
+            if (velocity_position_control(x_start, y_offset, z, 0.0f)) return;
         }
     }
 }
 
-void PeopleSearch::velocity_position_control(float x, float y, float z, float yaw_rate) {
+bool PeopleSearch::velocity_position_control(float x, float y, float z, float yaw_rate, float max_vel) {
     float kp = 0.5f; // Proportional gain for position control
     float threshold = 0.4f; // Position error threshold to consider as "reached"
-    // Limit maximum velocity
-    float max_vel = 2.0f; // m/s
+    // Limit maximum velocity // m/s
     float total_error = std::sqrt((x - _drone_x) * (x - _drone_x) +
                                   (y - _drone_y) * (y - _drone_y) +
                                   (z - _drone_z) * (z - _drone_z));
@@ -141,8 +140,14 @@ void PeopleSearch::velocity_position_control(float x, float y, float z, float ya
         total_error = std::sqrt((x - _drone_x) * (x - _drone_x) +
                                 (y - _drone_y) * (y - _drone_y) +
                                 (z - _drone_z) * (z - _drone_z));
+
+        if (check_valid_person()) {
+            send_velocity(0.0f, 0.0f, 0.0f, 0.0f); // Stop movement
+            return true; // Exit if valid person found
+        }
     }
     send_velocity(0.0f, 0.0f, 0.0f, 0.0f); // Stop movement
+    return false;
 
     }
 
@@ -247,11 +252,15 @@ void PeopleSearch::run() {
 
     // Move to initial position
     std::cout << "Moving to target location..." << std::endl;
-    this->send_coordinate(x, y, z, 0.0f);
-    sleep(15); // Wait to reach position
+    if (movement_type == "p") {
+        move_and_wait(x, y, z, 0.0f, 15);
+    } else if (movement_type == "v") {
+        velocity_position_control(x, y, z, 0.0f, 5.0f);
+    }
+    sleep(2); // stabilize
 
     // Lawn-mower pattern search starting from center
-    const float length = 20.0f;   // search box size (meters)
+    const float length = 24.0f;   // search box size (meters)
     const float step   = 4.0f;   // spacing between lines
     const int   wait   = 4;     // wait between moves (seconds)
 
