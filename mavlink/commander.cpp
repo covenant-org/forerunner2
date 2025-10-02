@@ -1,5 +1,6 @@
 #include "argument_parser.hpp"
 #include "commander.hpp"
+#include <argparse/argparse.hpp>
 #include <sstream>
 #include <vector>
 #include <array>
@@ -200,8 +201,26 @@ void Commander::run() {
       }
     } else if (command == "mission") {
       this->handle_mission_command(args);
+    } else if (command == "help" || command == "?") {
+      std::cout << "\nAvailable commands:" << std::endl;
+      std::cout << "  takeoff [altitude]          - Takeoff to specified altitude (default: 2m)" << std::endl;
+      std::cout << "  land                        - Land the drone" << std::endl;
+      std::cout << "  waypoint local <x> <y> <z> [yaw] - Go to local position" << std::endl;
+      std::cout << "  waypoint global <lat> <lon> <alt> [yaw] - Go to GPS position" << std::endl;
+      std::cout << "  offboard [on|off]           - Enable/disable offboard mode" << std::endl;
+      std::cout << "  mission upload <file.json>  - Upload mission from JSON file" << std::endl;
+      std::cout << "  mission start               - Start uploaded mission" << std::endl;
+      std::cout << "  mission pause               - Pause running mission" << std::endl;
+      std::cout << "  mission clear               - Clear current mission" << std::endl;
+      std::cout << "  help, ?                     - Show this help" << std::endl;
+      std::cout << "  exit, quit                  - Exit interactive mode" << std::endl;
+      std::cout << "\nNote: Use '~' to keep previous values in waypoint commands" << std::endl;
+    } else if (command == "exit" || command == "quit") {
+      std::cout << "Goodbye!" << std::endl;
+      break;
     } else {
       this->_logger.warn("Unknown command: %s", command.c_str());
+      std::cout << "Type 'help' for available commands." << std::endl;
     }
   }
 }
@@ -435,78 +454,93 @@ std::vector<SimpleMissionItem> Commander::load_mission_from_file(const std::stri
 }
 
 int main(int argc, char **argv) {
-  // Check if command line arguments are provided (beyond program name and standard flags)
-  bool has_command = false;
-  std::string command_line;
+  // Create argument parser with subcommands
+  argparse::ArgumentParser program("mavlink-commander");
   
-  // Skip program name and look for non-flag arguments
-  for (int i = 1; i < argc; i++) {
-    std::string arg = argv[i];
-    // Skip known flags
-    if (arg.find("--") == 0) {
-      // Skip this flag and its value (if any)
-      if (arg.find("=") == std::string::npos && i + 1 < argc && argv[i + 1][0] != '-') {
-        i++; // Skip the value
-      }
-      continue;
-    }
+  // Add global options
+  program.add_argument("--registry-uri")
+    .default_value("tcp://127.0.0.1:4020")
+    .help("IP where the registry is running");
     
-    // This is a command, build the command line
-    has_command = true;
-    for (int j = i; j < argc; j++) {
-      if (j > i) command_line += " ";
-      command_line += argv[j];
-    }
-    break;
+  program.add_argument("--log-level")
+    .default_value(2)
+    .scan<'i', int>()
+    .help("The log level for the logs");
+    
+  program.add_argument("--debug")
+    .flag()
+    .help("Shortcut for --log-level 0");
+    
+  program.add_argument("--instance-id")
+    .default_value("")
+    .help("Unique identifier for this instance");
+    
+  program.add_argument("--ignore-heartbeat")
+    .flag()
+    .help("Do not verify registry heartbeat");
+
+  // Add subcommands for mission operations
+  argparse::ArgumentParser upload_cmd("upload");
+  upload_cmd.add_description("Upload a mission from JSON file");
+  upload_cmd.add_argument("file")
+    .help("Mission file in JSON format");
+
+  argparse::ArgumentParser start_cmd("start");
+  start_cmd.add_description("Start the uploaded mission");
+
+  argparse::ArgumentParser pause_cmd("pause");
+  pause_cmd.add_description("Pause the running mission");
+
+  argparse::ArgumentParser clear_cmd("clear");
+  clear_cmd.add_description("Clear the current mission");
+
+  argparse::ArgumentParser interactive_cmd("interactive");
+  interactive_cmd.add_description("Start interactive mode (default)");
+
+  // Add subcommands to main parser
+  program.add_subparser(upload_cmd);
+  program.add_subparser(start_cmd);
+  program.add_subparser(pause_cmd);
+  program.add_subparser(clear_cmd);
+  program.add_subparser(interactive_cmd);
+
+  try {
+    program.parse_args(argc, argv);
+  } catch (const std::exception& err) {
+    std::cerr << err.what() << std::endl;
+    std::cerr << program;
+    return 1;
   }
-  
-  if (has_command) {
-    // Execute single command mode - create minimal parser without strict validation
-    Core::BaseArgumentParser parser(1, &argv[0]); // Only pass program name to avoid parsing issues
-    std::shared_ptr<Commander> commander = std::make_shared<Commander>(parser);
+
+  // Create Commander instance with minimal parser to avoid double parsing
+  // We'll create a minimal argv array with just the program name
+  char* minimal_argv[] = {argv[0]};
+  Core::BaseArgumentParser parser(1, minimal_argv);
+  std::shared_ptr<Commander> commander = std::make_shared<Commander>(parser);
+
+  // Handle subcommands
+  if (program.is_subcommand_used(upload_cmd)) {
+    std::string filename = upload_cmd.get<std::string>("file");
+    std::vector<std::string> mission_args = {"upload", filename};
+    commander->handle_mission_command(mission_args);
     
-    std::istringstream iss(command_line);
-    std::string command;
-    iss >> command;
-
-    std::vector<std::string> args;
-    std::string token;
-    while (iss >> token) {
-      args.push_back(token);
-    }
-
-    // Handle the command directly
-    if (command == "upload") {
-      // Convert to mission upload format
-      if (!args.empty()) {
-        std::vector<std::string> mission_args = {"upload", args[0]};
-        commander->handle_mission_command(mission_args);
-      } else {
-        std::cout << "Usage: upload <mission_file.json>" << std::endl;
-        return 1;
-      }
-    } else if (command == "start") {
-      std::vector<std::string> mission_args = {"start"};
-      commander->handle_mission_command(mission_args);
-    } else if (command == "pause") {
-      std::vector<std::string> mission_args = {"pause"};
-      commander->handle_mission_command(mission_args);
-    } else if (command == "clear") {
-      std::vector<std::string> mission_args = {"clear"};
-      commander->handle_mission_command(mission_args);
-    } else if (command == "mission") {
-      commander->handle_mission_command(args);
-    } else {
-      std::cout << "Unknown command: " << command << std::endl;
-      std::cout << "Available commands: upload, start, pause, clear, mission" << std::endl;
-      return 1;
-    }
+  } else if (program.is_subcommand_used(start_cmd)) {
+    std::vector<std::string> mission_args = {"start"};
+    commander->handle_mission_command(mission_args);
+    
+  } else if (program.is_subcommand_used(pause_cmd)) {
+    std::vector<std::string> mission_args = {"pause"};
+    commander->handle_mission_command(mission_args);
+    
+  } else if (program.is_subcommand_used(clear_cmd)) {
+    std::vector<std::string> mission_args = {"clear"};
+    commander->handle_mission_command(mission_args);
+    
   } else {
-    // Run interactive mode with full argument parsing
-    Core::BaseArgumentParser parser(argc, argv);
-    std::shared_ptr<Commander> commander = std::make_shared<Commander>(parser);
+    // Default to interactive mode
+    std::cout << "Starting interactive mode. Type 'help' for available commands." << std::endl;
     commander->run();
   }
-  
+
   return 0;
 }
