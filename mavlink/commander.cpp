@@ -6,21 +6,6 @@
 #include <array>
 #include <algorithm>
 #include <fstream>
-#include <iterator>
-
-// Helper structure for loading missions from file
-struct SimpleMissionItem {
-  double latitude;
-  double longitude;
-  float altitude;
-  float speed;
-  bool is_fly_through;
-  std::string camera_action = "NONE";
-  float loiter_time = 0.0f;
-  float gimbal_pitch = 0.0f;
-  float gimbal_yaw = 0.0f;
-  float camera_photo_interval = 0.0f;
-};
 
 Commander::Commander(Core::ArgumentParser parser) : Core::Vertex(parser) {
   this->_mission_client =

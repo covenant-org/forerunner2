@@ -9,17 +9,12 @@
 #include <capnp_schemas/mavlink.capnp.h>
 #include <capnp_schemas/controller.capnp.h>
 #include <capnp_schemas/generics.capnp.h>
-#include <mutex>
+#include <iterator>
 
 struct GeoPosition {
   double lat = 0.0;
   double lon = 0.0;
   double alt = 0.0;
-};
-
-struct HomePositionData {
-  GeoPosition pos;
-  bool set = false;
 };
 
 struct WaypointData {
@@ -34,17 +29,24 @@ struct GlobalWaypointData {
   double yaw = 0.0;
 };
 
-// Forward declaration
-struct SimpleMissionItem;
+struct SimpleMissionItem {
+  double latitude;
+  double longitude;
+  float altitude;
+  float speed;
+  bool is_fly_through;
+  std::string camera_action = "NONE";
+  float loiter_time = 0.0f;
+  float gimbal_pitch = 0.0f;
+  float gimbal_yaw = 0.0f;
+  float camera_photo_interval = 0.0f;
+};
 
 class Commander : public Core::Vertex {
  private:
   std::shared_ptr<Core::ActionClient<MissionCommand, GenericResponse>> _mission_client;
   std::shared_ptr<Core::ActionClient<Command, GenericResponse>> _controller_client;
-  std::shared_ptr<Core::Subscriber<HomePosition>> _home_subscriber;
-  std::mutex _home_mutex;
 
-  HomePositionData _home;
   WaypointData _last_local;
   GlobalWaypointData _last_global;
 
