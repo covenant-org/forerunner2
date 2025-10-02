@@ -147,7 +147,8 @@ void Commander::run() {
               auto cmd_res = cmd_req.send();
               auto resp = cmd_res.value().content;
               if (resp.getCode() != 200) {
-                this->_logger.error("Controller refused waypoint: %s", resp.getMessage());
+                this->_logger.error("Controller refused waypoint: Code=%d, Message=%s", 
+                                    resp.getCode(), resp.getMessage().cStr());
               }
             }
             else if (args[0] == "global") {
@@ -225,7 +226,7 @@ void Commander::run() {
       auto cmd_res = cmd_req.send();
       auto resp = cmd_res.value().content;
       if (resp.getCode() != 200) {
-        this->_logger.error("Offboard command failed: %s", resp.getMessage());
+        this->_logger.error("Offboard command failed: %s", resp.getMessage().cStr());
       } else {
         this->_logger.info("Offboard mode %s", enable ? "enabled" : "disabled");
       }

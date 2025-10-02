@@ -4,6 +4,7 @@
 #include <capnp_schemas/controller.capnp.h>
 #include <capnp_schemas/generics.capnp.h>
 #include <capnp_schemas/mavlink.capnp.h>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -16,6 +17,7 @@
 #include <plugins/ftp_server/ftp_server.h>
 #include <plugins/mavlink_passthrough/mavlink_passthrough.h>
 #include <server_component.h>
+#include <thread>
 
 Mavlink::Mavlink(Core::ArgumentParser parser)
     : Core::Vertex(std::move(parser)),
@@ -91,15 +93,70 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
         const auto offboard_result = this->_offboard->stop();
         if (offboard_result != mavsdk::Offboard::Result::Success) {
           res.setCode(500);
-          res.setMessage("Error while stoping offboard");
+          res.setMessage("Error while stopping offboard");
         }
         return;
       }
+      
+      // Check prerequisites for offboard mode
+      if (!this->_telemetry->armed()) {
+        res.setCode(400);
+        res.setMessage("Cannot start offboard: drone not armed");
+        return;
+      }
+      
+      if (!this->_telemetry->in_air()) {
+        res.setCode(400);
+        res.setMessage("Cannot start offboard: drone not in air");
+        return;
+      }
+      
+      // Log current flight mode
+      auto current_mode = this->_telemetry->flight_mode();
+      this->_logger.debug("Current flight mode before offboard: %d", static_cast<int>(current_mode));
+      
+      // Set fresh setpoint before starting offboard (ensures setpoint is active)
+      const auto fresh_setpoint = this->_offboard->set_position_ned({
+          .north_m = 0.0f,
+          .east_m = 0.0f,
+          .down_m = -3.0f,  // 3 meters up
+          .yaw_deg = 0.0f});
+      
+      // Small delay to ensure setpoint is processed
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      
       const auto offboard_result = this->_offboard->start();
       if (offboard_result != mavsdk::Offboard::Result::Success) {
+        std::string error_msg = "Error starting offboard: ";
+        switch (offboard_result) {
+          case mavsdk::Offboard::Result::NoSystem:
+            error_msg += "No system connected";
+            break;
+          case mavsdk::Offboard::Result::ConnectionError:
+            error_msg += "Connection error";
+            break;
+          case mavsdk::Offboard::Result::Busy:
+            error_msg += "System busy";
+            break;
+          case mavsdk::Offboard::Result::CommandDenied:
+            error_msg += "Command denied by autopilot";
+            break;
+          case mavsdk::Offboard::Result::Timeout:
+            error_msg += "Timeout";
+            break;
+          case mavsdk::Offboard::Result::NoSetpointSet:
+            error_msg += "No setpoint set - send waypoint first";
+            break;
+          default:
+            error_msg += "Unknown error";
+            break;
+        }
         res.setCode(500);
-        res.setMessage("Error while enabiling offboard");
+        res.setMessage(error_msg);
+        return;
       }
+      
+      this->_logger.info("Offboard mode started successfully");
       return;
     }
     case Command::ARM: {
@@ -126,6 +183,14 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
                           waypoint.getX(), waypoint.getY(), waypoint.getZ(),
                           waypoint.getR());
 
+      // Check if armed - allow waypoints for armed drones even if not in air yet
+      if (!this->_telemetry->armed()) {
+        this->_logger.error("Drone must be armed for waypoint commands");
+        res.setCode(400);
+        res.setMessage("Drone not armed - cannot set waypoints");
+        return;
+      }
+
       // Set the position setpoint - offboard mode must be started separately by client
       const auto set_res = this->_offboard->set_position_ned({
           .north_m = waypoint.getX(),
@@ -133,14 +198,25 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
           .down_m = waypoint.getZ(),
           .yaw_deg = waypoint.getR()});
       if (set_res != mavsdk::Offboard::Result::Success) {
-        this->_logger.error("set_position_ned failed: %d",
-                            static_cast<int>(set_res));
+        std::string error_msg = "set_position_ned failed: ";
+        switch (set_res) {
+          case mavsdk::Offboard::Result::NoSystem:
+            error_msg += "No system connected";
+            break;
+          case mavsdk::Offboard::Result::ConnectionError:
+            error_msg += "Connection error";
+            break;
+          default:
+            error_msg += "Error code " + std::to_string(static_cast<int>(set_res));
+            break;
+        }
+        this->_logger.error("%s", error_msg.c_str());
         res.setCode(500);
         res.setMessage("Failed to set position setpoint");
         return;
       }
       
-      this->_logger.debug("Waypoint setpoint set successfully");
+      this->_logger.debug("Waypoint setpoint set successfully - ready for offboard mode");
       return;
     }
     default:
