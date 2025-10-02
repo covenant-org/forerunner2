@@ -1,0 +1,49 @@
+{
+  "mission_items": [
+    {
+      "latitude": 47.3977508,
+      "longitude": 8.5456074,
+      "relative_altitude": 5.0,
+      "speed": 3.0,
+      "is_fly_through": false,
+      "camera_action": "NONE",
+      "loiter_time": 1.0
+    },
+    {
+      "latitude": 47.3980000,
+      "longitude": 8.5460000,
+      "relative_altitude": 8.0,
+      "speed": 4.0,
+      "is_fly_through": true,
+      "camera_action": "START_VIDEO",
+      "loiter_time": 0.0
+    },
+    {
+      "latitude": 47.3985000,
+      "longitude": 8.5465000,
+      "relative_altitude": 12.0,
+      "speed": 2.0,
+      "is_fly_through": false,
+      "camera_action": "TAKE_PHOTO",
+      "loiter_time": 5.0
+    },
+    {
+      "latitude": 47.3990000,
+      "longitude": 8.5470000,
+      "relative_altitude": 15.0,
+      "speed": 3.0,
+      "is_fly_through": true,
+      "camera_action": "NONE",
+      "loiter_time": 0.0
+    },
+    {
+      "latitude": 47.3995000,
+      "longitude": 8.5475000,
+      "relative_altitude": 18.0,
+      "speed": 2.5,
+      "is_fly_through": false,
+      "camera_action": "STOP_VIDEO",
+      "loiter_time": 2.0
+    }
+  ]
+}
