@@ -213,7 +213,7 @@ void Commander::run() {
 // Handle mission commands (extracted for reuse in CLI mode)
 void Commander::handle_mission_command(const std::vector<std::string>& args) {
   if (args.size() < 1) {
-    std::cout << "Usage: mission <upload|start|pause|clear> [args...]" << std::endl;
+    this->_logger.warn("Usage: mission <upload|start|pause|clear> [args...]");
     return;
   }
   
@@ -221,7 +221,7 @@ void Commander::handle_mission_command(const std::vector<std::string>& args) {
   
   if (mission_cmd == "upload") {
     if (args.size() < 2) {
-      std::cout << "Usage: mission upload <waypoint_file.json>" << std::endl;
+      this->_logger.warn("Usage: mission upload <waypoint_file.json>");
       return;
     }
     
@@ -229,7 +229,7 @@ void Commander::handle_mission_command(const std::vector<std::string>& args) {
     std::string filename = args[1];
     auto mission_items = this->load_mission_from_file(filename);
     if (mission_items.empty()) {
-      std::cout << "Failed to load mission from file: " << filename << std::endl;
+      this->_logger.error("Failed to load mission from file: %s", filename.c_str());
       return;
     }
     
@@ -268,9 +268,9 @@ void Commander::handle_mission_command(const std::vector<std::string>& args) {
     auto result = cmd_req.send();
     auto response = result.value().content;
     if (response.getCode() != 200) {
-      std::cout << "Upload failed: " << response.getMessage().cStr() << std::endl;
+      this->_logger.error("Upload failed: %s", response.getMessage().cStr());
     } else {
-      std::cout << "Mission uploaded successfully with " << mission_items.size() << " waypoints" << std::endl;
+      this->_logger.info("Mission uploaded successfully with %zu waypoints", mission_items.size());
     }
     
   } else if (mission_cmd == "start") {
@@ -280,9 +280,9 @@ void Commander::handle_mission_command(const std::vector<std::string>& args) {
     auto result = cmd_req.send();
     auto response = result.value().content;
     if (response.getCode() != 200) {
-      std::cout << "Start failed: " << response.getMessage().cStr() << std::endl;
+      this->_logger.error("Start failed: %s", response.getMessage().cStr());
     } else {
-      std::cout << "Mission started" << std::endl;
+      this->_logger.info("Mission started");
     }
     
   } else if (mission_cmd == "pause") {
@@ -292,9 +292,9 @@ void Commander::handle_mission_command(const std::vector<std::string>& args) {
     auto result = cmd_req.send();
     auto response = result.value().content;
     if (response.getCode() != 200) {
-      std::cout << "Pause failed: " << response.getMessage().cStr() << std::endl;
+      this->_logger.error("Pause failed: %s", response.getMessage().cStr());
     } else {
-      std::cout << "Mission paused" << std::endl;
+      this->_logger.info("Mission paused");
     }
     
   } else if (mission_cmd == "clear") {
@@ -304,13 +304,13 @@ void Commander::handle_mission_command(const std::vector<std::string>& args) {
     auto result = cmd_req.send();
     auto response = result.value().content;
     if (response.getCode() != 200) {
-      std::cout << "Clear failed: " << response.getMessage().cStr() << std::endl;
+      this->_logger.error("Clear failed: %s", response.getMessage().cStr());
     } else {
-      std::cout << "Mission cleared" << std::endl;
+      this->_logger.info("Mission cleared");
     }
   } else {
-    std::cout << "Unknown mission command: " << mission_cmd << std::endl;
-    std::cout << "Available commands: upload, start, pause, clear" << std::endl;
+    this->_logger.warn("Unknown mission command: %s", mission_cmd.c_str());
+    this->_logger.info("Available commands: upload, start, pause, clear");
   }
 }
 
