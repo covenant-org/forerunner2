@@ -215,23 +215,20 @@ int main(int argc, char** argv) {
   parser.add_argument("--registry-port")
       .default_value(0)
       .help("Registry port (optional)")
-      .nargs(1);
+      .scan<'i', int>();
   parser.add_argument("--registry-threads")
       .default_value(0)
       .help("Number of threads for the registry (optional)")
-      .nargs(1);
+      .scan<'i', int>();
   parser.add_argument("--log-level")
       .default_value("info")
-      .help("Log level (optional)")
-      .nargs(1);
+      .help("Log level (optional)");
 
   try {
     parser.parse_args(argc, argv);
 
     int registry_port = parser.get<int>("--registry-port");
     int registry_threads = parser.get<int>("--registry-threads");
-
-    // Both parameters are now independent - no validation needed
 
   } catch (const std::runtime_error& err) {
     print_argparse_help(parser);

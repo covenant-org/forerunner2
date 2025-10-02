@@ -1,7 +1,16 @@
 executables:
   - name: mavlink
+    args:
+      options:
+        --registry-uri tcp://localhost:4020
   - name: mavlink-mission
+    args:
+      options:
+        --registry-uri tcp://localhost:4020
   - name: gz
+    args:
+      options:
+        --registry-uri tcp://localhost:4020
   # - name: planner
   #   args:
   #     flags:
@@ -12,4 +21,4 @@ executables:
   #   args:
   #     flags:
   #       - --debug
-  - name: rerun
+  # - name: rerun
