@@ -212,7 +212,13 @@ bool PeopleSearch::check_valid_person() {
             std::cout << "Interrupting search! Flying to detected person at ("
                     << _person_x << ", " << _person_y << ", " << _person_z << ")" << std::endl;
 
-            move_and_wait(_person_x + _drone_x, _person_y + _drone_y, 4.0f, 0.0f, 5);
+            auto movement_type = this->get_argument<std::string>("--movement-type");
+            if (movement_type == "v") {
+                velocity_position_control(_person_x + _drone_x, _person_y + _drone_y, 4.0f, 0.0f, 5);
+            }
+            else if (movement_type == "p") {
+                move_and_wait(_person_x + _drone_x, _person_y + _drone_y, 4.0f, 0.0f, 5);
+            }
 
             land();
             return true; // Exit search after landing
