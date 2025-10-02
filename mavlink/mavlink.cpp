@@ -11,6 +11,7 @@
 #include <mavsdk/connection_result.h>
 #include <mavsdk/mavsdk.h>
 #include <mavsdk/plugins/action/action.h>
+#include <mavsdk/plugins/mission/mission.h>
 #include <mavsdk/plugins/offboard/offboard.h>
 #include <mavsdk/plugins/telemetry/telemetry.h>
 #include <memory>
@@ -219,6 +220,230 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
       this->_logger.debug("Waypoint setpoint set successfully - ready for offboard mode");
       return;
     }
+    case Command::GOTO_LOCATION: {
+      this->_logger.debug("Entered Command::GOTO_LOCATION");
+      auto gps_waypoint = command.content.getGotoLocation();
+      this->_logger.debug("GPS WAYPOINT: lat=%f lon=%f alt=%f yaw=%f",
+                          gps_waypoint.getLatitude(), gps_waypoint.getLongitude(),
+                          gps_waypoint.getAltitude(), gps_waypoint.getYaw());
+
+      // Check if armed - goto_location requires armed drone
+      if (!this->_telemetry->armed()) {
+        this->_logger.error("Drone must be armed for GPS waypoint commands");
+        res.setCode(400);
+        res.setMessage("Drone not armed - cannot goto GPS location");
+        return;
+      }
+
+      // Use MAVSDK's native goto_location function
+      const auto goto_result = this->_action->goto_location(
+          gps_waypoint.getLatitude(),   // latitude_deg
+          gps_waypoint.getLongitude(),  // longitude_deg
+          gps_waypoint.getAltitude(),   // absolute_altitude_m
+          gps_waypoint.getYaw());       // yaw_deg
+      
+      if (goto_result != mavsdk::Action::Result::Success) {
+        std::string error_msg = "goto_location failed: ";
+        switch (goto_result) {
+          case mavsdk::Action::Result::NoSystem:
+            error_msg += "No system connected";
+            break;
+          case mavsdk::Action::Result::ConnectionError:
+            error_msg += "Connection error";
+            break;
+          case mavsdk::Action::Result::Busy:
+            error_msg += "System busy";
+            break;
+          case mavsdk::Action::Result::CommandDenied:
+            error_msg += "Command denied by autopilot";
+            break;
+          case mavsdk::Action::Result::Timeout:
+            error_msg += "Timeout";
+            break;
+          default:
+            error_msg += "Error code " + std::to_string(static_cast<int>(goto_result));
+            break;
+        }
+        this->_logger.error("%s", error_msg.c_str());
+        res.setCode(500);
+        res.setMessage("Failed to goto GPS location");
+        return;
+      }
+      
+      this->_logger.info("GPS waypoint command sent successfully");
+      return;
+    }
+    case Command::UPLOAD_MISSION: {
+      this->_logger.debug("Entered Command::UPLOAD_MISSION");
+      auto upload_cmd = command.content.getUploadMission();
+      auto waypoints_list = upload_cmd.getWaypoints();
+      
+      std::vector<mavsdk::Mission::MissionItem> mission_items;
+      
+      for (auto waypoint : waypoints_list) {
+        mavsdk::Mission::MissionItem item{};
+        item.latitude_deg = waypoint.getLatitude();
+        item.longitude_deg = waypoint.getLongitude();
+        item.relative_altitude_m = waypoint.getRelativeAltitude();
+        item.speed_m_s = waypoint.getSpeed();
+        item.is_fly_through = waypoint.getIsFlyThrough();
+        item.gimbal_pitch_deg = waypoint.getGimbalPitch();
+        item.gimbal_yaw_deg = waypoint.getGimbalYaw();
+        item.loiter_time_s = waypoint.getLoiterTime();
+        item.camera_photo_interval_s = waypoint.getCameraPhotoInterval();
+        
+        // Convert camera action enum
+        switch (waypoint.getCameraAction()) {
+          case MissionItem::CameraAction::TAKE_PHOTO:
+            item.camera_action = mavsdk::Mission::MissionItem::CameraAction::TakePhoto;
+            break;
+          case MissionItem::CameraAction::START_PHOTO_INTERVAL:
+            item.camera_action = mavsdk::Mission::MissionItem::CameraAction::StartPhotoInterval;
+            break;
+          case MissionItem::CameraAction::STOP_PHOTO_INTERVAL:
+            item.camera_action = mavsdk::Mission::MissionItem::CameraAction::StopPhotoInterval;
+            break;
+          case MissionItem::CameraAction::START_VIDEO:
+            item.camera_action = mavsdk::Mission::MissionItem::CameraAction::StartVideo;
+            break;
+          case MissionItem::CameraAction::STOP_VIDEO:
+            item.camera_action = mavsdk::Mission::MissionItem::CameraAction::StopVideo;
+            break;
+          default:
+            item.camera_action = mavsdk::Mission::MissionItem::CameraAction::None;
+            break;
+        }
+        
+        mission_items.push_back(item);
+      }
+      
+      this->_logger.info("Uploading mission with %zu waypoints", mission_items.size());
+      
+      // Create MissionPlan and upload
+      mavsdk::Mission::MissionPlan mission_plan;
+      mission_plan.mission_items = mission_items;
+      auto upload_result = this->_mission->upload_mission(mission_plan);
+      if (upload_result != mavsdk::Mission::Result::Success) {
+        std::string error_msg = "Mission upload failed: ";
+        switch (upload_result) {
+          case mavsdk::Mission::Result::NoSystem:
+            error_msg += "No system connected";
+            break;
+          case mavsdk::Mission::Result::Error:
+            error_msg += "General error";
+            break;
+          case mavsdk::Mission::Result::Busy:
+            error_msg += "System busy";
+            break;
+          case mavsdk::Mission::Result::Denied:
+            error_msg += "Upload denied";
+            break;
+          case mavsdk::Mission::Result::TooManyMissionItems:
+            error_msg += "Too many mission items";
+            break;
+          case mavsdk::Mission::Result::Timeout:
+            error_msg += "Timeout";
+            break;
+          default:
+            error_msg += "Unknown error";
+            break;
+        }
+        this->_logger.error("%s", error_msg.c_str());
+        res.setCode(500);
+        res.setMessage(error_msg);
+        return;
+      }
+      
+      this->_logger.info("Mission uploaded successfully");
+      return;
+    }
+    case Command::START_MISSION: {
+      this->_logger.debug("Entered Command::START_MISSION");
+      
+      if (!this->_telemetry->armed()) {
+        res.setCode(400);
+        res.setMessage("Cannot start mission: drone not armed");
+        return;
+      }
+      
+      auto start_result = this->_mission->start_mission();
+      if (start_result != mavsdk::Mission::Result::Success) {
+        std::string error_msg = "Mission start failed: ";
+        switch (start_result) {
+          case mavsdk::Mission::Result::NoMissionAvailable:
+            error_msg += "No mission available";
+            break;
+          case mavsdk::Mission::Result::NoSystem:
+            error_msg += "No system connected";
+            break;
+          case mavsdk::Mission::Result::Error:
+            error_msg += "General error";
+            break;
+          default:
+            error_msg += "Unknown error";
+            break;
+        }
+        this->_logger.error("%s", error_msg.c_str());
+        res.setCode(500);
+        res.setMessage(error_msg);
+        return;
+      }
+      
+      this->_logger.info("Mission started successfully");
+      return;
+    }
+    case Command::PAUSE_MISSION: {
+      this->_logger.debug("Entered Command::PAUSE_MISSION");
+      
+      auto pause_result = this->_mission->pause_mission();
+      if (pause_result != mavsdk::Mission::Result::Success) {
+        std::string error_msg = "Mission pause failed: ";
+        switch (pause_result) {
+          case mavsdk::Mission::Result::NoSystem:
+            error_msg += "No system connected";
+            break;
+          case mavsdk::Mission::Result::Error:
+            error_msg += "General error";
+            break;
+          default:
+            error_msg += "Unknown error";
+            break;
+        }
+        this->_logger.error("%s", error_msg.c_str());
+        res.setCode(500);
+        res.setMessage(error_msg);
+        return;
+      }
+      
+      this->_logger.info("Mission paused successfully");
+      return;
+    }
+    case Command::CLEAR_MISSION: {
+      this->_logger.debug("Entered Command::CLEAR_MISSION");
+      
+      auto clear_result = this->_mission->clear_mission();
+      if (clear_result != mavsdk::Mission::Result::Success) {
+        std::string error_msg = "Mission clear failed: ";
+        switch (clear_result) {
+          case mavsdk::Mission::Result::NoSystem:
+            error_msg += "No system connected";
+            break;
+          case mavsdk::Mission::Result::Error:
+            error_msg += "General error";
+            break;
+          default:
+            error_msg += "Unknown error";
+            break;
+        }
+        this->_logger.error("%s", error_msg.c_str());
+        res.setCode(500);
+        res.setMessage(error_msg);
+        return;
+      }
+      
+      this->_logger.info("Mission cleared successfully");
+      return;
+    }
     default:
       res.setCode(501);
       res.setMessage("Not implemented");
@@ -238,6 +463,7 @@ bool Mavlink::init_mavlink_connection(const std::string &uri) {
 
   this->_telemetry = std::make_shared<mavsdk::Telemetry>(this->_system.value());
   this->_action = std::make_shared<mavsdk::Action>(this->_system.value());
+  this->_mission = std::make_shared<mavsdk::Mission>(this->_system.value());
   this->_offboard = std::make_shared<mavsdk::Offboard>(this->_system.value());
   this->_passthrough =
       std::make_shared<mavsdk::MavlinkPassthrough>(this->_system.value());
@@ -313,7 +539,7 @@ void Mavlink::run() {
   this->_telemetry->subscribe_armed([this](const bool &arm) {
     this->_telemetry_state.arm = arm;
     this->publish_telemtry();
-    this->_logger.debug("Armed %d", arm);
+    // this->_logger.debug("Armed %d", arm);
   });
 
   this->_telemetry->subscribe_in_air([this](const bool &inar) {

@@ -3,46 +3,29 @@
 #include <sstream>
 #include <vector>
 #include <array>
-#include <cmath>
-#include <mutex>
 #include <algorithm>
+#include <fstream>
+#include <iterator>
 
-// Simple conversion lat/lon/alt -> NED relative to home 
-static void latlon_to_ned_simple(double lat, double lon, double alt,
-                                 double home_lat, double home_lon, double home_alt,
-                                 double &north_m, double &east_m, double &down_m) {
-  const double R = 6378137.0; // WGS84 equatorial radius (m)
-  double dLat = (lat - home_lat) * M_PI / 180.0;
-  double dLon = (lon - home_lon) * M_PI / 180.0;
-  double lat_avg = (lat + home_lat) * M_PI / 360.0;
-  north_m = dLat * R;
-  east_m = dLon * R * std::cos(lat_avg);
-  // down is positive downward; alt & home_alt are "up" positive -> down = -(alt - home_alt)
-  down_m = -(alt - home_alt);
-}
+// Helper structure for loading missions from file
+struct SimpleMissionItem {
+  double latitude;
+  double longitude;
+  float altitude;
+  float speed;
+  bool is_fly_through;
+  std::string camera_action = "NONE";
+  float loiter_time = 0.0f;
+  float gimbal_pitch = 0.0f;
+  float gimbal_yaw = 0.0f;
+  float camera_photo_interval = 0.0f;
+};
 
 Commander::Commander(Core::ArgumentParser parser) : Core::Vertex(parser) {
   this->_mission_client =
       this->create_action_client<MissionCommand, GenericResponse>("mission_command");
   this->_controller_client =
       this->create_action_client<Command, GenericResponse>("controller");
-
-  // Subscriber for home_position published by Mavlink
-  this->_home_subscriber = this->create_subscriber<HomePosition>(
-      "home_position",
-      [this](const Core::IncomingMessage<HomePosition> &msg) {
-        auto GPS = msg.content.getGps();
-        std::lock_guard<std::mutex> lk(this->_home_mutex);
-        // Only accept the first home_position message
-        if (this->_home.set) {
-          return;
-        }
-        this->_home.set = true;
-        this->_home.pos.lat = GPS.getLatitude() / 1e7;
-        this->_home.pos.lon = GPS.getLongitude() / 1e7;
-        this->_home.pos.alt = GPS.getAltitude() / 1000.0;
-        this->_logger.debug("Home received: Lat=%f Lon=%f Alt=%f", this->_home.pos.lat, this->_home.pos.lon, this->_home.pos.alt);
-      });
 }
 
 void Commander::run() {
@@ -154,51 +137,36 @@ void Commander::run() {
             else if (args[0] == "global") {
               // usage: waypoint global <lat> <lon> <alt> [<yaw>]
               // Support '~' to keep previous values
-              double north, east, down;
-              bool conversion_success = false;
-              
-              {
-                std::lock_guard<std::mutex> lk(this->_home_mutex);
-                if (!this->_home.set) {
-                  this->_logger.error("Home not set.");
-                } else {
-                  double lat = this->_last_global.pos.lat;
-                  double lon = this->_last_global.pos.lon;
-                  double alt = this->_last_global.pos.alt;
-                  double yaw = this->_last_global.yaw;
-                  if (args.size() > 1 && args[1] != "~") lat = coords[0];
-                  if (args.size() > 2 && args[2] != "~") lon = coords[1];
-                  if (args.size() > 3 && args[3] != "~") alt = coords[2];
-                  if (args.size() > 4 && args[4] != "~") yaw = coords[3];
+              double lat = this->_last_global.pos.lat;
+              double lon = this->_last_global.pos.lon;
+              double alt = this->_last_global.pos.alt;
+              double yaw = this->_last_global.yaw;
+              if (args.size() > 1 && args[1] != "~") lat = coords[0];
+              if (args.size() > 2 && args[2] != "~") lon = coords[1];
+              if (args.size() > 3 && args[3] != "~") alt = coords[2];
+              if (args.size() > 4 && args[4] != "~") yaw = coords[3];
 
-                  // Update last used values
-                  this->_last_global.pos.lat = lat;
-                  this->_last_global.pos.lon = lon;
-                  this->_last_global.pos.alt = alt;
-                  this->_last_global.yaw = yaw;
+              // Update last used values
+              this->_last_global.pos.lat = lat;
+              this->_last_global.pos.lon = lon;
+              this->_last_global.pos.alt = alt;
+              this->_last_global.yaw = yaw;
 
-                  // Calculate conversion with mutex protection
-                  latlon_to_ned_simple(lat, lon, alt, this->_home.pos.lat, this->_home.pos.lon, this->_home.pos.alt, north, east, down);
-                  conversion_success = true;
-                }
-              }
-              
-              if (conversion_success) {
-                // Forward as local waypoint
-                auto cmd_req = this->_controller_client->new_msg();
-                auto wp = cmd_req.content.initWaypoint();
-                wp.setX(static_cast<float>(north));
-                wp.setY(static_cast<float>(east));
-                wp.setZ(static_cast<float>(down));
-                wp.setR(static_cast<float>(this->_last_global.yaw));
+              // Use MAVSDK's native goto_location instead of manual conversion
+              auto cmd_req = this->_controller_client->new_msg();
+              auto gps_wp = cmd_req.content.initGotoLocation();
+              gps_wp.setLatitude(lat);
+              gps_wp.setLongitude(lon);
+              gps_wp.setAltitude(static_cast<float>(alt));
+              gps_wp.setYaw(static_cast<float>(yaw));
 
-                auto cmd_res = cmd_req.send();
-                auto resp = cmd_res.value().content;
-                if (resp.getCode() != 200) {
-                  this->_logger.error("Controller refused waypoint: %s", resp.getMessage());
-                } else {
-                  this->_logger.debug("Global -> NED: north=%f east=%f down=%f yaw=%f", north, east, down, this->_last_global.yaw);
-                }
+              auto cmd_res = cmd_req.send();
+              auto resp = cmd_res.value().content;
+              if (resp.getCode() != 200) {
+                this->_logger.error("Controller refused GPS waypoint: Code=%d, Message=%s", 
+                                    resp.getCode(), resp.getMessage().cStr());
+              } else {
+                this->_logger.debug("GPS waypoint sent: lat=%f lon=%f alt=%f yaw=%f", lat, lon, alt, yaw);
               }
             }
           } else {
@@ -230,15 +198,315 @@ void Commander::run() {
       } else {
         this->_logger.info("Offboard mode %s", enable ? "enabled" : "disabled");
       }
+    } else if (command == "mission") {
+      this->handle_mission_command(args);
     } else {
       this->_logger.warn("Unknown command: %s", command.c_str());
     }
   }
 }
 
+// Handle mission commands (extracted for reuse in CLI mode)
+void Commander::handle_mission_command(const std::vector<std::string>& args) {
+  if (args.size() < 1) {
+    std::cout << "Usage: mission <upload|start|pause|clear> [args...]" << std::endl;
+    return;
+  }
+  
+  std::string mission_cmd = args[0];
+  
+  if (mission_cmd == "upload") {
+    if (args.size() < 2) {
+      std::cout << "Usage: mission upload <waypoint_file.json>" << std::endl;
+      return;
+    }
+    
+    // Load mission from file
+    std::string filename = args[1];
+    auto mission_items = this->load_mission_from_file(filename);
+    if (mission_items.empty()) {
+      std::cout << "Failed to load mission from file: " << filename << std::endl;
+      return;
+    }
+    
+    auto cmd_req = this->_controller_client->new_msg();
+    auto upload = cmd_req.content.initUploadMission();
+    auto waypoints = upload.initWaypoints(mission_items.size());
+    
+    for (size_t i = 0; i < mission_items.size(); i++) {
+      auto wp = waypoints[i];
+      wp.setLatitude(mission_items[i].latitude);
+      wp.setLongitude(mission_items[i].longitude);
+      wp.setRelativeAltitude(mission_items[i].altitude);
+      wp.setSpeed(mission_items[i].speed);
+      wp.setIsFlyThrough(mission_items[i].is_fly_through);
+      wp.setGimbalPitch(mission_items[i].gimbal_pitch);
+      wp.setGimbalYaw(mission_items[i].gimbal_yaw);
+      wp.setLoiterTime(mission_items[i].loiter_time);
+      wp.setCameraPhotoInterval(mission_items[i].camera_photo_interval);
+      
+      // Convert camera action string to enum
+      if (mission_items[i].camera_action == "TAKE_PHOTO") {
+        wp.setCameraAction(MissionItem::CameraAction::TAKE_PHOTO);
+      } else if (mission_items[i].camera_action == "START_PHOTO_INTERVAL") {
+        wp.setCameraAction(MissionItem::CameraAction::START_PHOTO_INTERVAL);
+      } else if (mission_items[i].camera_action == "STOP_PHOTO_INTERVAL") {
+        wp.setCameraAction(MissionItem::CameraAction::STOP_PHOTO_INTERVAL);
+      } else if (mission_items[i].camera_action == "START_VIDEO") {
+        wp.setCameraAction(MissionItem::CameraAction::START_VIDEO);
+      } else if (mission_items[i].camera_action == "STOP_VIDEO") {
+        wp.setCameraAction(MissionItem::CameraAction::STOP_VIDEO);
+      } else {
+        wp.setCameraAction(MissionItem::CameraAction::NONE);
+      }
+    }
+    
+    auto result = cmd_req.send();
+    auto response = result.value().content;
+    if (response.getCode() != 200) {
+      std::cout << "Upload failed: " << response.getMessage().cStr() << std::endl;
+    } else {
+      std::cout << "Mission uploaded successfully with " << mission_items.size() << " waypoints" << std::endl;
+    }
+    
+  } else if (mission_cmd == "start") {
+    auto cmd_req = this->_controller_client->new_msg();
+    cmd_req.content.setStartMission();
+    
+    auto result = cmd_req.send();
+    auto response = result.value().content;
+    if (response.getCode() != 200) {
+      std::cout << "Start failed: " << response.getMessage().cStr() << std::endl;
+    } else {
+      std::cout << "Mission started" << std::endl;
+    }
+    
+  } else if (mission_cmd == "pause") {
+    auto cmd_req = this->_controller_client->new_msg();
+    cmd_req.content.setPauseMission();
+    
+    auto result = cmd_req.send();
+    auto response = result.value().content;
+    if (response.getCode() != 200) {
+      std::cout << "Pause failed: " << response.getMessage().cStr() << std::endl;
+    } else {
+      std::cout << "Mission paused" << std::endl;
+    }
+    
+  } else if (mission_cmd == "clear") {
+    auto cmd_req = this->_controller_client->new_msg();
+    cmd_req.content.setClearMission();
+    
+    auto result = cmd_req.send();
+    auto response = result.value().content;
+    if (response.getCode() != 200) {
+      std::cout << "Clear failed: " << response.getMessage().cStr() << std::endl;
+    } else {
+      std::cout << "Mission cleared" << std::endl;
+    }
+  } else {
+    std::cout << "Unknown mission command: " << mission_cmd << std::endl;
+    std::cout << "Available commands: upload, start, pause, clear" << std::endl;
+  }
+}
+
+// Helper function for loading missions from file
+std::vector<SimpleMissionItem> Commander::load_mission_from_file(const std::string& filename) {
+  std::vector<SimpleMissionItem> items;
+  std::ifstream file(filename);
+  
+  if (!file.is_open()) {
+    this->_logger.error("Cannot open mission file: %s", filename.c_str());
+    return items;
+  }
+  
+  // Read entire file content
+  std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  file.close();
+  
+  // Check if it's JSON format (simple heuristic)
+  if (content.find("{") != std::string::npos && content.find("mission_items") != std::string::npos) {
+    // Parse JSON format
+    this->_logger.info("Parsing JSON mission file: %s", filename.c_str());
+    
+    // Simple JSON parser for our specific format
+    size_t mission_items_pos = content.find("\"mission_items\"");
+    if (mission_items_pos == std::string::npos) {
+      this->_logger.error("No 'mission_items' array found in JSON");
+      return items;
+    }
+    
+    size_t array_start = content.find("[", mission_items_pos);
+    size_t array_end = content.find("]", array_start);
+    
+    if (array_start == std::string::npos || array_end == std::string::npos) {
+      this->_logger.error("Invalid JSON array format");
+      return items;
+    }
+    
+    std::string array_content = content.substr(array_start + 1, array_end - array_start - 1);
+    
+    // Parse each item in the array
+    size_t pos = 0;
+    while (pos < array_content.length()) {
+      size_t item_start = array_content.find("{", pos);
+      if (item_start == std::string::npos) break;
+      
+      size_t item_end = array_content.find("}", item_start);
+      if (item_end == std::string::npos) break;
+      
+      std::string item_content = array_content.substr(item_start + 1, item_end - item_start - 1);
+      
+      SimpleMissionItem item;
+      
+      // Parse each field
+      auto parse_double = [&](const std::string& field) -> double {
+        size_t field_pos = item_content.find("\"" + field + "\"");
+        if (field_pos != std::string::npos) {
+          size_t colon_pos = item_content.find(":", field_pos);
+          size_t comma_pos = item_content.find(",", colon_pos);
+          if (comma_pos == std::string::npos) comma_pos = item_content.length();
+          
+          std::string value_str = item_content.substr(colon_pos + 1, comma_pos - colon_pos - 1);
+          // Remove whitespace
+          value_str.erase(std::remove_if(value_str.begin(), value_str.end(), ::isspace), value_str.end());
+          return std::stod(value_str);
+        }
+        return 0.0;
+      };
+      
+      auto parse_bool = [&](const std::string& field) -> bool {
+        size_t field_pos = item_content.find("\"" + field + "\"");
+        if (field_pos != std::string::npos) {
+          size_t colon_pos = item_content.find(":", field_pos);
+          std::string value_str = item_content.substr(colon_pos + 1, 10);
+          return value_str.find("true") != std::string::npos;
+        }
+        return false;
+      };
+      
+      auto parse_string = [&](const std::string& field) -> std::string {
+        size_t field_pos = item_content.find("\"" + field + "\"");
+        if (field_pos != std::string::npos) {
+          size_t colon_pos = item_content.find(":", field_pos);
+          size_t quote1 = item_content.find("\"", colon_pos);
+          size_t quote2 = item_content.find("\"", quote1 + 1);
+          if (quote1 != std::string::npos && quote2 != std::string::npos) {
+            return item_content.substr(quote1 + 1, quote2 - quote1 - 1);
+          }
+        }
+        return "NONE";
+      };
+      
+      item.latitude = parse_double("latitude");
+      item.longitude = parse_double("longitude");
+      item.altitude = parse_double("relative_altitude");
+      item.speed = parse_double("speed");
+      item.is_fly_through = parse_bool("is_fly_through");
+      item.camera_action = parse_string("camera_action");
+      item.loiter_time = parse_double("loiter_time");
+      
+      items.push_back(item);
+      pos = item_end + 1;
+    }
+    
+  } else {
+    // Parse old text format
+    this->_logger.info("Parsing text mission file: %s", filename.c_str());
+    std::istringstream content_stream(content);
+    std::string line;
+    
+    while (std::getline(content_stream, line)) {
+      // Skip empty lines and comments
+      if (line.empty() || line[0] == '#') continue;
+      
+      std::istringstream iss(line);
+      SimpleMissionItem item;
+      
+      // Format: lat lon alt speed is_fly_through
+      if (iss >> item.latitude >> item.longitude >> item.altitude >> item.speed >> item.is_fly_through) {
+        items.push_back(item);
+      }
+    }
+  }
+  
+  this->_logger.info("Loaded %zu waypoints from %s", items.size(), filename.c_str());
+  return items;
+}
+
 int main(int argc, char **argv) {
-  Core::BaseArgumentParser parser(argc, argv);
-  std::shared_ptr<Commander> commander = std::make_shared<Commander>(parser);
-  commander->run();
+  // Check if command line arguments are provided (beyond program name and standard flags)
+  bool has_command = false;
+  std::string command_line;
+  
+  // Skip program name and look for non-flag arguments
+  for (int i = 1; i < argc; i++) {
+    std::string arg = argv[i];
+    // Skip known flags
+    if (arg.find("--") == 0) {
+      // Skip this flag and its value (if any)
+      if (arg.find("=") == std::string::npos && i + 1 < argc && argv[i + 1][0] != '-') {
+        i++; // Skip the value
+      }
+      continue;
+    }
+    
+    // This is a command, build the command line
+    has_command = true;
+    for (int j = i; j < argc; j++) {
+      if (j > i) command_line += " ";
+      command_line += argv[j];
+    }
+    break;
+  }
+  
+  if (has_command) {
+    // Execute single command mode - create minimal parser without strict validation
+    Core::BaseArgumentParser parser(1, &argv[0]); // Only pass program name to avoid parsing issues
+    std::shared_ptr<Commander> commander = std::make_shared<Commander>(parser);
+    
+    std::istringstream iss(command_line);
+    std::string command;
+    iss >> command;
+
+    std::vector<std::string> args;
+    std::string token;
+    while (iss >> token) {
+      args.push_back(token);
+    }
+
+    // Handle the command directly
+    if (command == "upload") {
+      // Convert to mission upload format
+      if (!args.empty()) {
+        std::vector<std::string> mission_args = {"upload", args[0]};
+        commander->handle_mission_command(mission_args);
+      } else {
+        std::cout << "Usage: upload <mission_file.json>" << std::endl;
+        return 1;
+      }
+    } else if (command == "start") {
+      std::vector<std::string> mission_args = {"start"};
+      commander->handle_mission_command(mission_args);
+    } else if (command == "pause") {
+      std::vector<std::string> mission_args = {"pause"};
+      commander->handle_mission_command(mission_args);
+    } else if (command == "clear") {
+      std::vector<std::string> mission_args = {"clear"};
+      commander->handle_mission_command(mission_args);
+    } else if (command == "mission") {
+      commander->handle_mission_command(args);
+    } else {
+      std::cout << "Unknown command: " << command << std::endl;
+      std::cout << "Available commands: upload, start, pause, clear, mission" << std::endl;
+      return 1;
+    }
+  } else {
+    // Run interactive mode with full argument parsing
+    Core::BaseArgumentParser parser(argc, argv);
+    std::shared_ptr<Commander> commander = std::make_shared<Commander>(parser);
+    commander->run();
+  }
+  
   return 0;
 }

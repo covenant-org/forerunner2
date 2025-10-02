@@ -34,6 +34,9 @@ struct GlobalWaypointData {
   double yaw = 0.0;
 };
 
+// Forward declaration
+struct SimpleMissionItem;
+
 class Commander : public Core::Vertex {
  private:
   std::shared_ptr<Core::ActionClient<MissionCommand, GenericResponse>> _mission_client;
@@ -45,9 +48,17 @@ class Commander : public Core::Vertex {
   WaypointData _last_local;
   GlobalWaypointData _last_global;
 
+  // Helper method for loading missions from file
+  std::vector<SimpleMissionItem> load_mission_from_file(const std::string& filename);
+
  public:
   Commander(Core::ArgumentParser);
   void run() override;
+  
+  // Helper method for handling mission commands (for both interactive and CLI mode)
+  void handle_mission_command(const std::vector<std::string>& args);
+
+ private:
 };
 
 #endif
