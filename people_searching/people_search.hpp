@@ -39,6 +39,8 @@ public:
 
     bool check_valid_person();
 
+    bool confirm_valid_person();
+
     void get_position(const Core::IncomingMessage<Odometry>& msg);
 
     bool move_and_check(float x, float y, float z, float yaw_deg, int wait_sec);

@@ -64,7 +64,6 @@ void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z, float 
         
         if (movement_type == "p") {
             if (move_and_check(x_start, y_offset, z, 0.0f, wait)) return;
-            // if (move_and_check(x_end, y_offset, z, 0.0f, wait)) return;
             for (int i = 0; i < n_div; i++) {
                 float x_mid = x_start + (i + 1) * (length / n_div);
                 if (move_and_check(x_mid, y_offset, z, 0.0f, wait)) return;
@@ -81,7 +80,6 @@ void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z, float 
                 float x_mid = x_end - (i + 1) * (length / n_div);
                 if (move_and_check(x_mid, y_offset, z, 0.0f, wait)) return;
             }
-            // if (move_and_check(x_start, y_offset, z, 0.0f, wait)) return;
         } else if (movement_type == "v") {
             if (velocity_position_control(x_end, y_offset, z, 0.0f)) return;
             if (velocity_position_control(x_start, y_offset, z, 0.0f)) return;
@@ -100,11 +98,6 @@ bool PeopleSearch::velocity_position_control(float x, float y, float z, float ya
     float vx = 0.0f, vy = 0.0f, vz = 0.0f;
     float _vx_prev = 0.0f, _vy_prev = 0.0f, _vz_prev = 0.0f;
 
-    // acceleration limits (m/s^2)
-    float ax_max = 0.5f;
-    float ay_max = 0.5f;
-    float az_max = 0.5f;
-
     float alpha = 0.2f; // smoothing factor 0 < alpha < 1
 
     while (total_error > threshold) {
@@ -112,9 +105,6 @@ bool PeopleSearch::velocity_position_control(float x, float y, float z, float ya
         float error_y = y - _drone_y;
         float error_z = z - _drone_z;
 
-        // float vx = kp * error_x;
-        // float vy = kp * error_y;
-        // float vz = kp * error_z;
         float vx_target = max_vel * std::tanh(kp * error_x / max_vel);
         float vy_target = max_vel * std::tanh(kp * error_y / max_vel);
         float vz_target = max_vel * std::tanh(kp * error_z / max_vel);
@@ -205,23 +195,48 @@ void PeopleSearch::send_coordinate(float x, float y, float z, float yaw_deg) {
     }
 }
 
+bool PeopleSearch::confirm_valid_person(){
+    this->_valid_person_found = false;
+    auto movement_type = this->get_argument<std::string>("--movement-type");
+    if (movement_type == "v") {
+        velocity_position_control(_person_x / 2 + _drone_x, _person_y / 2 + _drone_y, 4.0f, 0.0f, 1.5);
+    }
+    else if (movement_type == "p") {
+        move_and_wait(_person_x / 2+ _drone_x, _person_y / 2 + _drone_y, 4.0f, 0.0f, 5);
+    }
+    std::this_thread::sleep_for(std::chrono::seconds(5)); // wait for LLM to process
+    if (this->_valid_person_found.load()){
+        std::cout << "Person confirmed by LLM." << std::endl;
+        return true;
+    }
+    else {
+        std::cout << "False positive, resuming search." << std::endl;
+        return false;
+    }
+    
+}
+
 bool PeopleSearch::check_valid_person() {
     if (_valid_person_found.load()){
         std::lock_guard<std::mutex> lock(this->_person_mutex);
-            // get current drone position
-            std::cout << "Interrupting search! Flying to detected person at ("
-                    << _person_x << ", " << _person_y << ", " << _person_z << ")" << std::endl;
 
-            auto movement_type = this->get_argument<std::string>("--movement-type");
-            if (movement_type == "v") {
-                velocity_position_control(_person_x + _drone_x, _person_y + _drone_y, 4.0f, 0.0f, 5);
-            }
-            else if (movement_type == "p") {
-                move_and_wait(_person_x + _drone_x, _person_y + _drone_y, 4.0f, 0.0f, 5);
-            }
+        if (!confirm_valid_person()){
+            return false; // False positive, continue search
+        }
+            
+        std::cout << "Interrupting search! Flying to detected person at ("
+                << _person_x << ", " << _person_y << ", " << _person_z << ")" << std::endl;
 
-            land();
-            return true; // Exit search after landing
+        auto movement_type = this->get_argument<std::string>("--movement-type");
+        if (movement_type == "v") {
+            velocity_position_control(_person_x + _drone_x, _person_y + _drone_y, 4.0f, 0.0f);
+        }
+        else if (movement_type == "p") {
+            move_and_wait(_person_x + _drone_x, _person_y + _drone_y, 4.0f, 0.0f, 5);
+        }
+
+        land();
+        return true; // Exit search after landing
     }
     return false;
 }   
