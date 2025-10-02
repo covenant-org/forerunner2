@@ -1,11 +1,8 @@
 #include "argument_parser.hpp"
 #include "commander.hpp"
 #include <argparse/argparse.hpp>
-#include <sstream>
+#include <yaml-cpp/yaml.h>
 #include <vector>
-#include <array>
-#include <algorithm>
-#include <fstream>
 
 Commander::Commander(Core::ArgumentParser parser) : Core::Vertex(parser) {
   this->_mission_client =
@@ -36,7 +33,6 @@ void Commander::run() {
     this->_logger.debug("Command: %s", command.c_str());
 
     if (command == "takeoff") {
-      // Usage: takeoff [altitude]
       float desired_alt = 2.0f;
       if (!args.empty()) {
         try {
@@ -71,7 +67,6 @@ void Commander::run() {
               if (!coords_str.empty()) coords_str += ' ';
               coords_str += args[i];
             }
-            // Normalize commas to spaces so we can parse with >>
             for (char &c : coords_str) {
               if (c == ',') c = ' ';
             }
@@ -100,7 +95,6 @@ void Commander::run() {
               if (args.size() > 3 && args[3] != "~") z = coords[2];
               if (args.size() > 4 && args[4] != "~") yaw = coords[3];
 
-              // Update last used values
               this->_last_local.x = x;
               this->_last_local.y = y;
               this->_last_local.z = z;
@@ -132,13 +126,11 @@ void Commander::run() {
               if (args.size() > 3 && args[3] != "~") alt = coords[2];
               if (args.size() > 4 && args[4] != "~") yaw = coords[3];
 
-              // Update last used values
               this->_last_global.pos.lat = lat;
               this->_last_global.pos.lon = lon;
               this->_last_global.pos.alt = alt;
               this->_last_global.yaw = yaw;
 
-              // Use MAVSDK's native goto_location instead of manual conversion
               auto cmd_req = this->_controller_client->new_msg();
               auto gps_wp = cmd_req.content.initGotoLocation();
               gps_wp.setLatitude(lat);
@@ -193,7 +185,7 @@ void Commander::run() {
       std::cout << "  waypoint local <x> <y> <z> [yaw] - Go to local position" << std::endl;
       std::cout << "  waypoint global <lat> <lon> <alt> [yaw] - Go to GPS position" << std::endl;
       std::cout << "  offboard [on|off]           - Enable/disable offboard mode" << std::endl;
-      std::cout << "  mission upload <file.json>  - Upload mission from JSON file" << std::endl;
+      std::cout << "  mission upload <file.yaml>   - Upload mission from YAML file" << std::endl;
       std::cout << "  mission start               - Start uploaded mission" << std::endl;
       std::cout << "  mission pause               - Pause running mission" << std::endl;
       std::cout << "  mission clear               - Clear current mission" << std::endl;
@@ -210,7 +202,6 @@ void Commander::run() {
   }
 }
 
-// Handle mission commands (extracted for reuse in CLI mode)
 void Commander::handle_mission_command(const std::vector<std::string>& args) {
   if (args.size() < 1) {
     this->_logger.warn("Usage: mission <upload|start|pause|clear> [args...]");
@@ -221,11 +212,10 @@ void Commander::handle_mission_command(const std::vector<std::string>& args) {
   
   if (mission_cmd == "upload") {
     if (args.size() < 2) {
-      this->_logger.warn("Usage: mission upload <waypoint_file.json>");
+      this->_logger.warn("Usage: mission upload <waypoint_file.yaml>");
       return;
     }
     
-    // Load mission from file
     std::string filename = args[1];
     auto mission_items = this->load_mission_from_file(filename);
     if (mission_items.empty()) {
@@ -249,7 +239,6 @@ void Commander::handle_mission_command(const std::vector<std::string>& args) {
       wp.setLoiterTime(mission_items[i].loiter_time);
       wp.setCameraPhotoInterval(mission_items[i].camera_photo_interval);
       
-      // Convert camera action string to enum
       if (mission_items[i].camera_action == "TAKE_PHOTO") {
         wp.setCameraAction(MissionItem::CameraAction::TAKE_PHOTO);
       } else if (mission_items[i].camera_action == "START_PHOTO_INTERVAL") {
@@ -314,135 +303,52 @@ void Commander::handle_mission_command(const std::vector<std::string>& args) {
   }
 }
 
-// Helper function for loading missions from file
 std::vector<SimpleMissionItem> Commander::load_mission_from_file(const std::string& filename) {
   std::vector<SimpleMissionItem> items;
-  std::ifstream file(filename);
   
-  if (!file.is_open()) {
-    this->_logger.error("Cannot open mission file: %s", filename.c_str());
+  try {
+    YAML::Node config = YAML::LoadFile(filename);
+    this->_logger.info("Parsing YAML mission file: %s", filename.c_str());
+    
+    if (!config["mission_items"]) {
+      this->_logger.error("No 'mission_items' array found in YAML file");
+      return items;
+    }
+    
+    for (const auto& item_node : config["mission_items"]) {
+      SimpleMissionItem item;
+      
+      item.latitude = item_node["latitude"].as<double>(0.0);
+      item.longitude = item_node["longitude"].as<double>(0.0);
+      item.altitude = item_node["relative_altitude"].as<float>(0.0f);
+      item.speed = item_node["speed"].as<float>(5.0f);
+      item.is_fly_through = item_node["is_fly_through"].as<bool>(false);
+      
+      item.camera_action = item_node["camera_action"].as<std::string>("NONE");
+      item.loiter_time = item_node["loiter_time"].as<float>(0.0f);
+      item.gimbal_pitch = item_node["gimbal_pitch"].as<float>(0.0f);
+      item.gimbal_yaw = item_node["gimbal_yaw"].as<float>(0.0f);
+      item.camera_photo_interval = item_node["camera_photo_interval"].as<float>(0.0f);
+      
+      items.push_back(item);
+    }
+    
+    this->_logger.info("Loaded %zu waypoints from YAML file: %s", items.size(), filename.c_str());
+    
+  } catch (const YAML::Exception& e) {
+    this->_logger.error("Failed to parse YAML file %s: %s", filename.c_str(), e.what());
+    return items;
+  } catch (const std::exception& e) {
+    this->_logger.error("Error loading mission file %s: %s", filename.c_str(), e.what());
     return items;
   }
   
-  // Read entire file content
-  std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-  file.close();
-  
-  // Check if it's JSON format (simple heuristic)
-  if (content.find("{") != std::string::npos && content.find("mission_items") != std::string::npos) {
-    // Parse JSON format
-    this->_logger.info("Parsing JSON mission file: %s", filename.c_str());
-    
-    // Simple JSON parser for our specific format
-    size_t mission_items_pos = content.find("\"mission_items\"");
-    if (mission_items_pos == std::string::npos) {
-      this->_logger.error("No 'mission_items' array found in JSON");
-      return items;
-    }
-    
-    size_t array_start = content.find("[", mission_items_pos);
-    size_t array_end = content.find("]", array_start);
-    
-    if (array_start == std::string::npos || array_end == std::string::npos) {
-      this->_logger.error("Invalid JSON array format");
-      return items;
-    }
-    
-    std::string array_content = content.substr(array_start + 1, array_end - array_start - 1);
-    
-    // Parse each item in the array
-    size_t pos = 0;
-    while (pos < array_content.length()) {
-      size_t item_start = array_content.find("{", pos);
-      if (item_start == std::string::npos) break;
-      
-      size_t item_end = array_content.find("}", item_start);
-      if (item_end == std::string::npos) break;
-      
-      std::string item_content = array_content.substr(item_start + 1, item_end - item_start - 1);
-      
-      SimpleMissionItem item;
-      
-      // Parse each field
-      auto parse_double = [&](const std::string& field) -> double {
-        size_t field_pos = item_content.find("\"" + field + "\"");
-        if (field_pos != std::string::npos) {
-          size_t colon_pos = item_content.find(":", field_pos);
-          size_t comma_pos = item_content.find(",", colon_pos);
-          if (comma_pos == std::string::npos) comma_pos = item_content.length();
-          
-          std::string value_str = item_content.substr(colon_pos + 1, comma_pos - colon_pos - 1);
-          // Remove whitespace
-          value_str.erase(std::remove_if(value_str.begin(), value_str.end(), ::isspace), value_str.end());
-          return std::stod(value_str);
-        }
-        return 0.0;
-      };
-      
-      auto parse_bool = [&](const std::string& field) -> bool {
-        size_t field_pos = item_content.find("\"" + field + "\"");
-        if (field_pos != std::string::npos) {
-          size_t colon_pos = item_content.find(":", field_pos);
-          std::string value_str = item_content.substr(colon_pos + 1, 10);
-          return value_str.find("true") != std::string::npos;
-        }
-        return false;
-      };
-      
-      auto parse_string = [&](const std::string& field) -> std::string {
-        size_t field_pos = item_content.find("\"" + field + "\"");
-        if (field_pos != std::string::npos) {
-          size_t colon_pos = item_content.find(":", field_pos);
-          size_t quote1 = item_content.find("\"", colon_pos);
-          size_t quote2 = item_content.find("\"", quote1 + 1);
-          if (quote1 != std::string::npos && quote2 != std::string::npos) {
-            return item_content.substr(quote1 + 1, quote2 - quote1 - 1);
-          }
-        }
-        return "NONE";
-      };
-      
-      item.latitude = parse_double("latitude");
-      item.longitude = parse_double("longitude");
-      item.altitude = parse_double("relative_altitude");
-      item.speed = parse_double("speed");
-      item.is_fly_through = parse_bool("is_fly_through");
-      item.camera_action = parse_string("camera_action");
-      item.loiter_time = parse_double("loiter_time");
-      
-      items.push_back(item);
-      pos = item_end + 1;
-    }
-    
-  } else {
-    // Parse old text format
-    this->_logger.info("Parsing text mission file: %s", filename.c_str());
-    std::istringstream content_stream(content);
-    std::string line;
-    
-    while (std::getline(content_stream, line)) {
-      // Skip empty lines and comments
-      if (line.empty() || line[0] == '#') continue;
-      
-      std::istringstream iss(line);
-      SimpleMissionItem item;
-      
-      // Format: lat lon alt speed is_fly_through
-      if (iss >> item.latitude >> item.longitude >> item.altitude >> item.speed >> item.is_fly_through) {
-        items.push_back(item);
-      }
-    }
-  }
-  
-  this->_logger.info("Loaded %zu waypoints from %s", items.size(), filename.c_str());
   return items;
 }
 
 int main(int argc, char **argv) {
-  // Create argument parser with subcommands
   argparse::ArgumentParser program("mavlink-commander");
   
-  // Add global options
   program.add_argument("--registry-uri")
     .default_value("tcp://127.0.0.1:4020")
     .help("IP where the registry is running");
@@ -464,11 +370,10 @@ int main(int argc, char **argv) {
     .flag()
     .help("Do not verify registry heartbeat");
 
-  // Add subcommands for mission operations
   argparse::ArgumentParser upload_cmd("upload");
-  upload_cmd.add_description("Upload a mission from JSON file");
+  upload_cmd.add_description("Upload a mission from YAML file");
   upload_cmd.add_argument("file")
-    .help("Mission file in JSON format");
+    .help("Mission file in YAML format");
 
   argparse::ArgumentParser start_cmd("start");
   start_cmd.add_description("Start the uploaded mission");
@@ -482,7 +387,6 @@ int main(int argc, char **argv) {
   argparse::ArgumentParser interactive_cmd("interactive");
   interactive_cmd.add_description("Start interactive mode (default)");
 
-  // Add subcommands to main parser
   program.add_subparser(upload_cmd);
   program.add_subparser(start_cmd);
   program.add_subparser(pause_cmd);
@@ -497,13 +401,10 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  // Create Commander instance with minimal parser to avoid double parsing
-  // We'll create a minimal argv array with just the program name
   char* minimal_argv[] = {argv[0]};
   Core::BaseArgumentParser parser(1, minimal_argv);
   std::shared_ptr<Commander> commander = std::make_shared<Commander>(parser);
 
-  // Handle subcommands
   if (program.is_subcommand_used(upload_cmd)) {
     std::string filename = upload_cmd.get<std::string>("file");
     std::vector<std::string> mission_args = {"upload", filename};
@@ -522,7 +423,6 @@ int main(int argc, char **argv) {
     commander->handle_mission_command(mission_args);
     
   } else {
-    // Default to interactive mode
     std::cout << "Starting interactive mode. Type 'help' for available commands." << std::endl;
     commander->run();
   }

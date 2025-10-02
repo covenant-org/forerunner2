@@ -21,4 +21,4 @@ executables:
   #   args:
   #     flags:
   #       - --debug
-  # - name: rerun
+  - name: rerun

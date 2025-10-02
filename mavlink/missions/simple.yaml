@@ -1,0 +1,18 @@
+mission_items:
+  - latitude: 47.3977
+    longitude: 8.5456
+    relative_altitude: 10.0
+    speed: 5.0
+    is_fly_through: true
+  
+  - latitude: 47.3978
+    longitude: 8.5457
+    relative_altitude: 10.0
+    speed: 5.0
+    is_fly_through: true
+  
+  - latitude: 47.3979
+    longitude: 8.5458
+    relative_altitude: 10.0
+    speed: 5.0
+    is_fly_through: false  
