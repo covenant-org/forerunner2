@@ -400,7 +400,6 @@ int main(int argc, char **argv) {
     root.push_back('/');
   }
   std::string default_model_path = root + "rerun/assets/X500.glb";
-  std::cout << default_model_path << std::endl;
   args.add_argument("--drone-model")
       .default_value(default_model_path)
       .help("stl file to use for rendering the drone");
