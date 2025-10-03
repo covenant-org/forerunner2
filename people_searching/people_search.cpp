@@ -220,9 +220,9 @@ bool PeopleSearch::check_valid_person() {
     if (_valid_person_found.load()){
         std::lock_guard<std::mutex> lock(this->_person_mutex);
 
-        if (!confirm_valid_person()){
-            return false; // False positive, continue search
-        }
+        // if (!confirm_valid_person()){
+        //     return false; // False positive, continue search
+        // }
             
         std::cout << "Interrupting search! Flying to detected person at ("
                 << _person_x << ", " << _person_y << ", " << _person_z << ")" << std::endl;
@@ -276,7 +276,10 @@ void PeopleSearch::run() {
     if (movement_type == "p") {
         move_and_wait(x, y, z, 0.0f, 15);
     } else if (movement_type == "v") {
-        velocity_position_control(x, y, z, 0.0f, 5.0f);
+        //velocity_position_control(x, y, z, 0.0f, 3.0f);
+        // velocity command uses body frame 
+        // TODO: use global velocity to get to gps-target
+        move_and_wait(x, y, z, 0.0f, 15);
     }
     sleep(2); // stabilize
 
