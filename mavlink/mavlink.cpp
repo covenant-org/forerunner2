@@ -116,16 +116,6 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
       auto current_mode = this->_telemetry->flight_mode();
       this->_logger.debug("Current flight mode before offboard: %d", static_cast<int>(current_mode));
       
-      // Set fresh setpoint before starting offboard (ensures setpoint is active)
-      const auto fresh_setpoint = this->_offboard->set_position_ned({
-          .north_m = 0.0f,
-          .east_m = 0.0f,
-          .down_m = -3.0f,  // 3 meters up
-          .yaw_deg = 0.0f});
-      
-      // Small delay to ensure setpoint is processed
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      
       const auto offboard_result = this->_offboard->start();
       if (offboard_result != mavsdk::Offboard::Result::Success) {
         std::string error_msg = "Error starting offboard: ";

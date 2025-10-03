@@ -3,12 +3,34 @@
 #include <argparse/argparse.hpp>
 #include <yaml-cpp/yaml.h>
 #include <vector>
+#include <chrono>
+#include <thread>
+#include <algorithm>
+#include <iostream>
+#include <sstream>
+#include <array>
+#include <capnp_schemas/mavlink.capnp.h>
 
 Commander::Commander(Core::ArgumentParser parser) : Core::Vertex(parser) {
   this->_mission_client =
       this->create_action_client<MissionCommand, GenericResponse>("mission_command");
   this->_controller_client =
       this->create_action_client<Command, GenericResponse>("controller");
+  
+  // Subscribe to odometry to get current position
+  this->_odometry_subscriber = this->create_subscriber<Odometry>("odometry",
+      [this](const Core::IncomingMessage<Odometry>& msg) {
+        // Store the current odometry data
+        auto pos = msg.content.getPosition();
+        this->_current_x = pos.getX();
+        this->_current_y = pos.getY();
+        this->_current_z = pos.getZ();
+        this->_current_heading = msg.content.getHeading();
+        this->_has_odometry = true;
+        
+        this->_logger.debug("Updated odometry: x=%f y=%f z=%f heading=%f", 
+                            this->_current_x, this->_current_y, this->_current_z, this->_current_heading);
+      });
 }
 
 void Commander::run() {
@@ -151,8 +173,7 @@ void Commander::run() {
             this->_logger.warn("Usage: waypoint [local|global] <coords>");
           }
     } else if (command == "offboard") {
-      // Usage: offboard [on|off|enable|disable|true|false|1|0]
-      bool enable = true; // default to enable
+      bool enable = true;
       if (!args.empty()) {
         std::string arg = args[0];
         std::transform(arg.begin(), arg.end(), arg.begin(), ::tolower);
@@ -163,6 +184,56 @@ void Commander::run() {
         } else {
           this->_logger.warn("Invalid offboard argument '%s', using default 'on'", args[0].c_str());
         }
+      }
+      
+      // If enabling offboard, first set a fresh setpoint at current position
+      if (enable) {
+        this->_logger.debug("Setting fresh setpoint at current position before enabling offboard");
+        
+        auto setpoint_req = this->_controller_client->new_msg();
+        auto wp = setpoint_req.content.initWaypoint();
+        
+        // Use current position from odometry if available
+        if (this->_has_odometry) {
+          wp.setX(this->_current_x);
+          wp.setY(this->_current_y);
+          wp.setZ(this->_current_z);
+          wp.setR(this->_current_heading);
+          
+          this->_logger.debug("Setting setpoint at current odometry position: x=%f y=%f z=%f heading=%f", 
+                              this->_current_x, this->_current_y, this->_current_z, this->_current_heading);
+        } else {
+          // Fallback to last known local position or safe defaults
+          float current_x = static_cast<float>(this->_last_local.x);
+          float current_y = static_cast<float>(this->_last_local.y);
+          float current_z = static_cast<float>(this->_last_local.z);
+          float current_yaw = static_cast<float>(this->_last_local.yaw);
+          
+          // If we haven't set any local positions yet, use safe defaults
+          if (current_x == 0.0f && current_y == 0.0f && current_z == 0.0f) {
+            this->_logger.debug("No odometry or previous position, using safe hover defaults");
+            current_z = -3.0f;  // 3 meters up
+          }
+          
+          wp.setX(current_x);
+          wp.setY(current_y);
+          wp.setZ(current_z);
+          wp.setR(current_yaw);
+          
+          this->_logger.debug("Setting setpoint at fallback position: x=%f y=%f z=%f yaw=%f", 
+                              current_x, current_y, current_z, current_yaw);
+        }
+        
+        auto setpoint_res = setpoint_req.send();
+        auto setpoint_resp = setpoint_res.value().content;
+        if (setpoint_resp.getCode() != 200) {
+          this->_logger.error("Failed to set position setpoint before offboard: %s", 
+                              setpoint_resp.getMessage().cStr());
+          return;
+        }
+        
+        // Small delay to ensure setpoint is processed
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
       }
       
       auto cmd_req = this->_controller_client->new_msg();
