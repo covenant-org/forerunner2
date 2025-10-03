@@ -31,7 +31,7 @@ public:
 
     void send_velocity(float vx, float vy, float vz, float yaw_rate);
 
-    bool velocity_position_control(float x, float y, float z, float yaw_rate, float max_vel = 1.5f);
+    bool velocity_position_control(float x, float y, float z, float yaw_rate, float max_vel = 1.5f, bool check_person = true);
 
     void move_and_wait(float x, float y, float z, float yaw_deg, int wait_sec);
 
