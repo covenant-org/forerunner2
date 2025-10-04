@@ -99,7 +99,10 @@ class ActionServer : public ISender {
     }
   }
 
-  uint32_t publish(::capnp::MallocMessageBuilder& builder) {}
+  uint32_t publish(::capnp::MallocMessageBuilder& builder) {
+    (void)builder; // Suppress unused parameter warning
+    return 0; // TODO: Implement publish functionality
+  }
 
   uint32_t reset_connection(const std::string& uri) {
     char addr[20];
@@ -111,6 +114,7 @@ class ActionServer : public ISender {
     }
     sprintf(addr, "tcp://0.0.0.0:%d", _port);
     _router.bind(addr);
+    return _port;
   }
 
   void setup(const std::string& uri) {
