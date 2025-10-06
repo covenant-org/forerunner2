@@ -200,13 +200,14 @@ void PeopleSearch::send_coordinate(float x, float y, float z, float yaw_deg) {
     }
 }
 
-bool PeopleSearch::confirm_valid_person(){
+bool PeopleSearch::confirm_valid_person(float person_x, float person_y, float person_z) {
     std::cout<<"Confirming detected person with LLM..." << std::endl;
     std::cout << "Person at ("
             << _person_x * 5 / 2 << ", " << _person_y * 5 / 2 << ", " << _person_z << ")" << std::endl;
     this->_valid_person_found = false;
     float _drone_x_backup = _drone_x;
     float _drone_y_backup = _drone_y;
+    float _person_distance = std::sqrt(_person_x * _person_x + _person_y * _person_y);
     auto movement_type = this->get_argument<std::string>("--movement-type");
     if (movement_type == "v") {
         std::cout << "BBBBBBBBBBBBBBBB" << std::endl;
@@ -218,8 +219,24 @@ bool PeopleSearch::confirm_valid_person(){
         move_and_wait(_person_x / 2+ _drone_x, _person_y / 2 + _drone_y, -3.0f, 0.0f, 5);
     }
     std::cout << "CCCCCCCCCCCCCC" << std::endl;
+    float dx = _person_x - person_x;
+    float dy = _person_y - person_y;
+    float dz = _person_z - person_z;
+    float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+
+    float drone_to_person_dist_ = std::sqrt((_drone_x - person_x) * (_drone_x - person_x) +
+                                       (_drone_y - person_y) * (_drone_y - person_y) +
+                                       (_drone_z - person_z) * (_drone_z - person_z));
+
+    float drone_to_person_dist = std::sqrt((_drone_x - _person_x) * (_drone_x - _person_x) +
+                                       (_drone_y - _person_y) * (_drone_y - _person_y) +
+                                       (_drone_z - _person_z) * (_drone_z - _person_z));
+
+    float drone_movement = std::sqrt((_drone_x - _drone_x_backup) * (_drone_x - _drone_x_backup) +
+                                       (_drone_y - _drone_y_backup) * (_drone_y - _drone_y_backup) +
+                                       (_drone_z - (-3.0f)) * (_drone_z - (-3.0f)));
     sleep(5);
-    if (this->_valid_person_found.load()){
+    if (this->_valid_person_found.load() && drone_to_person_dist_ > drone_to_person_dist && drone_movement / (std::abs(drone_to_person_dist_ - drone_to_person_dist)) > 0.9f) {
         std::cout << "Person confirmed by LLM." << std::endl;
         return true;
     }
@@ -238,10 +255,13 @@ bool PeopleSearch::confirm_valid_person(){
 
 bool PeopleSearch::check_valid_person() {
     if (_valid_person_found.load()){
+        float person_x = _person_x;
+        float person_y = _person_y;
+        float person_z = _person_z;
         std::lock_guard<std::mutex> lock(this->_person_mutex);
         std::cout << "AAAAAAAAAAAAAAAAA" << std::endl;
 
-        if (!confirm_valid_person()){
+        if (!confirm_valid_person(person_x, person_y, person_z)) {
             std::cout << "DDDDDDDDDDDD" << std::endl;
             return false; // False positive, continue search
         }
