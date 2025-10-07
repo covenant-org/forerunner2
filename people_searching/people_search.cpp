@@ -17,20 +17,26 @@ PeopleSearch::PeopleSearch(Core::ArgumentParser parser) : Core::Vertex(parser) {
 
 void PeopleSearch::handle_llm_result(const Core::IncomingMessage<LLMResult>& msg) {
     auto result = msg.content;
-    std::cout<<"LLM Result received: isValidPerson=" << result.getIsValidPerson() << std::endl;
     auto id = result.getObjectId();
-    std::cout << "Object ID: " << id << std::endl;
     if (result.getIsValidPerson()) {
         auto coords = result.getCoordinates();
         {
             std::lock_guard<std::mutex> lock(this->_person_mutex);
-            this->_person_x = coords.getX();
-            this->_person_y = coords.getY();
+            // this->_person_x = coords.getX();
+            // this->_person_y = coords.getY();
+            this->_person_x = coords.getX() + 5; // mock person coordinates for testing
+            this->_person_y = coords.getY() + 3;
             this->_person_z = coords.getZ();
             this->_valid_person_found = true;
         }
         this->_logger.info("Valid person detected at (%.3f, %.3f, %.3f)",
                            coords.getX(), coords.getY(), coords.getZ());
+    } else {
+        this->_logger.info("Detection ID %u: NOT a valid person", id);
+        {
+            std::lock_guard<std::mutex> lock(this->_person_mutex);
+            this->_valid_person_found = false;
+        }
     }
 }
 
@@ -91,7 +97,7 @@ void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z, float 
 
 bool PeopleSearch::velocity_position_control(float x, float y, float z, float yaw_rate, float max_vel, bool check_person) {
     
-    float kp = 0.5f; // Proportional g    std::cout << "check_person = " << check_person << std::endl;ain for position control
+    float kp = 0.5f; // Proportional g  
     float threshold = 0.4f; // Position error threshold to consider as "reached"
     // Limit maximum velocity // m/s
     float total_error = std::sqrt((x - _drone_x) * (x - _drone_x) +
@@ -201,68 +207,79 @@ void PeopleSearch::send_coordinate(float x, float y, float z, float yaw_deg) {
 }
 
 bool PeopleSearch::confirm_valid_person(float person_x, float person_y, float person_z) {
-    std::cout<<"Confirming detected person with LLM..." << std::endl;
-    std::cout << "Person at ("
-            << _person_x * 5 / 2 << ", " << _person_y * 5 / 2 << ", " << _person_z << ")" << std::endl;
-    this->_valid_person_found = false;
-    float _drone_x_backup = _drone_x;
-    float _drone_y_backup = _drone_y;
-    float _person_distance = std::sqrt(_person_x * _person_x + _person_y * _person_y);
-    auto movement_type = this->get_argument<std::string>("--movement-type");
-    if (movement_type == "v") {
-        std::cout << "BBBBBBBBBBBBBBBB" << std::endl;
-        // mock person coordinates for testing
-        velocity_position_control(5 + _drone_x, 3 + _drone_y, -3.0f, 0.0f, 1.5, false);
-        // velocity_position_control(_person_x / 2 + _drone_x, _person_y / 2 + _drone_y, -3.0f, 0.0f, 1.5, false);
+    std::cout << "Confirming detected person..." << std::endl;
+
+    float cur_x, cur_y, cur_z;
+    {
+        std::lock_guard<std::mutex> lock(_person_mutex);
+        std::cout << "aaaaaaaaaa" << std::endl;
+        std::cout << "Time: " << std::chrono::steady_clock::now().time_since_epoch().count() << std::endl;
+        cur_x = _person_x;
+        cur_y = _person_y;
+        cur_z = _person_z;
+        _valid_person_found = false;  // consume detection
+        std::cout << "bbbbbbbbbb" << std::endl;
+        std::cout << "Time: " << std::chrono::steady_clock::now().time_since_epoch().count() << std::endl;
     }
-    else if (movement_type == "p") {
-        move_and_wait(_person_x / 2+ _drone_x, _person_y / 2 + _drone_y, -3.0f, 0.0f, 5);
+
+    float drone_x_backup = _drone_x;
+    float drone_y_backup = _drone_y;
+    auto movement_type = get_argument<std::string>("--movement-type");
+
+    if (movement_type == "v")
+        velocity_position_control(cur_x/2 + _drone_x, cur_y/2 + _drone_y, -3.0f, 0.0f, 1.5, false);
+    else
+        move_and_wait(cur_x/2 + _drone_x, cur_y/2 + _drone_y, -3.0f, 0.0f, 5);
+
+    std::cout << "Waiting for confirmation..." << std::endl;
+
+    bool confirmed = false;
+    auto start = std::chrono::steady_clock::now();
+    std::cout << "Time: " << std::chrono::steady_clock::now().time_since_epoch().count() << std::endl;
+
+    while (std::chrono::steady_clock::now() - start < std::chrono::seconds(5)) {
+        {
+            std::lock_guard<std::mutex> lock(_person_mutex);
+            if (_valid_person_found) {
+                float dx = _person_x - person_x;
+                float dy = _person_y - person_y;
+                float dz = _person_z - person_z;
+                if (std::sqrt(dx*dx + dy*dy + dz*dz) < 0.5f) {
+                    confirmed = true;
+                    _valid_person_found = false;
+                    break;
+                }
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
-    std::cout << "CCCCCCCCCCCCCC" << std::endl;
-    float dx = _person_x - person_x;
-    float dy = _person_y - person_y;
-    float dz = _person_z - person_z;
-    float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+    std::cout << "Time: " << std::chrono::steady_clock::now().time_since_epoch().count() << std::endl;
 
-    float drone_to_person_dist_ = std::sqrt((_drone_x - person_x) * (_drone_x - person_x) +
-                                       (_drone_y - person_y) * (_drone_y - person_y) +
-                                       (_drone_z - person_z) * (_drone_z - person_z));
-
-    float drone_to_person_dist = std::sqrt((_drone_x - _person_x) * (_drone_x - _person_x) +
-                                       (_drone_y - _person_y) * (_drone_y - _person_y) +
-                                       (_drone_z - _person_z) * (_drone_z - _person_z));
-
-    float drone_movement = std::sqrt((_drone_x - _drone_x_backup) * (_drone_x - _drone_x_backup) +
-                                       (_drone_y - _drone_y_backup) * (_drone_y - _drone_y_backup) +
-                                       (_drone_z - (-3.0f)) * (_drone_z - (-3.0f)));
-    sleep(5);
-    if (this->_valid_person_found.load() && drone_to_person_dist_ > drone_to_person_dist && drone_movement / (std::abs(drone_to_person_dist_ - drone_to_person_dist)) > 0.9f) {
-        std::cout << "Person confirmed by LLM." << std::endl;
+    if (confirmed) {
+        std::cout << "Person confirmed!" << std::endl;
         return true;
     }
-    else {
-        std::cout << "False positive, resuming search." << std::endl;
-        if (movement_type == "v") {
-            velocity_position_control(_drone_x_backup, _drone_y_backup, -4.0f, 0.0f, 1.5, false);
-        }
-        else if (movement_type == "p") {
-            move_and_wait(_drone_x_backup, _drone_y_backup, -4.0f, 0.0f, 1.5);
-        }
-        return false;
-    }
-    
+
+    std::cout << "False positive, returning..." << std::endl;
+    if (movement_type == "v")
+        velocity_position_control(drone_x_backup, drone_y_backup, -4.0f, 0.0f, 1.5, false);
+    else
+        move_and_wait(drone_x_backup, drone_y_backup, -4.0f, 0.0f, 1.5);
+
+    return false;
 }
+
 
 bool PeopleSearch::check_valid_person() {
     if (_valid_person_found.load()){
         float person_x = _person_x;
         float person_y = _person_y;
         float person_z = _person_z;
-        std::lock_guard<std::mutex> lock(this->_person_mutex);
-        std::cout << "AAAAAAAAAAAAAAAAA" << std::endl;
+        //std::lock_guard<std::mutex> lock(this->_person_mutex);
+        std::cout << "Starting person validation" << std::endl;
 
         if (!confirm_valid_person(person_x, person_y, person_z)) {
-            std::cout << "DDDDDDDDDDDD" << std::endl;
+            std::cout << "Continue search" << std::endl;
             return false; // False positive, continue search
         }
             
@@ -271,7 +288,7 @@ bool PeopleSearch::check_valid_person() {
 
         auto movement_type = this->get_argument<std::string>("--movement-type");
         if (movement_type == "v") {
-            velocity_position_control(_person_x + _drone_x, _person_y + _drone_y, 4.0f, 0.0f, false);
+            velocity_position_control(_person_x + _drone_x + 1, _person_y + _drone_y + 1, 4.0f, 0.0f, false);
         }
         else if (movement_type == "p") {
             move_and_wait(_person_x + _drone_x, _person_y + _drone_y, 4.0f, 0.0f, 5);
@@ -327,7 +344,7 @@ void PeopleSearch::run() {
 
     // Lawn-mower pattern search starting from center
     const float length = 24.0f;   // search box size (meters)
-    const float step   = 4.0f;   // spacing between lines
+    const float step   = 6.0f;   // spacing between lines
     const int   wait   = 4;     // wait between moves (seconds)
 
     bool forward = true;
