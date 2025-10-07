@@ -9,6 +9,7 @@
 #include <mavsdk/plugins/action/action.h>
 #include <mavsdk/plugins/ftp_server/ftp_server.h>
 #include <mavsdk/plugins/mavlink_passthrough/mavlink_passthrough.h>
+#include <mavsdk/plugins/mission/mission.h>
 #include <mavsdk/plugins/offboard/offboard.h>
 #include <mavsdk/plugins/telemetry/telemetry.h>
 #include <memory>
@@ -37,6 +38,7 @@ class Mavlink : public Core::Vertex {
   mavsdk::Mavsdk _mavsdk;
   std::shared_ptr<mavsdk::Telemetry> _telemetry;
   std::shared_ptr<mavsdk::Action> _action;
+  std::shared_ptr<mavsdk::Mission> _mission;
   std::shared_ptr<mavsdk::Offboard> _offboard;
   std::shared_ptr<mavsdk::MavlinkPassthrough> _passthrough;
   std::shared_ptr<mavsdk::FtpServer> _ftp_server;

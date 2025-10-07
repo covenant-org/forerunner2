@@ -44,7 +44,7 @@ void MavlinkMission::telemetry_cb(const Core::IncomingMessage<Telemetry> &msg) {
 
 void MavlinkMission::altitude_cb(const Core::IncomingMessage<Altitude> &msg) {
   this->_altitude = msg.content.getAvg();
-  this->_logger.debug("altitude: %f", this->_altitude);
+  // this->_logger.debug("altitude: %f", this->_altitude);
 }
 
 void MavlinkMission::arm_and_takeoff(GenericResponse::Builder &res,

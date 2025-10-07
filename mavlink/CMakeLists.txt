@@ -4,6 +4,7 @@ project(mavlink)
 find_package(cppzmq REQUIRED)
 find_package(capnp_schemas REQUIRED)
 find_package(MAVSDK REQUIRED)
+find_package(yaml-cpp REQUIRED)
 
 add_executable(${PROJECT_NAME} mavlink.cpp)
 
@@ -39,4 +40,5 @@ target_link_libraries(${PROJECT_NAME}-commander PRIVATE
 	cppzmq
 	capnp
 	capnp_schemas
-	kj)
+	kj
+	yaml-cpp::yaml-cpp)

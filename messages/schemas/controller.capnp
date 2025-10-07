@@ -22,6 +22,42 @@ struct Command{
     offboard   :group{
       enable  @8 :Bool;
     }
+    gotoLocation :group{
+      latitude  @9 :Float64;
+      longitude @10 :Float64;
+      altitude  @11 :Float32;
+      yaw       @12 :Float32;
+    }
+    uploadMission @13 :UploadMission;
+    startMission @14 :Void;
+    pauseMission @15 :Void;
+    clearMission @16 :Void;
+  }
+}
+
+struct UploadMission {
+  waypoints @0 :List(MissionItem);
+}
+
+struct MissionItem {
+  latitude @0 :Float64;
+  longitude @1 :Float64;
+  relativeAltitude @2 :Float32;
+  speed @3 :Float32;
+  isFlyThrough @4 :Bool;
+  gimbalPitch @5 :Float32;
+  gimbalYaw @6 :Float32;
+  cameraAction @7 :CameraAction;
+  loiterTime @8 :Float32;
+  cameraPhotoInterval @9 :Float32;
+  
+  enum CameraAction {
+    none @0;
+    takePhoto @1;
+    startPhotoInterval @2;
+    stopPhotoInterval @3;
+    startVideo @4;
+    stopVideo @5;
   }
 }
 

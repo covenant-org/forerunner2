@@ -1,0 +1,44 @@
+mission_items:
+  - latitude: 47.3977
+    longitude: 8.5456
+    relative_altitude: 10.0
+    speed: 5.0
+    is_fly_through: true
+    camera_action: "NONE"
+    loiter_time: 0.0
+    gimbal_pitch: 0.0
+    gimbal_yaw: 0.0
+    camera_photo_interval: 0.0
+  
+  - latitude: 47.3978
+    longitude: 8.5457
+    relative_altitude: 15.0
+    speed: 3.0
+    is_fly_through: false
+    camera_action: "TAKE_PHOTO"
+    loiter_time: 5.0
+    gimbal_pitch: -30.0
+    gimbal_yaw: 45.0
+    camera_photo_interval: 2.0
+  
+  - latitude: 47.3979
+    longitude: 8.5458
+    relative_altitude: 20.0
+    speed: 7.0
+    is_fly_through: true
+    camera_action: "START_VIDEO"
+    loiter_time: 0.0
+    gimbal_pitch: 0.0
+    gimbal_yaw: 0.0
+    camera_photo_interval: 0.0
+  
+  - latitude: 47.3980
+    longitude: 8.5459
+    relative_altitude: 25.0
+    speed: 4.0
+    is_fly_through: false
+    camera_action: "STOP_VIDEO"
+    loiter_time: 3.0
+    gimbal_pitch: -45.0
+    gimbal_yaw: -90.0
+    camera_photo_interval: 0.0
