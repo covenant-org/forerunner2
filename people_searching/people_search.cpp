@@ -20,25 +20,34 @@ void PeopleSearch::handle_llm_result(const Core::IncomingMessage<LLMResult>& msg
     auto id = result.getObjectId();
     if (result.getIsValidPerson()) {
         auto coords = result.getCoordinates();
+        auto now = std::chrono::steady_clock::now();
         {
             std::lock_guard<std::mutex> lock(this->_person_mutex);
-            // this->_person_x = coords.getX();
-            // this->_person_y = coords.getY();
-            this->_person_x = coords.getX() + 5; // mock person coordinates for testing
-            this->_person_y = coords.getY() + 3;
+            // remove test offset or make it configurable
+            this->_person_x = coords.getX(); // +5 for testing — remove in production
+            this->_person_y = coords.getY(); // +3 for testing — remove
             this->_person_z = coords.getZ();
-            this->_valid_person_found = true;
+            this->_last_detection_time = now;
+            this->_valid_person_found.store(true);
         }
-        this->_logger.info("Valid person detected at (%.3f, %.3f, %.3f)",
-                           coords.getX(), coords.getY(), coords.getZ());
+        // notify waiting confirmers
+        this->_person_cv.notify_one();
+
+        this->_logger.info("Valid person detected at (%.3f, %.3f, %.3f) id=%u time=%lld",
+                           coords.getX(), coords.getY(), coords.getZ(),
+                           static_cast<unsigned>(id),
+                           static_cast<long long>(now.time_since_epoch().count()));
     } else {
         this->_logger.info("Detection ID %u: NOT a valid person", id);
         {
             std::lock_guard<std::mutex> lock(this->_person_mutex);
-            this->_valid_person_found = false;
+            this->_valid_person_found.store(false);
+            // optionally clear timestamp
+            // _last_detection_time = std::chrono::steady_clock::time_point::min();
         }
     }
 }
+
 
 void PeopleSearch::get_position(const Core::IncomingMessage<Odometry>& msg) {
     auto odom = msg.content;
@@ -206,99 +215,101 @@ void PeopleSearch::send_coordinate(float x, float y, float z, float yaw_deg) {
     }
 }
 
-bool PeopleSearch::confirm_valid_person(float person_x, float person_y, float person_z) {
-    std::cout << "Confirming detected person..." << std::endl;
+bool PeopleSearch::confirm_valid_person(float person_x, float person_y, float person_z,
+                                        std::chrono::steady_clock::time_point detection_time) {
+    std::cout << "Confirming detected person at (" << person_x << ", " << person_y << ", " << person_z << ")" << std::endl;
 
-    float cur_x, cur_y, cur_z;
-    {
-        std::lock_guard<std::mutex> lock(_person_mutex);
-        std::cout << "aaaaaaaaaa" << std::endl;
-        std::cout << "Time: " << std::chrono::steady_clock::now().time_since_epoch().count() << std::endl;
-        cur_x = _person_x;
-        cur_y = _person_y;
-        cur_z = _person_z;
-        _valid_person_found = false;  // consume detection
-        std::cout << "bbbbbbbbbb" << std::endl;
-        std::cout << "Time: " << std::chrono::steady_clock::now().time_since_epoch().count() << std::endl;
-    }
-
-    float drone_x_backup = _drone_x;
-    float drone_y_backup = _drone_y;
+    // Approach halfway (keep movement code outside of locks)
     auto movement_type = get_argument<std::string>("--movement-type");
-
+    float approach_x = person_x / 2 + _drone_x;
+    float approach_y = person_y / 2 + _drone_y;
     if (movement_type == "v")
-        velocity_position_control(cur_x/2 + _drone_x, cur_y/2 + _drone_y, -3.0f, 0.0f, 1.5, false);
+        velocity_position_control(approach_x, approach_y, -3.5f, 0.0f, 1.5, false);
     else
-        move_and_wait(cur_x/2 + _drone_x, cur_y/2 + _drone_y, -3.0f, 0.0f, 5);
+        move_and_wait(approach_x, approach_y, -3.0f, 0.0f, 5);
 
-    std::cout << "Waiting for confirmation..." << std::endl;
-
+    // wait for a fresh detection (detection_time must be newer than snapshot_time)
     bool confirmed = false;
-    auto start = std::chrono::steady_clock::now();
-    std::cout << "Time: " << std::chrono::steady_clock::now().time_since_epoch().count() << std::endl;
+    const auto timeout = std::chrono::seconds(5);
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
 
-    while (std::chrono::steady_clock::now() - start < std::chrono::seconds(5)) {
-        {
-            std::lock_guard<std::mutex> lock(_person_mutex);
-            if (_valid_person_found) {
-                float dx = _person_x - person_x;
-                float dy = _person_y - person_y;
-                float dz = _person_z - person_z;
-                if (std::sqrt(dx*dx + dy*dy + dz*dz) < 0.5f) {
-                    confirmed = true;
-                    _valid_person_found = false;
-                    break;
-                }
-            }
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::unique_lock<std::mutex> lk(this->_person_mutex);
+    // lambda predicate: new detection time is later than snapshot and spatially close
+    auto predicate = [&](void)->bool {
+        if (this->_last_detection_time <= detection_time) return false; // not new
+        float dx = this->_person_x - person_x;
+        float dy = this->_person_y - person_y;
+        float dz = this->_person_z - person_z;
+        float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+        const float threshold = 1.0f; // tune: 0.5..1.5 meters
+        return dist <= threshold;
+    };
+
+    // wait until predicate or timeout
+    if (_person_cv.wait_until(lk, deadline, predicate)) {
+        // predicate true: fresh detection within spatial threshold
+        confirmed = true;
+        // consume detection
+        this->_valid_person_found.store(false);
     }
-    std::cout << "Time: " << std::chrono::steady_clock::now().time_since_epoch().count() << std::endl;
+    lk.unlock();
 
     if (confirmed) {
         std::cout << "Person confirmed!" << std::endl;
         return true;
     }
 
-    std::cout << "False positive, returning..." << std::endl;
-    if (movement_type == "v")
+    std::cout << "False positive or no fresh detection, returning to backup." << std::endl;
+    // return to backup
+    float drone_x_backup = _drone_x;
+    float drone_y_backup = _drone_y;
+    if (movement_type == "v") {
         velocity_position_control(drone_x_backup, drone_y_backup, -4.0f, 0.0f, 1.5, false);
-    else
+    } else {
         move_and_wait(drone_x_backup, drone_y_backup, -4.0f, 0.0f, 1.5);
-
+    }
     return false;
 }
 
 
+
 bool PeopleSearch::check_valid_person() {
-    if (_valid_person_found.load()){
-        float person_x = _person_x;
-        float person_y = _person_y;
-        float person_z = _person_z;
-        //std::lock_guard<std::mutex> lock(this->_person_mutex);
-        std::cout << "Starting person validation" << std::endl;
+    if (!_valid_person_found.load()) return false;
 
-        if (!confirm_valid_person(person_x, person_y, person_z)) {
-            std::cout << "Continue search" << std::endl;
-            return false; // False positive, continue search
-        }
-            
-        std::cout << "Interrupting search! Flying to detected person at ("
-                << _person_x << ", " << _person_y << ", " << _person_z << ")" << std::endl;
-
-        auto movement_type = this->get_argument<std::string>("--movement-type");
-        if (movement_type == "v") {
-            velocity_position_control(_person_x + _drone_x + 1, _person_y + _drone_y + 1, 4.0f, 0.0f, false);
-        }
-        else if (movement_type == "p") {
-            move_and_wait(_person_x + _drone_x, _person_y + _drone_y, 4.0f, 0.0f, 5);
-        }
-
-        land();
-        return true; // Exit search after landing
+    float person_x, person_y, person_z;
+    std::chrono::steady_clock::time_point detection_time;
+    {
+        std::lock_guard<std::mutex> lock(this->_person_mutex);
+        person_x = _person_x;
+        person_y = _person_y;
+        person_z = _person_z;
+        detection_time = _last_detection_time;
+        // do NOT clear _valid_person_found here — let confirm consume/clear it
     }
-    return false;
-}   
+
+    std::cout << "Starting person validation (snapshot at time="
+              << detection_time.time_since_epoch().count() << ")" << std::endl;
+
+    if (!confirm_valid_person(person_x, person_y, person_z, detection_time)) {
+        std::cout << "Continue search" << std::endl;
+        return false;
+    }
+
+    // proceed to go to person (use the locked snapshot or locking as needed)
+    std::cout << "Interrupting search! Flying to detected person at ("
+            << person_x << ", " << person_y << ", " << person_z << ")" << std::endl;
+
+    auto movement_type = this->get_argument<std::string>("--movement-type");
+    if (movement_type == "v") {
+        velocity_position_control(person_x + _drone_x + 1, person_y + _drone_y + 1, -4.0f, 0.0f, false);
+    } else {
+        move_and_wait(person_x + _drone_x, person_y + _drone_y, -4.0f, 0.0f, 5);
+    }
+
+    land();
+    return true;
+}
+ 
 
 void PeopleSearch::run() {
     float x, y, z;

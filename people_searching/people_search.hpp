@@ -23,6 +23,10 @@ private:
     float _person_x{0.0f}, _person_y{0.0f}, _person_z{0.0f};
     float _drone_x{0.0f}, _drone_y{0.0f}, _drone_z{0.0f}, _drone_vel{0.0f};
 
+    std::chrono::steady_clock::time_point _last_detection_time = std::chrono::steady_clock::time_point::min();
+
+    std::condition_variable _person_cv;
+
 public:
     PeopleSearch(Core::ArgumentParser);
 
@@ -39,7 +43,8 @@ public:
 
     bool check_valid_person();
 
-    bool confirm_valid_person(float person_x, float person_y, float person_z);
+    bool confirm_valid_person(float person_x, float person_y, float person_z,
+                              std::chrono::steady_clock::time_point detection_time);
 
     void get_position(const Core::IncomingMessage<Odometry>& msg);
 
