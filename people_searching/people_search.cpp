@@ -300,6 +300,12 @@ bool PeopleSearch::check_valid_person() {
             << person_x << ", " << person_y << ", " << person_z << ")" << std::endl;
 
     auto movement_type = this->get_argument<std::string>("--movement-type");
+
+    if (std::sqrt(person_x*person_x + person_y*person_y) < 1.0f) {
+        std::cout << "Person very close, descending directly." << std::endl;
+        land();
+        return true;
+    }
     if (movement_type == "v") {
         velocity_position_control(person_x + _drone_x + 1, person_y + _drone_y + 1, -4.0f, 0.0f, false);
     } else {
