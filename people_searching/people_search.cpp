@@ -21,20 +21,29 @@ void PeopleSearch::handle_llm_result(const Core::IncomingMessage<LLMResult>& msg
     if (result.getIsValidPerson()) {
         auto coords = result.getCoordinates();
         auto now = std::chrono::steady_clock::now();
+        float x_cam = coords.getX();
+        float y_cam = coords.getY();
+        float z_cam = coords.getZ();
+
+        float yaw = _drone_yaw; // you need to store this from odometry
+        float x_world = _drone_x + z_cam * cos(yaw) - x_cam * sin(yaw);
+        float y_world = _drone_y + z_cam * sin(yaw) + x_cam * cos(yaw);
+        float z_world = _drone_z; // keep altitude constant or adjust as needed
+
         {
             std::lock_guard<std::mutex> lock(this->_person_mutex);
             // remove test offset or make it configurable
-            this->_person_x = coords.getX(); // +5 for testing — remove in production
-            this->_person_y = coords.getY(); // +3 for testing — remove
-            this->_person_z = coords.getZ();
+            this->_person_x = x_world;
+            this->_person_y = y_world;
+            this->_person_z = z_world;
             this->_last_detection_time = now;
             this->_valid_person_found.store(true);
         }
         // notify waiting confirmers
         this->_person_cv.notify_one();
 
-        this->_logger.info("Valid person detected at (%.3f, %.3f, %.3f) id=%u time=%lld",
-                           coords.getX(), coords.getY(), coords.getZ(),
+        this->_logger.info("Valid person detected at WORLD (%.3f, %.3f, %.3f) id=%u time=%lld",
+                            x_world, y_world, z_world,
                            static_cast<unsigned>(id),
                            static_cast<long long>(now.time_since_epoch().count()));
     } else {
@@ -55,6 +64,13 @@ void PeopleSearch::get_position(const Core::IncomingMessage<Odometry>& msg) {
     this->_drone_x = pos.getX();
     this->_drone_y = pos.getY();
     this->_drone_z = pos.getZ();
+
+    auto q = odom.getQ();
+    // Convert quaternion to yaw (in radians)
+    float siny_cosp = 2 * (q.getW() * q.getZ() + q.getX() * q.getY());
+    float cosy_cosp = 1 - 2 * (q.getY() * q.getY() + q.getZ() * q.getZ());
+    float yaw = std::atan2(siny_cosp, cosy_cosp);
+    this->_drone_yaw = yaw;
 }
 
 void PeopleSearch::move_and_wait(float x, float y, float z, float yaw_deg, int wait_sec) {
@@ -119,6 +135,8 @@ bool PeopleSearch::velocity_position_control(float x, float y, float z, float ya
     float alpha = 0.2f; // smoothing factor 0 < alpha < 1
 
     while (total_error > threshold) {
+        std::cout << "Velocity control to (" << x << ", " << y << ", " << z << ") | Current pos: ("
+                  << _drone_x << ", " << _drone_y << ", " << _drone_z << ") | Error: " << total_error << std::endl;
         float error_x = x - _drone_x;
         float error_y = y - _drone_y;
         float error_z = z - _drone_z;
@@ -151,11 +169,15 @@ bool PeopleSearch::velocity_position_control(float x, float y, float z, float ya
         if (check_person)
             if (check_valid_person()) {
             std::cout << "Person found during velocity control, stopping." << std::endl;
-            send_velocity(0.0f, 0.0f, 0.0f, 0.0f); // Stop movement
+            //send_velocity(0.0f, 0.0f, 0.0f, 0.0f); // Stop movement
+            //send_coordinate(_drone_x, _drone_y, -4.0f, 0.0f);
+            move_and_wait(_drone_x, _drone_y, -4.0f, 0.0f, 2);
             return true; // Exit if valid person found
             }
     }
-    send_velocity(0.0f, 0.0f, 0.0f, 0.0f); // Stop movement
+    //send_velocity(0.0f, 0.0f, 0.0f, 0.0f); // Stop movement
+    //send_coordinate(_drone_x, _drone_y, -4.0f, 0.0f);
+    move_and_wait(_drone_x, _drone_y, -4.0f, 0.0f, 2);
     return false;
 
     }
@@ -221,8 +243,8 @@ bool PeopleSearch::confirm_valid_person(float person_x, float person_y, float pe
 
     // Approach halfway (keep movement code outside of locks)
     auto movement_type = get_argument<std::string>("--movement-type");
-    float approach_x = _drone_x - (person_x / 4);
-    float approach_y = _drone_y - (person_y / 4);
+    float approach_x = _drone_x + (person_x - _drone_x) / 4.0f;
+    float approach_y = _drone_y + (person_y - _drone_y) / 4.0f;
     float person_distance = std::sqrt(person_x*person_x + person_y*person_y);
     if (person_distance > 2.0f)
     {
@@ -246,7 +268,7 @@ bool PeopleSearch::confirm_valid_person(float person_x, float person_y, float pe
         float dy = this->_person_y - person_y;
         float dz = this->_person_z - person_z;
         float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
-        const float threshold = 1.0f; // tune: 0.5..1.5 meters
+        const float threshold = 2.0f; // tune: 0.5..1.5 meters
         return dist <= threshold;
     };
 
@@ -301,7 +323,8 @@ bool PeopleSearch::check_valid_person() {
 
     if (!_valid_person_found.load()) return false;
 
-    send_velocity(0.0f, 0.0f, 0.0f, 0.0f); // Stop movement
+    //send_velocity(0.0f, 0.0f, 0.0f, 0.0f); // Stop movement
+    send_coordinate(_drone_x, _drone_y, -4.0f, 0.0f);
 
     float person_x, person_y, person_z;
     std::chrono::steady_clock::time_point detection_time;
@@ -331,18 +354,29 @@ bool PeopleSearch::check_valid_person() {
 
     auto movement_type = this->get_argument<std::string>("--movement-type");
 
-    if (std::sqrt(person_x*person_x + person_y*person_y) < 1.0f) {
+    float person_distance = std::sqrt((person_x-_drone_x)*(person_x-_drone_x) +
+                                      (person_y-_drone_y)*(person_y-_drone_y));
+
+    if (person_distance< 2.0f) {
         std::cout << "Person very close, descending directly." << std::endl;
+        //send_velocity(0.0f, 0.0f, 0.0f, 0.0f); 
+        //send_coordinate(_drone_x, _drone_y, -4.0f, 0.0f);
+        move_and_wait(_drone_x, _drone_y, -2.0f, 0.0f, 5);
         land();
+        //send_coordinate(_drone_x, _drone_y, -0.0f, 0.0f);
         return true;
     }
     if (movement_type == "v") {
-        velocity_position_control(_drone_x + 1 -person_x, _drone_y + 1 - person_y, -4.0f, 0.0f, false);
+        std::cout << "Using velocity control to approach person." << std::endl;
+        move_and_wait(person_x, person_y, -4.0f, 0.0f, 4);
     } else {
         move_and_wait(person_x + _drone_x, person_y + _drone_y, -4.0f, 0.0f, 5);
     }
-
+    //send_velocity(0.0f, 0.0f, 0.0f, 0.0f); 
+    //send_coordinate(_drone_x, _drone_y, -4.0f, 0.0f);
+    move_and_wait(person_x, person_y, -2.0f, 0.0f, 5);
     land();
+    //send_coordinate(_drone_x, _drone_y, -0.0f, 0.0f);
     return true;
 }
  
