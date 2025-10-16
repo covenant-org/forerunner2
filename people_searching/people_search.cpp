@@ -106,8 +106,8 @@ void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z, float 
 
 bool PeopleSearch::velocity_position_control(float x, float y, float z, float yaw_rate, float max_vel, bool check_person) {
     
-    float kp = 0.5f; // Proportional g  
-    float threshold = 0.4f; // Position error threshold to consider as "reached"
+    float kp = 0.7f; // Proportional g  
+    float threshold = 0.5f; // Position error threshold to consider as "reached"
     // Limit maximum velocity // m/s
     float total_error = std::sqrt((x - _drone_x) * (x - _drone_x) +
                                   (y - _drone_y) * (y - _drone_y) +
@@ -221,12 +221,17 @@ bool PeopleSearch::confirm_valid_person(float person_x, float person_y, float pe
 
     // Approach halfway (keep movement code outside of locks)
     auto movement_type = get_argument<std::string>("--movement-type");
-    float approach_x = person_x / 2 + _drone_x;
-    float approach_y = person_y / 2 + _drone_y;
+    float approach_x = _drone_x - (person_x / 4);
+    float approach_y = _drone_y - (person_y / 4);
+    float person_distance = std::sqrt(person_x*person_x + person_y*person_y);
+    if (person_distance > 2.0f)
+    {
     if (movement_type == "v")
-        velocity_position_control(approach_x, approach_y, -3.5f, 0.0f, 1.5, false);
+        velocity_position_control(approach_x, approach_y, -4.0f, 0.0f, 1.5, false);
+        //std::cout << "What happens if we don't move to approach point?" << std::endl;
     else
         move_and_wait(approach_x, approach_y, -3.0f, 0.0f, 5);
+    }
 
     // wait for a fresh detection (detection_time must be newer than snapshot_time)
     bool confirmed = false;
@@ -256,6 +261,10 @@ bool PeopleSearch::confirm_valid_person(float person_x, float person_y, float pe
 
     if (confirmed) {
         std::cout << "Person confirmed!" << std::endl;
+        _last_confirmed_time = std::chrono::steady_clock::now();
+        _last_confirmed_x = person_x;
+        _last_confirmed_y = person_y;
+        _last_confirmed_z = person_z;
         return true;
     }
 
@@ -274,7 +283,25 @@ bool PeopleSearch::confirm_valid_person(float person_x, float person_y, float pe
 
 
 bool PeopleSearch::check_valid_person() {
+
+    auto now = std::chrono::steady_clock::now();
+
+    // Skip if we are already handling a confirmed person
+    if (_is_handling_person) return false;
+
+    // Cooldown: ignore detections within 5s and 2m of last confirmed
+    const auto cooldown = std::chrono::seconds(5);
+    if (now - _last_confirmed_time < cooldown) {
+        float dx = _person_x - _last_confirmed_x;
+        float dy = _person_y - _last_confirmed_y;
+        float dz = _person_z - _last_confirmed_z;
+        if (std::sqrt(dx*dx + dy*dy + dz*dz) < 2.0f)
+            return false;
+    }
+
     if (!_valid_person_found.load()) return false;
+
+    send_velocity(0.0f, 0.0f, 0.0f, 0.0f); // Stop movement
 
     float person_x, person_y, person_z;
     std::chrono::steady_clock::time_point detection_time;
@@ -287,10 +314,13 @@ bool PeopleSearch::check_valid_person() {
         // do NOT clear _valid_person_found here — let confirm consume/clear it
     }
 
+    _is_handling_person = true;
+
     std::cout << "Starting person validation (snapshot at time="
               << detection_time.time_since_epoch().count() << ")" << std::endl;
 
     if (!confirm_valid_person(person_x, person_y, person_z, detection_time)) {
+        _is_handling_person = false;
         std::cout << "Continue search" << std::endl;
         return false;
     }
@@ -307,7 +337,7 @@ bool PeopleSearch::check_valid_person() {
         return true;
     }
     if (movement_type == "v") {
-        velocity_position_control(person_x + _drone_x + 1, person_y + _drone_y + 1, -4.0f, 0.0f, false);
+        velocity_position_control(_drone_x + 1 -person_x, _drone_y + 1 - person_y, -4.0f, 0.0f, false);
     } else {
         move_and_wait(person_x + _drone_x, person_y + _drone_y, -4.0f, 0.0f, 5);
     }

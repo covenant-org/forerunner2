@@ -22,10 +22,18 @@ private:
     std::mutex _person_mutex;
     float _person_x{0.0f}, _person_y{0.0f}, _person_z{0.0f};
     float _drone_x{0.0f}, _drone_y{0.0f}, _drone_z{0.0f}, _drone_vel{0.0f};
+    float _drone_yaw{0.0f};
 
     std::chrono::steady_clock::time_point _last_detection_time = std::chrono::steady_clock::time_point::min();
 
     std::condition_variable _person_cv;
+
+    std::chrono::steady_clock::time_point _last_confirmed_time;
+    float _last_confirmed_x = 0.0f;
+    float _last_confirmed_y = 0.0f;
+    float _last_confirmed_z = 0.0f;
+    bool _is_handling_person = false;
+
 
 public:
     PeopleSearch(Core::ArgumentParser);
