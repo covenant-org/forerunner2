@@ -1,0 +1,15 @@
+executables:
+  - name: mavlink  
+  - name: mavlink-mission
+  - name: people_search 
+    args:
+      options: # Argumentos con valores
+        --gps-target-location: "20 20"
+        --movement-type: v
+  - name: llm_processor
+  - name: people_detection  
+    args:
+      options: # Argumentos con valores
+        --description: "person wearing a green tshirt and blue pants standing"
+        --svo-path: gz
+        --distance-threshold: 2

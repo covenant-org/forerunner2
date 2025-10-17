@@ -188,20 +188,6 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
         return;
       }
 
-      // Ensure setpoint is applied after Offboard is started
-      const auto set_res = this->_offboard->set_position_ned({
-          .north_m = waypoint.getX(),
-          .east_m = waypoint.getY(),
-          .down_m = waypoint.getZ(),
-          .yaw_deg = waypoint.getR()});
-      if (set_res != mavsdk::Offboard::Result::Success) {
-        this->_logger.error("set_position_ned after start failed: %d",
-                            static_cast<int>(set_res));
-        res.setCode(500);
-        res.setMessage("Failed to set position after starting offboard");
-        return;
-      }
-
       // Set the position setpoint - offboard mode must be started separately by client
       const auto set_res = this->_offboard->set_position_ned({
           .north_m = waypoint.getX(),
@@ -229,6 +215,7 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
       
       this->_logger.debug("Waypoint setpoint set successfully - ready for offboard mode");
       return;
+    }
     }
     case Command::GOTO_LOCATION: {
       this->_logger.debug("Entered Command::GOTO_LOCATION");

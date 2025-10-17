@@ -53,9 +53,6 @@ class Commander : public Core::Vertex {
   std::shared_ptr<Core::ActionClient<MissionCommand, GenericResponse>> _mission_client;
   std::shared_ptr<Core::ActionClient<Command, GenericResponse>> _controller_client;
   std::shared_ptr<Core::Subscriber<Odometry>> _odometry_subscriber;
-
-  WaypointData _last_local;
-  GlobalWaypointData _last_global;
   
   // Current odometry data from subscriber
   float _current_x = 0.0f;

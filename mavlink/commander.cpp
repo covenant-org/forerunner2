@@ -49,6 +49,7 @@ Commander::Commander(Core::ArgumentParser parser) : Core::Vertex(parser) {
         
         this->_logger.debug("Updated odometry: x=%f y=%f z=%f heading=%f", 
                             this->_current_x, this->_current_y, this->_current_z, this->_current_heading);
+      });
 
   // Subscriber for home_position published by Mavlink
   this->_home_subscriber = this->create_subscriber<HomePosition>(
@@ -306,6 +307,7 @@ void Commander::run() {
       std::cout << "Goodbye!" << std::endl;
       break;
     } else {
+      std::array<double, 4> coords = {0.0, 0.0, 0.0, 0.0};
       this->_logger.warn("Unknown command: %s", command.c_str());
       std::cout << "Type 'help' for available commands." << std::endl;
               if (!this->_home.set) {
@@ -346,14 +348,8 @@ void Commander::run() {
                 }
               }
             }
-          } else {
-            
           }
-    } else {
-      this->_logger.warn("Unknown command: %s", command.c_str());
-    }
   }
-}
 
 void Commander::handle_mission_command(const std::vector<std::string>& args) {
   if (args.size() < 1) {
