@@ -19,6 +19,7 @@
 
 // https://mavlink.io/en/messages/common.html#HOME_POSITION
 #define HOME_POSITION_MESSAGE_ID 242
+#define OPTICAL_FLOW_MESSAGE_ID 100
 
 #ifndef MAVLINK_HPP
 #define MAVLINK_HPP
@@ -41,6 +42,7 @@ class Mavlink : public Core::Vertex {
   std::shared_ptr<mavsdk::MavlinkPassthrough> _passthrough;
 
   mavlink_home_position_t _mavlink_home_position;
+  mavlink_optical_flow_t _mavlink_optical_flow;
 
   bool init_mavlink_connection(const std::string &);
 
@@ -51,6 +53,7 @@ class Mavlink : public Core::Vertex {
     std::string mode;
   } _telemetry_state;
   float heading;
+  float optical_flow_altitude;
 
  public:
   Mavlink(Core::ArgumentParser);
