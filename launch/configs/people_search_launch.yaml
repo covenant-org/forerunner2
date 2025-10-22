@@ -5,7 +5,6 @@ executables:
     args:
       options: # Argumentos con valores
         --gps-target-location: "20 20"
-        --movement-type: p
   - name: llm_processor
   - name: people_detection  
     args:
