@@ -204,7 +204,7 @@ void PeopleSearch::send_velocity(float vx, float vy, float vz, float yaw_rate) {
 }
 
 void PeopleSearch::land() {
-    std::cout << "Initiating landing sequence..." << std::endl;
+    this->_logger.info("Initiating landing sequence.");
     auto request = this->_mission_client->new_msg();
     request.content.setLand();
     request.content.getLand();
@@ -388,10 +388,10 @@ void PeopleSearch::run() {
     auto gps_target = this->get_argument<std::vector<std::string>>("--gps-target-location");
     auto movement_type = this->get_argument<std::string>("--movement-type");
     if (gps_target.size() == 2) {
-        std::cout << "GPS Target Location: Latitude = " << gps_target[0]
-                  << ", Longitude = " << gps_target[1] << std::endl;
+        this->_logger.info("GPS target location provided: lat=%s, lon=%s",
+                           gps_target[0].c_str(), gps_target[1].c_str());
     } else {
-        std::cerr << "Invalid GPS target location provided!" << std::endl;
+        this->_logger.error("GPS target location (--gps-target-location) is required.");
         return;
     }
 
@@ -400,7 +400,7 @@ void PeopleSearch::run() {
     z = -4.0f; // Fixed altitude of 4 meters
     
     // Takeoff to 4 meters
-    std::cout << "Taking off to 4 meters..." << std::endl;
+    this->_logger.info("Initiating takeoff to 4.0 meters");
     auto request = this->_mission_client->new_msg();
     request.content.initTakeoff();
     request.content.getTakeoff().setDesiredAltitude(4.0);
@@ -411,8 +411,36 @@ void PeopleSearch::run() {
     this->_logger.error("Takeoff failed with code %d and message %s",
                         response.getCode(), response.getMessage());}
 
+    auto setpoint_req = this->_controller_client->new_msg();
+    auto wp = setpoint_req.content.initWaypoint();
+    wp.setX(0);
+    wp.setY(0);
+    wp.setZ(z);
+    auto setpoint_res = setpoint_req.send();
+    auto setpoint_resp = setpoint_res.value().content;
+    if (setpoint_resp.getCode() != 200) {
+          this->_logger.error("Failed to set position setpoint before offboard: %s", 
+                              setpoint_resp.getMessage().cStr());
+          return;
+        }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    //Offboard mode activation
+    this->_logger.info("Activating offboard mode");
+
+    auto cmd_req = this->_controller_client->new_msg();
+    auto offboard_request = cmd_req.content.initOffboard();
+    offboard_request.setEnable(true);
+    auto cmd_result = cmd_req.send();
+    auto cmd_response = cmd_result.value().content;
+    if (cmd_response.getCode() != 200) {
+        this->_logger.error("Offboard activation failed with code %d and message %s",
+                            cmd_response.getCode(), cmd_response.getMessage());
+    }
+
     // Move to initial position
-    std::cout << "Moving to target location..." << std::endl;
+    this->_logger.info("Moving to target GPS location (%.6f, %.6f) at %.2f meters",
+                       x, y, -z);
     if (movement_type == "p") {
         move_and_wait(x, y, z, 0.0f, 15);
     } else if (movement_type == "v") {
@@ -430,7 +458,7 @@ void PeopleSearch::run() {
 
     bool forward = true;
 
-    std::cout << "Starting search pattern..." << std::endl;
+    this->_logger.info("Starting lawn-mower search pattern...");
     // Start at center line, expand outwards
     for (int i = 0; i <= length / (2 * step); i++) {
         float offset_up   = y + i * step;
@@ -445,12 +473,12 @@ void PeopleSearch::run() {
         }
     }
 
-    std::cout << "Search pattern completed." << std::endl;
+    this->_logger.info("Lawn-mower search pattern complete.");
 
     // Go home if no person found
     if (!check_valid_person()) {
-        std::cout << "No valid person found. Returning to launch and landing..." << std::endl;
-        velocity_position_control(0.0f, 0.0f, z, 0.0f, 3.0f, false); // Ascend to 4m
+        this->_logger.info("No valid person found, returning to home position.");
+        move_and_wait(0.0f, 0.0f, -4.0f, 0.0f, 10);
         land();
     }
 
