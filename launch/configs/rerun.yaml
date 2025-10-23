@@ -1,0 +1,5 @@
+executables:
+  - name: rerun
+    args:
+      flags:
+        - --map-compression
