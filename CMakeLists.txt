@@ -11,6 +11,7 @@ set(EXCLUDED_SUBDIRS
     "vendor"
     "core"
     "messages"
+    "rerun"
 )
 
 find_package(ZED)
