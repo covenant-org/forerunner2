@@ -57,6 +57,8 @@ public:
 
     void fly_scan_line(float x_center, float y_offset, float z, float length, bool forward, int wait);
 
+    void calculateWaypoints(float x_center, float y_offset, float z, float length, bool forward, std::list<std::tuple<float, float, float>>& waypoints);
+
     void land();
 
     // Main loop: read coordinates from user input

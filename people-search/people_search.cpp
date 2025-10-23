@@ -119,6 +119,41 @@ void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z, float 
     }
 }
 
+void PeopleSearch::calculateWaypoints(float x_center, float y_offset, float z, float length, bool forward, std::list<std::tuple<float, float, float>>& waypoints) {
+    
+    float x_start = x_center - length / 2;
+    float x_end   = x_center + length / 2;
+
+    int n_div = std::ceil(abs(x_end - x_start) / (4));
+
+    if (forward) {
+        this->_logger.debug("Moving x from %.2f to %.2f at y=%.2f", x_start, x_end, y_offset);
+
+        waypoints.push_back(std::make_tuple(x_start, y_offset, z));
+        for (int i = 0; i < n_div; i++) {
+            float x_mid = x_start + (i + 1) * (length / n_div);
+            waypoints.push_back(std::make_tuple(x_mid, y_offset, z));
+            auto msg = this->_path_publisher->new_msg();
+            msg.content.setX(static_cast<float>(x_mid));
+            msg.content.setY(static_cast<float>(y_offset));
+            msg.content.setZ(static_cast<float>(z));
+            msg.publish();
+        }
+    } else {
+        this->_logger.debug("Moving x from %.2f to %.2f at y=%.2f", x_end, x_start, y_offset);
+        waypoints.push_back(std::make_tuple(x_end, y_offset, z));
+        for (int i = 0; i < n_div; i++) {
+            float x_mid = x_end - (i + 1) * (length / n_div);
+            waypoints.push_back(std::make_tuple(x_mid, y_offset, z));
+            auto msg = this->_path_publisher->new_msg();
+            msg.content.setX(static_cast<float>(x_mid));
+            msg.content.setY(static_cast<float>(y_offset));
+            msg.content.setZ(static_cast<float>(z));
+            msg.publish();
+        }
+    }
+}
+
 void PeopleSearch::land() {
     this->_logger.info("Initiating landing sequence.");
     auto request = this->_mission_client->new_msg();
@@ -353,6 +388,25 @@ void PeopleSearch::run() {
 
     this->_logger.info("Starting lawn-mower search pattern...");
     // Start at center line, expand outwards
+
+    //calculate waypoints
+
+    std::list<std::tuple<float, float, float>> waypoints;
+    
+    for (int i = 0; i <= length / (2 * step); i++) {
+        float offset_up   = y + i * step;
+        float offset_down = y - i * step;
+
+        calculateWaypoints(x, offset_up, z, length, forward, waypoints);
+        forward = !forward;
+
+        if (i > 0) { // skip duplicate center
+            calculateWaypoints(x, offset_down, z, length, forward, waypoints);
+            forward = !forward;
+        }
+    }
+
+
     for (int i = 0; i <= length / (2 * step); i++) {
         float offset_up   = y + i * step;
         float offset_down = y - i * step;
