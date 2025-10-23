@@ -93,7 +93,7 @@ void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z, float 
     auto movement_type = this->get_argument<std::string>("--movement-type");
 
     if (forward) {
-        std::cout << "Moving x from " << x_start << " to " << x_end << " at y=" << y_offset << std::endl;
+        this->_logger.info("Moving x from %.2f to %.2f at y=%.2f", x_start, x_end, y_offset);
         
         if (movement_type == "p") {
             if (move_and_check(x_start, y_offset, z, 0.0f, wait)) return;
@@ -106,7 +106,7 @@ void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z, float 
             if (velocity_position_control(x_end, y_offset, z, 0.0f)) return;
         }
     } else {
-        std::cout << "Moving x from " << x_end << " to " << x_start << " at y=" << y_offset << std::endl;
+        this->_logger.info("Moving x from %.2f to %.2f at y=%.2f", x_end, x_start, y_offset);
         if (movement_type == "p") {
             if (move_and_check(x_end, y_offset, z, 0.0f, wait)) return;
             for (int i = 0; i < n_div; i++) {
@@ -135,8 +135,8 @@ bool PeopleSearch::velocity_position_control(float x, float y, float z, float ya
     float alpha = 0.2f; // smoothing factor 0 < alpha < 1
 
     while (total_error > threshold) {
-        std::cout << "Velocity control to (" << x << ", " << y << ", " << z << ") | Current pos: ("
-                  << _drone_x << ", " << _drone_y << ", " << _drone_z << ") | Error: " << total_error << std::endl;
+    this->_logger.debug("Velocity control to (%.2f, %.2f, %.2f) | Current pos: (%.2f, %.2f, %.2f) | Error: %.3f",
+                x, y, z, _drone_x, _drone_y, _drone_z, total_error);
         float error_x = x - _drone_x;
         float error_y = y - _drone_y;
         float error_z = z - _drone_z;
@@ -168,7 +168,7 @@ bool PeopleSearch::velocity_position_control(float x, float y, float z, float ya
                                 (z - _drone_z) * (z - _drone_z));
         if (check_person)
             if (check_valid_person()) {
-            std::cout << "Person found during velocity control, stopping." << std::endl;
+            this->_logger.info("Person found during velocity control, stopping.");
             //send_velocity(0.0f, 0.0f, 0.0f, 0.0f); // Stop movement
             //send_coordinate(_drone_x, _drone_y, -4.0f, 0.0f);
             move_and_wait(_drone_x, _drone_y, -4.0f, 0.0f, 2);
@@ -192,19 +192,19 @@ void PeopleSearch::send_velocity(float vx, float vy, float vz, float yaw_rate) {
 
     auto result = request.send();
     if (!result.has_value()) {
-        std::cerr << "Failed to send velocity: no response\n";
+        this->_logger.error("Failed to send velocity: no response");
         return;
     }
 
     auto response = result.value().content;
     if (response.getCode() != 200) {
-        std::cerr << "Velocity command rejected! Code: " << response.getCode()
-                  << " Message: " << response.getMessage().cStr() << "\n";
+        this->_logger.error("Velocity command rejected! Code: %d Message: %s",
+                            response.getCode(), response.getMessage().cStr());
     }
 }
 
 void PeopleSearch::land() {
-    std::cout << "Initiating landing sequence..." << std::endl;
+    this->_logger.info("Initiating landing sequence...");
     auto request = this->_mission_client->new_msg();
     request.content.setLand();
     request.content.getLand();
@@ -226,20 +226,20 @@ void PeopleSearch::send_coordinate(float x, float y, float z, float yaw_deg) {
 
     auto result = request.send();
     if (!result.has_value()) {
-        std::cerr << "Failed to send coordinate: no response\n";
+        this->_logger.error("Failed to send coordinate: no response");
         return;
     }
 
     auto response = result.value().content;
     if (response.getCode() != 200) {
-        std::cerr << "Waypoint rejected! Code: " << response.getCode()
-                  << " Message: " << response.getMessage().cStr() << "\n";
+        this->_logger.error("Waypoint rejected! Code: %d Message: %s",
+                            response.getCode(), response.getMessage().cStr());
     }
 }
 
 bool PeopleSearch::confirm_valid_person(float person_x, float person_y, float person_z,
                                         std::chrono::steady_clock::time_point detection_time) {
-    std::cout << "Confirming detected person at (" << person_x << ", " << person_y << ", " << person_z << ")" << std::endl;
+    this->_logger.info("Confirming detected person at (%.2f, %.2f, %.2f)", person_x, person_y, person_z);
 
     // Approach halfway (keep movement code outside of locks)
     auto movement_type = get_argument<std::string>("--movement-type");
@@ -282,7 +282,7 @@ bool PeopleSearch::confirm_valid_person(float person_x, float person_y, float pe
     lk.unlock();
 
     if (confirmed) {
-        std::cout << "Person confirmed!" << std::endl;
+        this->_logger.info("Person confirmed!");
         _last_confirmed_time = std::chrono::steady_clock::now();
         _last_confirmed_x = person_x;
         _last_confirmed_y = person_y;
@@ -290,7 +290,7 @@ bool PeopleSearch::confirm_valid_person(float person_x, float person_y, float pe
         return true;
     }
 
-    std::cout << "False positive or no fresh detection, returning to backup." << std::endl;
+    this->_logger.info("False positive or no fresh detection, returning to backup.");
     // return to backup
     float drone_x_backup = _drone_x;
     float drone_y_backup = _drone_y;
@@ -339,18 +339,18 @@ bool PeopleSearch::check_valid_person() {
 
     _is_handling_person = true;
 
-    std::cout << "Starting person validation (snapshot at time="
-              << detection_time.time_since_epoch().count() << ")" << std::endl;
+    this->_logger.info("Starting person validation (snapshot at time=%lld)",
+                       static_cast<long long>(detection_time.time_since_epoch().count()));
 
     if (!confirm_valid_person(person_x, person_y, person_z, detection_time)) {
         _is_handling_person = false;
-        std::cout << "Continue search" << std::endl;
+    this->_logger.info("Continue search");
         return false;
     }
 
     // proceed to go to person (use the locked snapshot or locking as needed)
-    std::cout << "Interrupting search! Flying to detected person at ("
-            << person_x << ", " << person_y << ", " << person_z << ")" << std::endl;
+    this->_logger.info("Interrupting search! Flying to detected person at (%.2f, %.2f, %.2f)",
+                       person_x, person_y, person_z);
 
     auto movement_type = this->get_argument<std::string>("--movement-type");
 
@@ -358,7 +358,7 @@ bool PeopleSearch::check_valid_person() {
                                       (person_y-_drone_y)*(person_y-_drone_y));
 
     if (person_distance< 2.0f) {
-        std::cout << "Person very close, descending directly." << std::endl;
+    this->_logger.info("Person very close, descending directly.");
         //send_velocity(0.0f, 0.0f, 0.0f, 0.0f); 
         //send_coordinate(_drone_x, _drone_y, -4.0f, 0.0f);
         move_and_wait(_drone_x, _drone_y, -2.0f, 0.0f, 5);
@@ -367,7 +367,7 @@ bool PeopleSearch::check_valid_person() {
         return true;
     }
     if (movement_type == "v") {
-        std::cout << "Using velocity control to approach person." << std::endl;
+    this->_logger.info("Using velocity control to approach person.");
         move_and_wait(person_x, person_y, -4.0f, 0.0f, 4);
     } else {
         move_and_wait(person_x + _drone_x, person_y + _drone_y, -4.0f, 0.0f, 5);
@@ -382,25 +382,26 @@ bool PeopleSearch::check_valid_person() {
  
 
 void PeopleSearch::run() {
+    this->_logger.info("Starting People Search Node...");
     float x, y, z;
 
     // Retrieve the GPS target location argument
     auto gps_target = this->get_argument<std::vector<std::string>>("--gps-target-location");
     auto movement_type = this->get_argument<std::string>("--movement-type");
-    if (gps_target.size() == 2) {
-        std::cout << "GPS Target Location: Latitude = " << gps_target[0]
-                  << ", Longitude = " << gps_target[1] << std::endl;
+    if (gps_target.size() == 3) {
+        this->_logger.info("GPS Target Location: Latitude = %s, Longitude = %s, Altitude(Z) = %s",
+                           gps_target[0].c_str(), gps_target[1].c_str(), gps_target[2].c_str());
     } else {
-        std::cerr << "Invalid GPS target location provided!" << std::endl;
+        this->_logger.error("Invalid GPS target location provided! Expected 3 values: lat lon z");
         return;
     }
 
     x = std::stof(gps_target[0]);
     y = std::stof(gps_target[1]);
-    z = -4.0f; // Fixed altitude of 4 meters
+    z = std::stof(gps_target[2]);
     
     // Takeoff to 4 meters
-    std::cout << "Taking off to 4 meters..." << std::endl;
+    this->_logger.info("Taking off to 4 meters...");
     auto request = this->_mission_client->new_msg();
     request.content.initTakeoff();
     request.content.getTakeoff().setDesiredAltitude(4.0);
@@ -412,7 +413,7 @@ void PeopleSearch::run() {
                         response.getCode(), response.getMessage());}
 
     // Move to initial position
-    std::cout << "Moving to target location..." << std::endl;
+    this->_logger.info("Moving to target location...");
     if (movement_type == "p") {
         move_and_wait(x, y, z, 0.0f, 15);
     } else if (movement_type == "v") {
@@ -430,7 +431,7 @@ void PeopleSearch::run() {
 
     bool forward = true;
 
-    std::cout << "Starting search pattern..." << std::endl;
+    this->_logger.info("Starting search pattern...");
     // Start at center line, expand outwards
     for (int i = 0; i <= length / (2 * step); i++) {
         float offset_up   = y + i * step;
@@ -445,11 +446,11 @@ void PeopleSearch::run() {
         }
     }
 
-    std::cout << "Search pattern completed." << std::endl;
+    this->_logger.info("Search pattern completed.");
 
     // Go home if no person found
     if (!check_valid_person()) {
-        std::cout << "No valid person found. Returning to launch and landing..." << std::endl;
+        this->_logger.info("No valid person found. Returning to launch and landing...");
         velocity_position_control(0.0f, 0.0f, z, 0.0f, 3.0f, false); // Ascend to 4m
         land();
     }
@@ -460,15 +461,14 @@ int main(int argc, char **argv) {
     Core::BaseArgumentParser parser(argc, argv);
 
     parser.add_argument("--gps-target-location")
-        .nargs(2)
-        .help("GPS coordinates where the targes is likely to be (lat lon)");
+        .nargs(3)
+        .help("Target location components (lat lon z). z is altitude/depth in the controller frame.");
 
     parser.add_argument("--movement-type")
         .default_value("p")
         .help("Type of movement control: position (p) or velocity (v)");
 
     std::shared_ptr<PeopleSearch> people_search = std::make_shared<PeopleSearch>(parser);
-    std::cout << "Starting People Search Node..." << std::endl;
 
     people_search->run();
     return 0;

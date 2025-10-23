@@ -11,5 +11,5 @@ executables:
     args:
       options: # Argumentos con valores
         --description: "person wearing a green tshirt and blue pants standing"
-        --svo-path: gz
+        --svo-path: "gz"
         --distance-threshold: 2
