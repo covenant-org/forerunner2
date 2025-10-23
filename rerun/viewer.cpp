@@ -65,6 +65,9 @@ Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
   this->_planned_path_sub = this->create_subscriber<Path>(
       "planned_path",
       std::bind(&Viewer::planned_path_cb, this, std::placeholders::_1));
+  this->_person_reco_path_sub = this->create_subscriber<Point>(
+      "path_point",
+      std::bind(&Viewer::person_reco_path_cb, this, std::placeholders::_1));
 }
 
 rerun::Color Viewer::distance_to_color(float distance) {
@@ -171,6 +174,25 @@ void Viewer::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
                           position.getX(), -position.getY(), -position.getZ()},
                       rerun::Rotation3D(rerun::datatypes::Quaternion{
                           q.getX(), -q.getY(), -q.getZ(), q.getW()})));
+}
+
+void Viewer::person_reco_path_cb(const Core::IncomingMessage<Point> &msg) {
+  auto content = msg.content;
+  
+  // Log the point as a small box/sphere to visualize it
+  this->_rec->log("person_search/waypoint",
+                  rerun::Boxes3D::from_centers_and_sizes(
+                      {{content.getX(), -content.getY(), -content.getZ()}},
+                      {{0.2, 0.2, 0.2}})
+                  .with_colors({{255, 0, 255}})); // Purple color for visibility
+  
+  // Optionally log coordinates as scalars for debugging
+  this->_rec->log("person_search/coords_x",
+                  rerun::Scalars(static_cast<double>(content.getX())));
+  this->_rec->log("person_search/coords_y",
+                  rerun::Scalars(static_cast<double>(content.getY())));
+  this->_rec->log("person_search/coords_z",
+                  rerun::Scalars(static_cast<double>(content.getZ())));
 }
 
 void Viewer::goal_cb(const Core::IncomingMessage<Position> &msg) {
