@@ -1,14 +1,17 @@
 executables:
-  - name: mavlink  
+  - name: mavlink
+    args:
+      options: # Argumentos con valores
+        --mavlink-uri: "serial:///dev/ttyTHS1:921600"  
   - name: mavlink-mission
   - name: people_search 
     args:
       options: # Argumentos con valores
-        --gps-target-location: "20 20"
+        --gps-target-location: "5 5 5"
   - name: llm_processor
   - name: people_detection  
     args:
       options: # Argumentos con valores
         --description: "person wearing a green tshirt and blue pants standing"
-        --svo-path: gz
+        --svo-path: ""
         --distance-threshold: 2

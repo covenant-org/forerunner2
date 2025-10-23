@@ -1,0 +1,6 @@
+executables:
+  - name: mavlink
+    args:
+      options: # Argumentos con valores
+        --mavlink-uri: "serial:///dev/ttyTHS1:921600"
+  - name: mavlink-mission
