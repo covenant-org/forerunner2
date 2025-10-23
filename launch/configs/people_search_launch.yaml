@@ -7,7 +7,7 @@ executables:
   - name: people_search 
     args:
       options: # Argumentos con valores
-        --gps-target-location: "5 5 5"
+        --gps-target-location: "2 2"
   - name: llm_processor
   - name: people_detection  
     args:

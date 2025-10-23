@@ -13,6 +13,7 @@ PeopleSearch::PeopleSearch(Core::ArgumentParser parser) : Core::Vertex(parser) {
         "llm_results", std::bind(&PeopleSearch::handle_llm_result, this, std::placeholders::_1));
     this->_odometry_subscriber = this->create_subscriber<Odometry>(
         "odometry", std::bind(&PeopleSearch::get_position, this, std::placeholders::_1));
+    this->_path_publisher = this->create_publisher<Point>("path_point");
 }
 
 void PeopleSearch::handle_llm_result(const Core::IncomingMessage<LLMResult>& msg) {
@@ -92,10 +93,15 @@ void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z, float 
 
     if (forward) {
         this->_logger.debug("Moving x from %.2f to %.2f at y=%.2f", x_start, x_end, y_offset);
-        
+
         if (move_and_check(x_start, y_offset, z, 0.0f, wait)) return;
         for (int i = 0; i < n_div; i++) {
             float x_mid = x_start + (i + 1) * (length / n_div);
+            auto msg = this->_path_publisher->new_msg();
+            msg.content.setX(static_cast<float>(x_mid));
+            msg.content.setY(static_cast<float>(y_offset));
+            msg.content.setZ(static_cast<float>(z));
+            msg.publish();
             if (move_and_check(x_mid, y_offset, z, 0.0f, wait)) return;
         }
     } else {
@@ -103,6 +109,11 @@ void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z, float 
         if (move_and_check(x_end, y_offset, z, 0.0f, wait)) return;
         for (int i = 0; i < n_div; i++) {
             float x_mid = x_end - (i + 1) * (length / n_div);
+            auto msg = this->_path_publisher->new_msg();
+            msg.content.setX(static_cast<float>(x_mid));
+            msg.content.setY(static_cast<float>(y_offset));
+            msg.content.setZ(static_cast<float>(z));
+            msg.publish();
             if (move_and_check(x_mid, y_offset, z, 0.0f, wait)) return;
         }
     }
@@ -334,8 +345,8 @@ void PeopleSearch::run() {
     move_and_wait(x, y, z, 0.0f, 10);
 
     // Lawn-mower pattern search starting from center
-    const float length = 24.0f;   // search box size (meters)
-    const float step   = 6.0f;   // spacing between lines
+    const float length = 5.0f;   // search box size (meters)
+    const float step   = 1.0f;   // spacing between lines
     const int   wait   = 4;     // wait between moves (seconds)
 
     bool forward = true;
