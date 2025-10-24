@@ -80,6 +80,7 @@ class Publisher : public ISender {
     sprintf(buffer, "tcp://0.0.0.0:%d", this->_port);
     this->_socket.unbind(buffer);
     this->setup(uri);
+    return 0;
   }
 };
 };  // namespace Core
