@@ -42,7 +42,7 @@ public:
     // Send a single coordinate (NED) to the drone
     void send_coordinate(float north, float east, float up, float yaw_deg = 0.0f);
 
-    void move_and_wait(float x, float y, float z, float yaw_deg, int wait_sec);
+    void move_and_wait(float x, float y, float z, float yaw_deg);
 
     void handle_llm_result(const Core::IncomingMessage<LLMResult>& msg);
 
@@ -53,9 +53,9 @@ public:
 
     void get_position(const Core::IncomingMessage<Odometry>& msg);
 
-    bool move_and_check(float x, float y, float z, float yaw_deg, int wait_sec);
+    bool move_and_check(float x, float y, float z, float yaw_deg);
 
-    void fly_scan_line(float x_center, float y_offset, float z, float length, bool forward, int wait);
+    void fly_scan_line(float x_center, float y_offset, float z, float length, bool forward);
 
     void calculateWaypoints(float x_center, float y_offset, float z, float length, bool forward, std::list<std::tuple<float, float, float>>& waypoints);
 
