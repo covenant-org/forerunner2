@@ -74,18 +74,36 @@ void PeopleSearch::get_position(const Core::IncomingMessage<Odometry>& msg) {
     this->_drone_yaw = yaw;
 }
 
-void PeopleSearch::move_and_wait(float x, float y, float z, float yaw_deg, int wait_sec) {
+void PeopleSearch::move_and_wait(float x, float y, float z, float yaw_deg) {
     this->send_coordinate(x, y, z, yaw_deg);
-    std::this_thread::sleep_for(std::chrono::seconds(wait_sec));
+
+    const float position_threshold = 1.0f; // 50cm tolerance
+    
+    while (true) {
+        // Calculate distance to target
+        float dx = _drone_x - x;
+        float dy = _drone_y - y;
+        float dz = _drone_z - z;
+        float distance = std::sqrt(dx*dx + dy*dy + dz*dz);
+        
+        // Check if reached target
+        if (distance < position_threshold) {
+            this->_logger.debug("Reached waypoint (%.2f, %.2f, %.2f), distance: %.3fm", 
+                               x, y, z, distance);
+            break;
+        }
+        
+        // Sleep briefly before next check
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
 }
 
-bool PeopleSearch::move_and_check(float x, float y, float z, float yaw_deg, int wait_sec) {
-    this->send_coordinate(x, y, z, yaw_deg);
-    std::this_thread::sleep_for(std::chrono::seconds(wait_sec));
+bool PeopleSearch::move_and_check(float x, float y, float z, float yaw_deg) {
+    move_and_wait(x, y, z, yaw_deg);
     return check_valid_person();
 }
 
-void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z, float length, bool forward, int wait) {
+void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z, float length, bool forward) {
     float x_start = x_center - length / 2;
     float x_end   = x_center + length / 2;
 
@@ -94,7 +112,7 @@ void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z, float 
     if (forward) {
         this->_logger.debug("Moving x from %.2f to %.2f at y=%.2f", x_start, x_end, y_offset);
 
-        if (move_and_check(x_start, y_offset, z, 0.0f, wait)) return;
+        if (move_and_check(x_start, y_offset, z, 0.0f)) return;
         for (int i = 0; i < n_div; i++) {
             float x_mid = x_start + (i + 1) * (length / n_div);
             auto msg = this->_path_publisher->new_msg();
@@ -102,11 +120,11 @@ void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z, float 
             msg.content.setY(static_cast<float>(y_offset));
             msg.content.setZ(static_cast<float>(z));
             msg.publish();
-            if (move_and_check(x_mid, y_offset, z, 0.0f, wait)) return;
+            if (move_and_check(x_mid, y_offset, z, 0.0f)) return;
         }
     } else {
         this->_logger.debug("Moving x from %.2f to %.2f at y=%.2f", x_end, x_start, y_offset);
-        if (move_and_check(x_end, y_offset, z, 0.0f, wait)) return;
+        if (move_and_check(x_end, y_offset, z, 0.0f)) return;
         for (int i = 0; i < n_div; i++) {
             float x_mid = x_end - (i + 1) * (length / n_div);
             auto msg = this->_path_publisher->new_msg();
@@ -114,7 +132,7 @@ void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z, float 
             msg.content.setY(static_cast<float>(y_offset));
             msg.content.setZ(static_cast<float>(z));
             msg.publish();
-            if (move_and_check(x_mid, y_offset, z, 0.0f, wait)) return;
+            if (move_and_check(x_mid, y_offset, z, 0.0f)) return;
         }
     }
 }
@@ -200,7 +218,7 @@ bool PeopleSearch::confirm_valid_person(float person_x, float person_y, float pe
     float person_distance = std::sqrt(person_x*person_x + person_y*person_y);
     if (person_distance > 2.0f)
     {
-        move_and_wait(approach_x, approach_y, -4.0f, 0.0f, 2);
+        move_and_wait(approach_x, approach_y, -2.0f, 0.0f);
 
     }
     // wait for a fresh detection (detection_time must be newer than snapshot_time)
@@ -244,7 +262,7 @@ bool PeopleSearch::confirm_valid_person(float person_x, float person_y, float pe
     float drone_x_backup = _drone_x;
     float drone_y_backup = _drone_y;
 
-    move_and_wait(drone_x_backup, drone_y_backup, -4.0f, 0.0f, 1.5);
+    move_and_wait(drone_x_backup, drone_y_backup, -2.0f, 0.0f);
     return false;
 }
 
@@ -269,7 +287,7 @@ bool PeopleSearch::check_valid_person() {
 
     if (!_valid_person_found.load()) return false;
 
-    send_coordinate(_drone_x, _drone_y, -4.0f, 0.0f);
+    send_coordinate(_drone_x, _drone_y, -2.0f, 0.0f);
 
     float person_x, person_y, person_z;
     std::chrono::steady_clock::time_point detection_time;
@@ -303,15 +321,15 @@ bool PeopleSearch::check_valid_person() {
     if (person_distance< 2.0f) {
         std::cout << "Person very close, descending directly." << std::endl;
         //send_coordinate(_drone_x, _drone_y, -4.0f, 0.0f);
-        move_and_wait(_drone_x, _drone_y, -2.0f, 0.0f, 5);
+        move_and_wait(_drone_x, _drone_y, -2.0f, 0.0f);
         land();
         //send_coordinate(_drone_x, _drone_y, -0.0f, 0.0f);
         return true;
     }
-    move_and_wait(person_x, person_y, -4.0f, 0.0f, 4);
+    move_and_wait(person_x, person_y, -2.0f, 0.0f);
 
     //send_coordinate(_drone_x, _drone_y, -4.0f, 0.0f);
-    move_and_wait(person_x, person_y, -2.0f, 0.0f, 5);
+    move_and_wait(person_x, person_y, -2.0f, 0.0f);
     land();
     //send_coordinate(_drone_x, _drone_y, -0.0f, 0.0f);
     return true;
@@ -333,7 +351,7 @@ void PeopleSearch::run() {
 
     x = std::stof(gps_target[0]);
     y = std::stof(gps_target[1]);
-    z = -4.0f; // Fixed altitude of 4 meters
+    z = -2.0f; // Fixed altitude of 4 meters
     
     // Takeoff to 4 meters
     this->_logger.info("Initiating takeoff to 4.0 meters");
@@ -377,12 +395,11 @@ void PeopleSearch::run() {
     // Move to initial position
     this->_logger.info("Moving to target GPS location (%.6f, %.6f) at %.2f meters",
                        x, y, -z);
-    move_and_wait(x, y, z, 0.0f, 10);
+    move_and_wait(x, y, z, 0.0f);
 
     // Lawn-mower pattern search starting from center
-    const float length = 5.0f;   // search box size (meters)
-    const float step   = 1.0f;   // spacing between lines
-    const int   wait   = 4;     // wait between moves (seconds)
+    const float length = 10.0f;   // search box size (meters)
+    const float step   = 2.0f;   // spacing between lines
 
     bool forward = true;
 
@@ -411,11 +428,11 @@ void PeopleSearch::run() {
         float offset_up   = y + i * step;
         float offset_down = y - i * step;
 
-        fly_scan_line(x, offset_up, z, length, forward, wait);
+        fly_scan_line(x, offset_up, z, length, forward);
         forward = !forward;
 
         if (i > 0) { // skip duplicate center
-            fly_scan_line(x, offset_down, z, length, forward, wait);
+            fly_scan_line(x, offset_down, z, length, forward);
             forward = !forward;
         }
     }
@@ -425,7 +442,7 @@ void PeopleSearch::run() {
     // Go home if no person found
     if (!check_valid_person()) {
         this->_logger.info("No valid person found, returning to home position.");
-        move_and_wait(0.0f, 0.0f, -4.0f, 0.0f, 10);
+        move_and_wait(0.0f, 0.0f, -2.0f, 0.0f);
         land();
     }
 
