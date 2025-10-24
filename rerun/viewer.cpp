@@ -219,7 +219,7 @@ void Viewer::person_reco_path_cb(const Core::IncomingMessage<Point>& msg) {
 }
 
 void Viewer::detection_image_cb(
-    const Core::IncomingMessage<DetectionImage>& msg) {
+    const Core::IncomingMessage<DetectionImage> &msg) {
   auto detection = msg.content;
   auto image_data = detection.getImage();
   auto encoded = image_data.getData();
