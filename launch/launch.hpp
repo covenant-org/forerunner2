@@ -34,6 +34,7 @@ class Launch {
       
   static std::vector<std::string> build_registry_args(
       argparse::ArgumentParser& parser, const std::vector<std::string>& names);
+  static std::string quote_argument(const std::string& arg);
 
  public:
   std::map<std::string, std::string> executables;

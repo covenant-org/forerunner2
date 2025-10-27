@@ -1,4 +1,6 @@
 #include "nodes_yaml_parser.hpp"
+#include <algorithm>
+#include <cctype>
 #include <sstream>
 #include <yaml-cpp/yaml.h>
 
@@ -80,16 +82,25 @@ void process_options_scalar(const YAML::Node& opts, NodesYamlParser::ExecutableA
 
 void parse_key_value_or_flag(const std::string& input, NodesYamlParser::ExecutableArgs& exec_args) {
   std::istringstream iss(input);
-  std::string key, val;
-  if (iss >> key) {
-    if (iss >> val) {
-      exec_args.options[key] = val;
-      exec_args.args_line.push_back(key);
-      exec_args.args_line.push_back(val);
-    } else {
-      exec_args.flags.push_back(key);
-      exec_args.args_line.push_back(key);
-    }
+  std::string key;
+  if (!(iss >> key)) return;
+
+  std::string remainder;
+  std::getline(iss, remainder);
+
+  if (!remainder.empty()) {
+    remainder.erase(
+        remainder.begin(),
+        std::find_if(remainder.begin(), remainder.end(), [](unsigned char ch) {
+          return !std::isspace(ch);
+        }));
+
+    exec_args.options[key] = remainder;
+    exec_args.args_line.push_back(key);
+    exec_args.args_line.push_back(remainder);
+  } else {
+    exec_args.flags.push_back(key);
+    exec_args.args_line.push_back(key);
   }
 }
 
