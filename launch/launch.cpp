@@ -1,5 +1,7 @@
 #include "launch.hpp"
 #include "utils.hpp"
+#include <algorithm>
+#include <cctype>
 
 std::map<std::string, std::string> Launch::find_executable_files(
     const std::filesystem::path& dir,
@@ -36,6 +38,25 @@ std::map<std::string, std::string> Launch::find_executable_files(
     }
   }
   return exe_map;
+}
+
+std::string Launch::quote_argument(const std::string& arg) {
+  if (arg.empty()) return "\"\"";
+
+  const auto needs_quotes = std::any_of(
+      arg.begin(), arg.end(), [](unsigned char c) { return std::isspace(c); });
+
+  if (!needs_quotes) return arg;
+
+  std::string escaped;
+  escaped.reserve(arg.size());
+  for (char c : arg) {
+    if (c == '\\' || c == '"' || c == '$' || c == '`') {
+      escaped.push_back('\\');
+    }
+    escaped.push_back(c);
+  }
+  return "\"" + escaped + "\"";
 }
 
 std::vector<std::vector<std::string>> Launch::build_args_from_yaml(
@@ -169,9 +190,9 @@ int Launch::run_executable(const std::string& name,
     _logger.info("Starting %s at %s", name.c_str(), it->second.c_str());
     
     // Build command string
-    std::string command = it->second;
+    std::string command = quote_argument(it->second);
     for (const std::string& arg : args) {
-      command += " " + arg;
+      command += " " + quote_argument(arg);
     }
     
     // Debug: log the full command that will be executed
