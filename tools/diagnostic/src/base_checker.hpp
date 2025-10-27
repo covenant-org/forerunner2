@@ -23,7 +23,7 @@ public:
 protected:
     const std::string& name() const { return name_; }
     Core::Logger& logger() { return logger_; }
-    const Core::Logger& logger() const { return logger_; }
+    Core::Logger& logger() const { return logger_; }
     void log_command_debug(const std::string& command, const CommandResult& result) const;
 
 private:
