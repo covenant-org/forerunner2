@@ -14,11 +14,11 @@ ModemChecker::ModemChecker(Core::Logger& logger, std::string interface_hint)
     : BaseChecker("4G Modem", logger), interface_hint_(std::move(interface_hint)) {}
 
 DiagnosticResult ModemChecker::run() {
-    logger().debug("Ejecutando comando: %s", kCommand);
+    logger().debug("Running command: %s", kCommand);
     CommandResult result = run_command(kCommand);
     log_command_debug(kCommand, result);
     if (result.exit_code != 0) {
-        return {name(), false, "No se pudo ejecutar `ip -br addr`"};
+        return {name(), false, "Unable to execute `ip -br addr`"};
     }
 
     std::istringstream stream(result.output);
@@ -34,11 +34,11 @@ DiagnosticResult ModemChecker::run() {
             continue;
         }
         if (line.find("inet") != std::string::npos) {
-            logger().debug("Línea coincidente 4G: %s", line.c_str());
-            return {name(), true, "Módem 4G conectado con IP asignada"};
+            logger().debug("Matched 4G interface line: %s", line.c_str());
+            return {name(), true, "4G modem connected with assigned IP"};
         }
     }
 
-    logger().debug("No se encontró una interfaz con IP que coincida con '%s'", interface_hint_.c_str());
-    return {name(), false, "No se detectó interfaz 4G activa"};
+    logger().debug("No active interface containing '%s' with an IP was found", interface_hint_.c_str());
+    return {name(), false, "No active 4G interface detected"};
 }

@@ -37,8 +37,8 @@ inline BaseChecker::BaseChecker(std::string name, Core::Logger& logger)
     : name_(std::move(name)), logger_(logger) {}
 
 inline void BaseChecker::log_command_debug(const std::string& command, const CommandResult& result) const {
-    logger_.debug("Comando '%s' finalizó con código %d", command.c_str(), result.exit_code);
+    logger_.debug("Command '%s' finished with exit code %d", command.c_str(), result.exit_code);
     if (!result.output.empty()) {
-        logger_.debug("Salida de %s:\n%s", name_.c_str(), result.output.c_str());
+        logger_.debug("Output from %s:\n%s", name_.c_str(), result.output.c_str());
     }
 }

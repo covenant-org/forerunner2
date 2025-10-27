@@ -29,14 +29,14 @@ CommandChecker::CommandChecker(Core::Logger& logger,
 }
 
 DiagnosticResult CommandChecker::run() {
-    logger().debug("Ejecutando comando: %s", command_.c_str());
+    logger().debug("Running command: %s", command_.c_str());
     log_expected_patterns();
 
     CommandResult result = run_command(command_);
     log_command_debug(command_, result);
 
     if (result.exit_code != 0) {
-        logger().debug("El comando devolvió un código distinto de cero (%d)", result.exit_code);
+        logger().debug("Command returned a non-zero exit code (%d)", result.exit_code);
         return {name(), false, command_error_message_};
     }
 
@@ -46,21 +46,21 @@ DiagnosticResult CommandChecker::run() {
 
     if (success) {
         for (const auto& line : matched_lines) {
-            logger().debug("Coincidencia en salida: %s", line.c_str());
+            logger().debug("Matched output line: %s", line.c_str());
         }
-        logger().debug("%s superó la verificación", name().c_str());
+        logger().debug("%s passed the verification", name().c_str());
         return {name(), true, success_message_};
     }
 
     if (!missing_markers.empty()) {
         for (const auto& marker : missing_markers) {
-            logger().debug("Patrón no encontrado: %s", marker.c_str());
+            logger().debug("Missing pattern: %s", marker.c_str());
         }
     } else {
-        logger().debug("No se encontraron coincidencias en la salida");
+        logger().debug("No matches were found in the output");
     }
 
-    logger().debug("%s no pasó la verificación", name().c_str());
+    logger().debug("%s failed the verification", name().c_str());
     return {name(), false, failure_message_};
 }
 
@@ -68,7 +68,7 @@ bool CommandChecker::evaluate_output(const std::string& output,
                                      std::vector<std::string>& matched_lines,
                                      std::vector<std::string>& missing_markers) const {
     if (markers_.empty()) {
-        logger().debug("No se especificaron patrones; se asume éxito si el comando se ejecuta correctamente");
+        logger().debug("No patterns specified; assuming success when the command executes correctly");
         return true;
     }
 
@@ -131,12 +131,11 @@ std::string CommandChecker::to_lower(const std::string& value) const {
 
 void CommandChecker::log_expected_patterns() const {
     if (markers_.empty()) {
-        logger().debug("No hay patrones definidos para %s", name().c_str());
+        logger().debug("No patterns defined for %s", name().c_str());
         return;
     }
-    logger().debug("Patrones esperados (%s coincidencia%s):",
-                   match_mode_ == MatchMode::Any ? "cualquier" : "todas las",
-                   match_mode_ == MatchMode::Any ? "" : "s");
+    logger().debug("Expected patterns (%s match):",
+                   match_mode_ == MatchMode::Any ? "any" : "all");
     for (const auto& marker : markers_) {
         logger().debug(" - %s", marker.c_str());
     }

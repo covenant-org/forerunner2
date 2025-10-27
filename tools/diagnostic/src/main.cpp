@@ -23,7 +23,7 @@ std::string build_default_px4_command() {
     const std::string root = find_repo_root();
 
     if (root.empty()) {
-        throw std::runtime_error("No se encontró el marcador .root; verifique la estructura del repositorio");
+        throw std::runtime_error("Could not locate .root marker; verify the repository layout");
     }
 
     std::filesystem::path binary = std::filesystem::path(root) / "build/mavlink/mavlink";
@@ -38,12 +38,12 @@ std::string build_default_px4_command() {
 
 class DiagnosticApp : public Core::BaseVertex {
 public:
-        explicit DiagnosticApp(Core::ArgumentParser parser)
-                : Core::BaseVertex(parser),
-                    exit_code_(0) {}
+    explicit DiagnosticApp(Core::ArgumentParser parser)
+        : Core::BaseVertex(parser),
+          exit_code_(0) {}
 
     void run() override {
-        _logger.info("Diagnóstico del sistema");
+        _logger.info("System diagnostics");
 
         std::vector<std::unique_ptr<BaseChecker>> checkers;
         const std::string px4_command = build_default_px4_command();
@@ -53,22 +53,22 @@ public:
             "PX4",
             px4_command,
             px4_markers,
-            "No se pudo ejecutar el binario MAVLink",
-            "PX4 conectada correctamente",
-            "No se detecta comunicación con la PX4",
+            "Failed to execute MAVLink binary",
+            "PX4 connected successfully",
+            "No communication with PX4 detected",
             CommandChecker::MatchMode::Any,
             false));
-    checkers.emplace_back(std::make_unique<ModemChecker>(_logger, std::string(kDefaultModemInterfaceHint)));
-    const std::string zed_command = std::string(kDefaultZedCommand);
+        checkers.emplace_back(std::make_unique<ModemChecker>(_logger, std::string(kDefaultModemInterfaceHint)));
+        const std::string zed_command = std::string(kDefaultZedCommand);
         const std::vector<std::string> zed_markers = {"running camera test diagnostic : ok"};
         checkers.emplace_back(std::make_unique<CommandChecker>(
             _logger,
             "ZED Camera",
             zed_command,
             zed_markers,
-            "No se pudo ejecutar el diagnóstico de la ZED",
-            "ZED detectada correctamente",
-            "No se detectó la cámara ZED",
+            "Failed to execute ZED diagnostic",
+            "ZED camera detected successfully",
+            "ZED camera not detected",
             CommandChecker::MatchMode::Any,
             false));
 
