@@ -20,7 +20,7 @@ Mapping::Mapping(Core::ArgumentParser args)
   this->_cloud_sub = this->create_subscriber<PointCloud>(
       "point_cloud",
       std::bind(&Mapping::stich_cloud, this, std::placeholders::_1));
-  this->_full_cloud_publisher = this->create_publisher<PointCloud>("map1");
+  this->_full_cloud_publisher = this->create_publisher<PointCloud>("map");
   pcl::io::compression_Profiles_e compressionProfile =
       pcl::io::MED_RES_ONLINE_COMPRESSION_WITH_COLOR;
   _cloud_encoder = new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>(
@@ -38,7 +38,6 @@ void Mapping::odom_cb(const Core::IncomingMessage<Odometry>& odom) {
 }
 
 void Mapping::stich_cloud(const Core::IncomingMessage<PointCloud>& msg) {
-  this->_logger.debug("New cloud");
   auto data_reader = msg.content.getData();
 
   pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(

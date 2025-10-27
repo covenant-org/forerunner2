@@ -56,7 +56,7 @@ Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
   }
   if (!args.get_argument<bool>("--no-map-sub")) {
     this->_map_sub = this->create_subscriber<PointCloud>(
-        "map1", std::bind(&Viewer::map_cloud_cb, this, std::placeholders::_1));
+        "map", std::bind(&Viewer::map_cloud_cb, this, std::placeholders::_1));
   }
   if (!args.get_argument<bool>("--no-goal-sub")) {
     this->_goal_sub = this->create_subscriber<Position>(
@@ -318,7 +318,6 @@ void Viewer::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
 }
 
 void Viewer::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
-  this->_logger.debug("New map cloudpoint");
   auto data_reader = msg.content.getData();
   auto width = msg.content.getWidth();
   auto height = msg.content.getHeight();
@@ -329,17 +328,13 @@ void Viewer::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
 
   std::stringstream buffer(
       std::string((char *)data_reader.begin(), data_reader.size()));
-  this->_logger.debug("Buffer");
 
   try {
-    this->_logger.debug("help 1");
     _map_point_cloud_decoder->decodePointCloud(buffer, cloud);
-    this->_logger.debug("help 2");
   } catch (const std::exception &e) {
     _logger.warn("Error while decoding cloudpoint: %s", e.what());
     return;
   }
-  this->_logger.debug("decoded");
 
   size_t num_points = cloud->points.size();
   _logger.debug("Received chunk with %d points", num_points);
