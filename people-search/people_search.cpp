@@ -21,7 +21,6 @@ PeopleSearch::PeopleSearch(Core::ArgumentParser parser) : Core::Vertex(parser) {
       "odometry",
       std::bind(&PeopleSearch::get_position, this, std::placeholders::_1));
   this->_path_publisher = this->create_publisher<Point>("path_point");
-  this->_route_publisher = this->create_publisher<Route>("route_path");
 }
 
 void PeopleSearch::handle_llm_result(
@@ -417,17 +416,6 @@ void PeopleSearch::run() {
       forward = !forward;
     }
   }
-
-  auto msg = this->_route_publisher->new_msg();
-  msg.content.initPath(waypoints.size());
-  auto it = waypoints.begin();
-  for (size_t i = 0; i < waypoints.size(); ++i, ++it) {
-    auto point = msg.content.getPath()[i];
-    point.setX(std::get<0>(*it));
-    point.setY(std::get<1>(*it));
-    point.setY(std::get<2>(*it));
-  }
-  msg.publish();
 
   for (int i = 0; i <= length / (2 * step); i++) {
     float offset_up = y + i * step;

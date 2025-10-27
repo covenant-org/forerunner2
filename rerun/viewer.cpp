@@ -11,7 +11,6 @@
 #include "utils.hpp"
 #include "viewer.hpp"
 #include <Eigen/src/Geometry/Quaternion.h>
-#include <capnp_schemas/geometry_msgs.capnp.h>
 #include <capnp_schemas/zed.capnp.h>
 #include <cmath>
 #include <cstring>
@@ -89,9 +88,6 @@ Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
   this->_detection_images_sub = this->create_subscriber<DetectionImage>(
       "detection_images",
       std::bind(&Viewer::detection_image_cb, this, std::placeholders::_1));
-  this->_route_path = this->create_subscriber<Route>(
-      "route_path",
-      std::bind(&Viewer::route_path_cb, this, std::placeholders::_1));
 }
 
 rerun::Color Viewer::distance_to_color(float distance) {
@@ -188,29 +184,6 @@ void Viewer::planned_path_cb(const Core::IncomingMessage<Path>& msg) {
   this->render_path(msg, "path/points", "path/arrows");
 }
 
-void Viewer::route_path_cb(const Core::IncomingMessage<Route>& msg) {
-  this->_logger.info("route_path_cb was called");
-  auto content = msg.content;
-
-  std::vector<rerun::components::PoseTranslation3D> centers;
-  std::vector<rerun::HalfSize3D> sizes;
-  std::vector<rerun::Color> colors;
-
-  auto points = msg.content.getPath();
-  for (auto point : points) {
-    centers.emplace_back(point.getX(), -point.getY(), -point.getZ());
-    sizes.emplace_back(1, 1, 1);
-    colors.emplace_back(0.0f, 1.0f, 0.0f, 0.0f);
-  }
-  this->_rec->log("route/points",
-                  rerun::Boxes3D::from_centers_and_half_sizes(centers, sizes)
-                      .with_quaternions({
-                          rerun::Quaternion::IDENTITY,
-                      })
-                      .with_fill_mode(rerun::components::FillMode::Solid)
-                      .with_colors(colors));
-}
-
 void Viewer::odom_cb(const Core::IncomingMessage<Odometry>& msg) {
   auto content = msg.content;
   auto q = msg.content.getQ();
@@ -230,28 +203,10 @@ void Viewer::person_reco_path_cb(const Core::IncomingMessage<Point>& msg) {
   this->_rec->log(
       "person_search/waypoint",
       rerun::Boxes3D::from_centers_and_sizes(
-          {{content.getX(), -content.getY(), -content.getZ()}},
-          {{0.2, 0.2, 0.2}})
-          .with_colors({{255, 0, 255}}));  // Purple color for visibility
-
-  // Optionally log coordinates as scalars for debugging
-  this->_rec->log("person_search/coords_x",
-                  rerun::Scalars(static_cast<double>(content.getX())));
-  this->_rec->log("person_search/coords_y",
-                  rerun::Scalars(static_cast<double>(content.getY())));
-  this->_rec->log("person_search/coords_z",
-                  rerun::Scalars(static_cast<double>(content.getZ())));
-}
-
-void Viewer::person_reco_path_cb(const Core::IncomingMessage<Point>& msg) {
-  auto content = msg.content;
-
-  // Log the point as a small box/sphere to visualize it
-  this->_rec->log(
-      "person_search/waypoint",
-      rerun::Boxes3D::from_centers_and_sizes(
-          {{content.getX(), -content.getY(), -content.getZ()}},
-          {{0.2, 0.2, 0.2}})
+          {{static_cast<float>(content.getX()),
+            static_cast<float>(-content.getY()),
+            static_cast<float>(-content.getZ())}},
+          {{0.2F, 0.2F, 0.2F}})
           .with_colors({{255, 0, 255}}));  // Purple color for visibility
 
   // Optionally log coordinates as scalars for debugging
@@ -293,7 +248,9 @@ void Viewer::detection_image_cb(
   this->_rec->log(
       base_path + "/position",
       rerun::Boxes3D::from_centers_and_sizes(
-          {{coordinates.getX(), -coordinates.getY(), -coordinates.getZ()}},
+          {{static_cast<float>(coordinates.getX()),
+            static_cast<float>(-coordinates.getY()),
+            static_cast<float>(-coordinates.getZ())}},
           {{0.15F, 0.15F, 0.15F}})
           .with_colors({rerun::Color(255, 165, 0)}));
 
@@ -303,44 +260,27 @@ void Viewer::detection_image_cb(
                      std::to_string(image_data.getHeight())));
 }
 
-void Viewer::zed_image_cb(
-    const Core::IncomingMessage<DetectionImage>& msg) {
-  auto detection = msg.content;
-  auto image_data = detection.getImage();
-  auto encoded = image_data.getData();
+void Viewer::zed_image_cb(const Core::IncomingMessage<ImageData>& msg) {
+  const auto image = msg.content;
+  const auto encoded = image.getData();
 
   if (encoded.size() == 0) {
-    this->_logger.warn("Received DetectionImage id %u without payload",
-                       detection.getObjectId());
+    this->_logger.warn("Received raw ZED frame without payload");
     return;
   }
 
   std::vector<uint8_t> bytes(encoded.begin(), encoded.end());
 
-  const auto coordinates = detection.getCoordinates();
-  const std::string base_path =
-      "person_search/detections/" + std::to_string(detection.getObjectId());
-
   this->_rec->log(
-      base_path + "/image",
+      "zed/image",
       rerun::archetypes::EncodedImage::from_bytes(
           rerun::Collection<uint8_t>::take_ownership(std::move(bytes)),
           rerun::components::MediaType::jpeg()));
 
-  this->_rec->log(base_path + "/description",
-                  rerun::TextLog(detection.getDescription().cStr()));
-
   this->_rec->log(
-      base_path + "/position",
-      rerun::Boxes3D::from_centers_and_sizes(
-          {{coordinates.getX(), -coordinates.getY(), -coordinates.getZ()}},
-          {{0.15F, 0.15F, 0.15F}})
-          .with_colors({rerun::Color(255, 165, 0)}));
-
-  this->_rec->log(
-      base_path + "/stats",
-      rerun::TextLog("Image " + std::to_string(image_data.getWidth()) + "x" +
-                     std::to_string(image_data.getHeight())));
+      "zed/stats",
+      rerun::TextLog("Image " + std::to_string(image.getWidth()) + "x" +
+                     std::to_string(image.getHeight())));
 }
 
 void Viewer::goal_cb(const Core::IncomingMessage<Position>& msg) {
