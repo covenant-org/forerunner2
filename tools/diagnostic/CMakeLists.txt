@@ -3,9 +3,9 @@ cmake_minimum_required(VERSION 3.15)
 project(diagnostic_tool)
 
 add_library(diagnostic_tool_lib
-    src/command_checker.cpp
-    src/modem_checker.cpp
-    src/utils.cpp
+    command_checker.cpp
+    modem_checker.cpp
+    utils.cpp
 )
 
 target_include_directories(diagnostic_tool_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
