@@ -7,11 +7,12 @@ executables:
   - name: people_search 
     args:
       options: # Argumentos con valores
-        --gps-target-location: "2 2"
+        --x: 2
+        --y: 2
   - name: llm_processor
   - name: people_detection  
     args:
       options: # Argumentos con valores
         --description: "person wearing a green tshirt and blue pants standing"
-        --svo-path: ""
+        --svo-path: " "
         --distance-threshold: 2

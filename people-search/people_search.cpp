@@ -4,6 +4,9 @@
 #include <cmath>
 #include <thread>
 #include <tuple>
+#include <bits/stdc++.h>
+#include <string>
+#include <iostream>
 
 PeopleSearch::PeopleSearch(Core::ArgumentParser parser) : Core::Vertex(parser) {
   this->_mission_client =
@@ -221,7 +224,7 @@ bool PeopleSearch::confirm_valid_person(
   float approach_y = _drone_y + (person_y - _drone_y) / 4.0f;
   float person_distance = std::sqrt(person_x * person_x + person_y * person_y);
   if (person_distance > 2.0f) {
-    move_and_wait(approach_x, approach_y, -2.0f, 0.0f);
+    move_and_wait(approach_x, approach_y, -3.0f, 0.0f);
   }
   // wait for a fresh detection (detection_time must be newer than
   // snapshot_time)
@@ -266,7 +269,7 @@ bool PeopleSearch::confirm_valid_person(
   float drone_x_backup = _drone_x;
   float drone_y_backup = _drone_y;
 
-  move_and_wait(drone_x_backup, drone_y_backup, -2.0f, 0.0f);
+  move_and_wait(drone_x_backup, drone_y_backup, -3.0f, 0.0f);
   return false;
 }
 
@@ -287,7 +290,7 @@ bool PeopleSearch::check_valid_person() {
 
   if (!_valid_person_found.load()) return false;
 
-  send_coordinate(_drone_x, _drone_y, -2.0f, 0.0f);
+  send_coordinate(_drone_x, _drone_y, -3.0f, 0.0f);
 
   float person_x, person_y, person_z;
   std::chrono::steady_clock::time_point detection_time;
@@ -322,48 +325,36 @@ bool PeopleSearch::check_valid_person() {
   if (person_distance < 2.0f) {
     std::cout << "Person very close, descending directly." << std::endl;
     // send_coordinate(_drone_x, _drone_y, -4.0f, 0.0f);
-    move_and_wait(_drone_x, _drone_y, -2.0f, 0.0f);
+    move_and_wait(_drone_x, _drone_y, -3.0f, 0.0f);
     land();
     // send_coordinate(_drone_x, _drone_y, -0.0f, 0.0f);
     return true;
   }
-  move_and_wait(person_x, person_y, -2.0f, 0.0f);
+  move_and_wait(person_x, person_y, -3.0f, 0.0f);
 
   // send_coordinate(_drone_x, _drone_y, -4.0f, 0.0f);
-  move_and_wait(person_x, person_y, -2.0f, 0.0f);
+  move_and_wait(person_x, person_y, -3.0f, 0.0f);
   land();
   // send_coordinate(_drone_x, _drone_y, -0.0f, 0.0f);
   return true;
 }
 
 void PeopleSearch::run() {
-  float x, y, z;
+    float x, y, z;
 
-  // Retrieve the GPS target location argument
-  auto gps_target =
-      this->get_argument<std::vector<std::string>>("--gps-target-location");
-  if (gps_target.size() == 2) {
-    this->_logger.info("GPS target location provided: lat=%s, lon=%s",
-                       gps_target[0].c_str(), gps_target[1].c_str());
-  } else {
-    this->_logger.error(
-        "GPS target location (--gps-target-location) is required.");
-    return;
-  }
-
-  x = std::stof(gps_target[0]);
-  y = std::stof(gps_target[1]);
-  z = -2.0f;  // Fixed altitude of 4 meters
-
-  // Takeoff to 4 meters
-  this->_logger.info("Initiating takeoff to 4.0 meters");
-  auto request = this->_mission_client->new_msg();
-  request.content.initTakeoff();
-  request.content.getTakeoff().setDesiredAltitude(4.0);
-  auto result = request.send();
-  auto response = result.value().content;
-
-  if (response.getCode() != 200) {
+    x = this->get_argument<float>("--x");
+    y = this->get_argument<float>("--y");
+    z = -3.0f; // Fixed altitude of 4 meters
+    
+    // Takeoff to 4 meters
+    this->_logger.info("Initiating takeoff to 3.0 meters");
+    auto request = this->_mission_client->new_msg();
+    request.content.initTakeoff();
+    request.content.getTakeoff().setDesiredAltitude(3.0);
+    auto result = request.send();
+    auto response = result.value().content;
+    
+    if (response.getCode() != 200) {
     this->_logger.error("Takeoff failed with code %d and message %s",
                         response.getCode(), response.getMessage());
   }
@@ -461,7 +452,7 @@ void PeopleSearch::run() {
   // Go home if no person found
   if (!check_valid_person()) {
     this->_logger.info("No valid person found, returning to home position.");
-    move_and_wait(0.0f, 0.0f, -2.0f, 0.0f);
+    move_and_wait(0.0f, 0.0f, -3.0f, 0.0f);
     land();
   }
 }
@@ -469,13 +460,16 @@ void PeopleSearch::run() {
 int main(int argc, char** argv) {
   Core::BaseArgumentParser parser(argc, argv);
 
-  parser.add_argument("--gps-target-location")
-      .nargs(2)
-      .help("GPS coordinates where the targes is likely to be (x y)");
+    parser.add_argument("--x")
+	    .scan<'g', float>()
+	    .help("x distance in meters");
+    parser.add_argument("--y")
+	    .scan<'g', float>()
+	    .help("x distance in meters");
 
   std::shared_ptr<PeopleSearch> people_search =
       std::make_shared<PeopleSearch>(parser);
 
-  people_search->run();
-  return 0;
+    people_search->run();
+    return 0;
 }
