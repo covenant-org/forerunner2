@@ -81,9 +81,14 @@ Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
         std::bind(&Viewer::planned_path_cb, this, std::placeholders::_1));
   }
   this->_person_reco_path_sub = this->create_subscriber<Point>(
-      "path_point", std::bind(&Viewer::person_reco_path_cb, this, std::placeholders::_1));
+      "path_point",
+      std::bind(&Viewer::person_reco_path_cb, this, std::placeholders::_1));
   this->_detection_images_sub = this->create_subscriber<DetectionImage>(
-      "detection_images", std::bind(&Viewer::detection_image_cb, this, std::placeholders::_1));
+      "detection_images",
+      std::bind(&Viewer::detection_image_cb, this, std::placeholders::_1));
+  this->_route_path = this->create_subscriber<Route>(
+      "route_path",
+      std::bind(&Viewer::route_path_cb, this, std::placeholders::_1));
 }
 
 rerun::Color Viewer::distance_to_color(float distance) {
@@ -113,9 +118,9 @@ rerun::Color Viewer::distance_to_color(float distance) {
   }
 }
 
-void Viewer::render_path(const Core::IncomingMessage<Path> &msg,
-                         const std::string &points_name,
-                         const std::string &path_arrows) {
+void Viewer::render_path(const Core::IncomingMessage<Path>& msg,
+                         const std::string& points_name,
+                         const std::string& path_arrows) {
   auto poses = msg.content.getPoses();
 
   std::vector<rerun::Position3D> points;
@@ -175,12 +180,35 @@ void Viewer::render_path(const Core::IncomingMessage<Path> &msg,
   }
 }
 
-void Viewer::planned_path_cb(const Core::IncomingMessage<Path> &msg) {
+void Viewer::planned_path_cb(const Core::IncomingMessage<Path>& msg) {
   this->_logger.info("planned_path_cb was called");
   this->render_path(msg, "path/points", "path/arrows");
 }
 
-void Viewer::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
+void Viewer::route_path_cb(const Core::IncomingMessage<Route>& msg) {
+  this->_logger.info("route_path_cb was called");
+  auto content = msg.content;
+
+  std::vector<rerun::components::PoseTranslation3D> centers;
+  std::vector<rerun::HalfSize3D> sizes;
+  std::vector<rerun::Color> colors;
+
+  auto points = msg.content.getPath();
+  for (auto point : points) {
+    centers.emplace_back(point.getX(), -point.getY(), -point.getZ());
+    sizes.emplace_back(1, 1, 1);
+    colors.emplace_back(0.0f, 1.0f, 0.0f, 0.0f);
+  }
+  this->_rec->log("route/points",
+                  rerun::Boxes3D::from_centers_and_half_sizes(centers, sizes)
+                      .with_quaternions({
+                          rerun::Quaternion::IDENTITY,
+                      })
+                      .with_fill_mode(rerun::components::FillMode::Solid)
+                      .with_colors(colors));
+}
+
+void Viewer::odom_cb(const Core::IncomingMessage<Odometry>& msg) {
   auto content = msg.content;
   auto q = msg.content.getQ();
   auto position = content.getPosition();
@@ -192,7 +220,7 @@ void Viewer::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
                           q.getX(), -q.getY(), -q.getZ(), q.getW()})));
 }
 
-void Viewer::person_reco_path_cb(const Core::IncomingMessage<Point> &msg) {
+void Viewer::person_reco_path_cb(const Core::IncomingMessage<Point>& msg) {
   auto content = msg.content;
 
   // Log the point as a small box/sphere to visualize it
@@ -213,7 +241,7 @@ void Viewer::person_reco_path_cb(const Core::IncomingMessage<Point> &msg) {
 }
 
 void Viewer::detection_image_cb(
-    const Core::IncomingMessage<DetectionImage> &msg) {
+    const Core::IncomingMessage<DetectionImage>& msg) {
   auto detection = msg.content;
   auto image_data = detection.getImage();
   auto encoded = image_data.getData();
@@ -239,20 +267,20 @@ void Viewer::detection_image_cb(
   this->_rec->log(base_path + "/description",
                   rerun::TextLog(detection.getDescription().cStr()));
 
-  this->_rec->log(base_path + "/position",
-                  rerun::Boxes3D::from_centers_and_sizes(
-                      {{coordinates.getX(), -coordinates.getY(),
-                        -coordinates.getZ()}},
-                      {{0.15F, 0.15F, 0.15F}})
-                      .with_colors({rerun::Color(255, 165, 0)}));
+  this->_rec->log(
+      base_path + "/position",
+      rerun::Boxes3D::from_centers_and_sizes(
+          {{coordinates.getX(), -coordinates.getY(), -coordinates.getZ()}},
+          {{0.15F, 0.15F, 0.15F}})
+          .with_colors({rerun::Color(255, 165, 0)}));
 
-  this->_rec->log(base_path + "/stats",
-                  rerun::TextLog("Image " + std::to_string(image_data.getWidth()) +
-                                 "x" +
-                                 std::to_string(image_data.getHeight())));
+  this->_rec->log(
+      base_path + "/stats",
+      rerun::TextLog("Image " + std::to_string(image_data.getWidth()) + "x" +
+                     std::to_string(image_data.getHeight())));
 }
 
-void Viewer::goal_cb(const Core::IncomingMessage<Position> &msg) {
+void Viewer::goal_cb(const Core::IncomingMessage<Position>& msg) {
   auto content = msg.content;
   this->_rec->log("goal/position",
                   rerun::Boxes3D::from_centers_and_sizes(
@@ -266,7 +294,7 @@ void Viewer::goal_cb(const Core::IncomingMessage<Position> &msg) {
                   rerun::Scalars(static_cast<double>(content.getZ())));
 }
 
-void Viewer::octree_cb(const Core::IncomingMessage<MarkerArray> &msg) {
+void Viewer::octree_cb(const Core::IncomingMessage<MarkerArray>& msg) {
   std::vector<rerun::components::PoseTranslation3D> centers;
   std::vector<rerun::HalfSize3D> sizes;
   std::vector<rerun::Color> colors;
@@ -298,7 +326,7 @@ void Viewer::octree_cb(const Core::IncomingMessage<MarkerArray> &msg) {
       rerun::TextLog("Octree markers: " + std::to_string(markers.size())));
 }
 
-void Viewer::octree_layers_cb(const Core::IncomingMessage<MarkerArray> &msg) {
+void Viewer::octree_layers_cb(const Core::IncomingMessage<MarkerArray>& msg) {
   std::vector<rerun::components::PoseTranslation3D> centers;
   std::vector<rerun::HalfSize3D> sizes;
   std::vector<rerun::Color> colors;
@@ -330,14 +358,14 @@ void Viewer::octree_layers_cb(const Core::IncomingMessage<MarkerArray> &msg) {
       rerun::TextLog("Octree markers: " + std::to_string(markers.size())));
 }
 
-void Viewer::mic_cb(const Core::IncomingMessage<StereoMic> &msg) {
+void Viewer::mic_cb(const Core::IncomingMessage<StereoMic>& msg) {
   this->_rec->log("mic/left",
                   rerun::Scalars(static_cast<double>(msg.content.getLeft())));
   this->_rec->log("mic/right",
                   rerun::Scalars(static_cast<double>(msg.content.getRight())));
 }
 
-void Viewer::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
+void Viewer::point_cloud_cb(const Core::IncomingMessage<PointCloud>& msg) {
   auto data_reader = msg.content.getData();
   auto width = msg.content.getWidth();
   auto height = msg.content.getHeight();
@@ -345,10 +373,10 @@ void Viewer::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
   pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
       new pcl::PointCloud<pcl::PointXYZRGBA>());
   std::stringstream buffer(
-      std::string((char *)data_reader.begin(), data_reader.size()));
+      std::string((char*)data_reader.begin(), data_reader.size()));
   try {
     _point_cloud_decoder->decodePointCloud(buffer, cloud);
-  } catch (const std::exception &e) {
+  } catch (const std::exception& e) {
     _logger.warn("Error while decoding cloudpoint: %s", e.what());
     return;
   }
@@ -440,8 +468,8 @@ void Viewer::map_cloud_chunk_cb(
   if (compression) {
     size_t len = cloud->points.size() * sizeof(pcl::PointXYZRGBA);
     auto res =
-        uncompress(reinterpret_cast<Bytef *>(cloud->points.data()), &len,
-                   (unsigned char *)data_reader.begin(), data_reader.size());
+        uncompress(reinterpret_cast<Bytef*>(cloud->points.data()), &len,
+                   (unsigned char*)data_reader.begin(), data_reader.size());
     if (res != Z_OK) {
       _logger.error("Error while uncompressing map");
       switch (res) {
@@ -461,8 +489,8 @@ void Viewer::map_cloud_chunk_cb(
     }
     _logger.debug("Read %d bytes", len);
   } else {
-    memcpy((unsigned char *)cloud->points.data(),
-           (unsigned char *)data_reader.begin(), data_reader.size());
+    memcpy((unsigned char*)cloud->points.data(),
+           (unsigned char*)data_reader.begin(), data_reader.size());
   }
 
   auto index = std::to_string(msg.content.getIndex());
@@ -502,7 +530,7 @@ void Viewer::run() {
   while (true) sleep(1);
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   Core::BaseArgumentParser args(argc, argv);
   auto root = Core::find_root();
   if (root.empty()) {
@@ -545,7 +573,7 @@ int main(int argc, char **argv) {
       .implicit_value(false)
       .help("Enable decompression of map chunks")
       .flag();
-  auto &group = args.add_mutually_exclusive_group();
+  auto& group = args.add_mutually_exclusive_group();
   group.add_argument("--grpc").help("URL of remote viewer");
   group.add_argument("--save-file")
       .help("Path of file to save the recording to");

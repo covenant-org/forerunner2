@@ -10,6 +10,10 @@ struct Point {
   z @2 :Float64;
 }
 
+struct Route {
+  path @0 :List(Point);
+}
+
 struct Vector3 {
   x @0 :Float64;
   y @1 :Float64;

@@ -33,6 +33,7 @@ class Viewer : Core::Vertex {
   std::shared_ptr<Core::Subscriber<Path>> _local_planned_path_sub;
   std::shared_ptr<Core::Subscriber<Point>> _person_reco_path_sub;
   std::shared_ptr<Core::Subscriber<DetectionImage>> _detection_images_sub;
+  std::shared_ptr<Core::Subscriber<Route>> _route_path;
   std::shared_ptr<rerun::RecordingStream> _rec;
   pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA> *_point_cloud_decoder;
   pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>
@@ -52,6 +53,7 @@ class Viewer : Core::Vertex {
   void local_planned_path_cb(const Core::IncomingMessage<Path> &);
   void person_reco_path_cb(const Core::IncomingMessage<Point> &);
   void detection_image_cb(const Core::IncomingMessage<DetectionImage> &);
+  void route_path_cb(const Core::IncomingMessage<Route> &);
   void render_path(const Core::IncomingMessage<Path> &, const std::string &,
                    const std::string &);
   void log_map(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud,
