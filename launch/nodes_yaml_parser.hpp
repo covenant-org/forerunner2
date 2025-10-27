@@ -16,7 +16,7 @@ class NodesYamlParser {
     std::vector<std::string> flags;
     std::map<std::string, std::string> options;
     std::vector<std::string> positionals;
-  std::vector<std::string> args_line;
+    std::vector<std::string> args_line;
   };
 
   // Stores the formatted YAML string

@@ -1,5 +1,37 @@
 #include "launch.hpp"
 #include "utils.hpp"
+#include <cctype>
+
+namespace {
+std::string shell_quote(const std::string& arg) {
+  if (arg.empty()) return "''";
+
+  bool needs_quotes = false;
+  for (char c : arg) {
+    unsigned char uc = static_cast<unsigned char>(c);
+    if (std::isspace(uc) || c == '\'' || c == '"' || c == '\\' || c == '$' ||
+        c == '`' || c == '!' || c == '&' || c == '|' || c == ';' || c == '<' ||
+        c == '>' || c == '(' || c == ')' || c == '{' || c == '}' || c == '*' ||
+        c == '?' || c == '[' || c == ']' || c == '#') {
+      needs_quotes = true;
+      break;
+    }
+  }
+
+  if (!needs_quotes) return arg;
+
+  std::string quoted = "'";
+  for (char c : arg) {
+    if (c == '\'') {
+      quoted += "'\\''";
+    } else {
+      quoted.push_back(c);
+    }
+  }
+  quoted.push_back('\'');
+  return quoted;
+}
+}  // namespace
 
 std::map<std::string, std::string> Launch::find_executable_files(
     const std::filesystem::path& dir,
@@ -169,9 +201,9 @@ int Launch::run_executable(const std::string& name,
     _logger.info("Starting %s at %s", name.c_str(), it->second.c_str());
     
     // Build command string
-    std::string command = it->second;
+    std::string command = shell_quote(it->second);
     for (const std::string& arg : args) {
-      command += " " + arg;
+      command += " " + shell_quote(arg);
     }
     
     // Debug: log the full command that will be executed

@@ -1,0 +1,10 @@
+executables:
+  - name: example-bug
+    args:
+      options:
+        --host: 2 2
+  - name: people_detection 
+    args:
+      options:
+        --description: "Hola mi visa"
+        --svo-path: Hola mi visa
