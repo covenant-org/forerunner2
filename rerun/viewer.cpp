@@ -83,6 +83,9 @@ Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
   this->_person_reco_path_sub = this->create_subscriber<Point>(
       "path_point",
       std::bind(&Viewer::person_reco_path_cb, this, std::placeholders::_1));
+  this->_zed_image_sub = this->create_subscriber<ImageData>(
+      "zed_image",
+      std::bind(&Viewer::zed_image_cb, this, std::placeholders::_1));
   this->_detection_images_sub = this->create_subscriber<DetectionImage>(
       "detection_images",
       std::bind(&Viewer::detection_image_cb, this, std::placeholders::_1));
@@ -240,7 +243,67 @@ void Viewer::person_reco_path_cb(const Core::IncomingMessage<Point>& msg) {
                   rerun::Scalars(static_cast<double>(content.getZ())));
 }
 
+void Viewer::person_reco_path_cb(const Core::IncomingMessage<Point>& msg) {
+  auto content = msg.content;
+
+  // Log the point as a small box/sphere to visualize it
+  this->_rec->log(
+      "person_search/waypoint",
+      rerun::Boxes3D::from_centers_and_sizes(
+          {{content.getX(), -content.getY(), -content.getZ()}},
+          {{0.2, 0.2, 0.2}})
+          .with_colors({{255, 0, 255}}));  // Purple color for visibility
+
+  // Optionally log coordinates as scalars for debugging
+  this->_rec->log("person_search/coords_x",
+                  rerun::Scalars(static_cast<double>(content.getX())));
+  this->_rec->log("person_search/coords_y",
+                  rerun::Scalars(static_cast<double>(content.getY())));
+  this->_rec->log("person_search/coords_z",
+                  rerun::Scalars(static_cast<double>(content.getZ())));
+}
+
 void Viewer::detection_image_cb(
+    const Core::IncomingMessage<DetectionImage>& msg) {
+  auto detection = msg.content;
+  auto image_data = detection.getImage();
+  auto encoded = image_data.getData();
+
+  if (encoded.size() == 0) {
+    this->_logger.warn("Received DetectionImage id %u without payload",
+                       detection.getObjectId());
+    return;
+  }
+
+  std::vector<uint8_t> bytes(encoded.begin(), encoded.end());
+
+  const auto coordinates = detection.getCoordinates();
+  const std::string base_path =
+      "person_search/detections/" + std::to_string(detection.getObjectId());
+
+  this->_rec->log(
+      base_path + "/image",
+      rerun::archetypes::EncodedImage::from_bytes(
+          rerun::Collection<uint8_t>::take_ownership(std::move(bytes)),
+          rerun::components::MediaType::jpeg()));
+
+  this->_rec->log(base_path + "/description",
+                  rerun::TextLog(detection.getDescription().cStr()));
+
+  this->_rec->log(
+      base_path + "/position",
+      rerun::Boxes3D::from_centers_and_sizes(
+          {{coordinates.getX(), -coordinates.getY(), -coordinates.getZ()}},
+          {{0.15F, 0.15F, 0.15F}})
+          .with_colors({rerun::Color(255, 165, 0)}));
+
+  this->_rec->log(
+      base_path + "/stats",
+      rerun::TextLog("Image " + std::to_string(image_data.getWidth()) + "x" +
+                     std::to_string(image_data.getHeight())));
+}
+
+void Viewer::zed_image_cb(
     const Core::IncomingMessage<DetectionImage>& msg) {
   auto detection = msg.content;
   auto image_data = detection.getImage();
