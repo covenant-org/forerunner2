@@ -18,6 +18,7 @@ private:
     std::shared_ptr<Core::Subscriber<LLMResult>> _llm_subscriber;
     std::shared_ptr<Core::Subscriber<Odometry>> _odometry_subscriber;
     std::shared_ptr<Core::Publisher<Point>> _path_publisher;
+    std::shared_ptr<Core::Publisher<Route>> _route_publisher;
 
     std::atomic<bool> _valid_person_found{false};
     std::mutex _person_mutex;
