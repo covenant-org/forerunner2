@@ -20,3 +20,5 @@ target_include_directories(echo PRIVATE
 )
 
 target_compile_options(echo PRIVATE ${ZMQ_CFLAGS_OTHER})
+
+add_subdirectory(diagnostic)
