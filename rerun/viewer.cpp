@@ -184,29 +184,6 @@ void Viewer::planned_path_cb(const Core::IncomingMessage<Path>& msg) {
   this->render_path(msg, "path/points", "path/arrows");
 }
 
-void Viewer::route_path_cb(const Core::IncomingMessage<Route>& msg) {
-  this->_logger.info("route_path_cb was called");
-  auto content = msg.content;
-
-  std::vector<rerun::components::PoseTranslation3D> centers;
-  std::vector<rerun::HalfSize3D> sizes;
-  std::vector<rerun::Color> colors;
-
-  auto points = msg.content.getPath();
-  for (auto point : points) {
-    centers.emplace_back(point.getX(), -point.getY(), -point.getZ());
-    sizes.emplace_back(1, 1, 1);
-    colors.emplace_back(0.0f, 1.0f, 0.0f, 0.0f);
-  }
-  this->_rec->log("route/points",
-                  rerun::Boxes3D::from_centers_and_half_sizes(centers, sizes)
-                      .with_quaternions({
-                          rerun::Quaternion::IDENTITY,
-                      })
-                      .with_fill_mode(rerun::components::FillMode::Solid)
-                      .with_colors(colors));
-}
-
 void Viewer::odom_cb(const Core::IncomingMessage<Odometry>& msg) {
   auto content = msg.content;
   auto q = msg.content.getQ();
@@ -301,9 +278,10 @@ void Viewer::zed_image_cb(const Core::IncomingMessage<ImageData>& msg) {
           rerun::Collection<uint8_t>::take_ownership(std::move(bytes)),
           rerun::components::MediaType::jpeg()));
 
-  this->_rec->log("zed/stats",
-                  rerun::TextLog("Image " + std::to_string(image.getWidth()) +
-                                 "x" + std::to_string(image.getHeight())));
+  this->_rec->log(
+      "zed/stats",
+      rerun::TextLog("Image " + std::to_string(image.getWidth()) + "x" +
+                     std::to_string(image.getHeight())));
 }
 
 void Viewer::goal_cb(const Core::IncomingMessage<Position>& msg) {
