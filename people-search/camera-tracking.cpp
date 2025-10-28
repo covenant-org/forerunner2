@@ -111,7 +111,7 @@ void setObjectDetectionRuntimeParameters(
     sl::Camera& zed,
     sl::ObjectDetectionRuntimeParameters& detection_parameters_rt,
     Core::Logger& _logger) {
-  detection_parameters_rt.detection_confidence_threshold = 60;
+  detection_parameters_rt.detection_confidence_threshold = 80;
   zed.setObjectDetectionRuntimeParameters(
       detection_parameters_rt);  // Can be set at any time
   _logger.info("Object detection runtime parameters set.");
