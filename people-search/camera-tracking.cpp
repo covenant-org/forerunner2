@@ -142,10 +142,10 @@ void processDetections(
   // Set to true: Shows 3D bounding boxes (yellow wireframe) with 3D coordinates
   // Set to false: Shows 2D bounding boxes (green rectangles) with calculated
   // depth
-  static bool show_3d_bbox = true;
+  static bool show_3d_bbox = false;
 
   zed.retrieveObjects(objects);
-
+//  _logger.debug("Number of objects detected: %d", static_cast<int>(objects.object_list.size()));
   if (objects.is_new && !objects.object_list.empty()) {
     sl::Mat zed_image;
     zed.retrieveImage(zed_image, sl::VIEW::LEFT, sl::MEM::CPU);
@@ -269,7 +269,7 @@ void processDetections(
           }
         }
       } else {
-        _logger.debug("Drawing 2D bounding box for object ID: %d", obj.id);
+        //_logger.debug("Drawing 2D bounding box for object ID: %d", obj.id);
         // Use 2D bounding box (original code)
         auto bbox = obj.bounding_box_2d;
         int x_min = std::min({bbox[0].x, bbox[1].x, bbox[2].x, bbox[3].x});
@@ -350,8 +350,6 @@ void processDetections(
         last_publish = now;
       }
     }
-
-    cv::imshow("ZED Detections", cv_image);
     cv::waitKey(1);
   }
 }
