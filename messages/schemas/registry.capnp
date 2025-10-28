@@ -43,6 +43,7 @@ enum RegistryNotificationType {
   nodeAdded @0;
   nodeDeleted @1;
   heartbeat @2;
+  nodeChange @3;
 }
 
 struct RegistryNotification {

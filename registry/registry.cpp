@@ -72,10 +72,40 @@ void Registry::notification_cb(
   if (msg.content.getType() == RegistryNotificationType::NODE_ADDED) {
     auto node = msg.content.getNodeAdded().getPath();
     auto path = std::string(node.cStr(), node.size());
+    this->_logger.debug("Received node added event for %s", path.c_str());
+    try {
+      auto response = this->check_with_other_registries(path);
+      if (!response.has_value()) return;
+      auto value = response.value();
+      this->_logger.debug(
+          "another query returned following values: %s at port %d",
+          value.first.c_str(), value.second);
+      std::string address = std::get<0>(value);
+      uint port = std::get<1>(value);
+      for (auto id : _topic_to_waiters[path]) {
+        RouterEvent wait_event{
+            .identity = zmq::message_t(id.data(), id.size()),
+            .data = zmq::message_t(),
+        };
+        ::capnp::MallocMessageBuilder message;
+        RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
+        res.setCode(200);
+        auto host = res.initHost();
+        host.setAddress(address);
+        host.setPort(port);
+        respond_event(wait_event, message_from_builder(message));
+      }
+    } catch (const std::out_of_range &) {
+    }
+    return;
+  }
+  if (msg.content.getType() == RegistryNotificationType::NODE_CHANGE) {
+    auto node = msg.content.getNodeAdded().getPath();
+    auto path = std::string(node.cStr(), node.size());
     try {
       this->_logger.debug("Received node added event for %s", path.c_str());
       auto msg = this->_pub_notifications.new_msg();
-      msg.content.setType(RegistryNotificationType::NODE_ADDED);
+      msg.content.setType(RegistryNotificationType::NODE_CHANGE);
       auto node = msg.content.initNodeAdded();
       node.setPath(path);
       msg.publish();
@@ -147,6 +177,13 @@ void Registry::handle_request(RouterEvent event) {
     notify_waiters(path);
     if (!insert_res.second) {
       auto msg = this->_pub_notifications.new_msg();
+      msg.content.setType(RegistryNotificationType::NODE_CHANGE);
+      auto node = msg.content.initNodeAdded();
+      node.setPath(path);
+      node.setPort(endpoint.port);
+      msg.publish();
+    } else {
+      auto msg = this->_pub_notifications.new_msg();
       msg.content.setType(RegistryNotificationType::NODE_ADDED);
       auto node = msg.content.initNodeAdded();
       node.setPath(path);
@@ -166,8 +203,13 @@ void Registry::handle_request(RouterEvent event) {
                           color_topic(request.getPath().cStr()).c_str(),
                           node.port);
 
-      // check if request has networks in which case the request came from
-      // another registry and we should find a common network
+      ::capnp::MallocMessageBuilder message;
+      RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
+      res.setCode(200);
+      auto host = res.initHost();
+      host.setAddress(node.host);
+      host.setPort(node.port);
+
       if (request.hasNetworks()) {
         ::capnp::MallocMessageBuilder message;
         RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
@@ -186,39 +228,30 @@ void Registry::handle_request(RouterEvent event) {
         }
 
         if (found) {
-          auto host = res.initHost();
           host.setPort(node.port);
           struct in_addr network_addr;
           network_addr.s_addr = ip;
           host.setAddress(std::string(inet_ntoa(network_addr)));
-          this->_logger.debug("should connect to: %s",
+          this->_logger.debug("Should connect to: %s",
                               host.getAddress().asString().cStr());
         } else {
-          res.setCode(404);
-          std::string error_message = "topic was not found";
+          res.setCode(500);
+          std::string error_message = "No matching local and remote networks";
           res.initErrorMessage(error_message.size());
           res.setErrorMessage(error_message);
         }
-        respond_event(event, message_from_builder(message));
-      } else {
-        ::capnp::MallocMessageBuilder message;
-        RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
-        res.setCode(200);
-        auto host = res.initHost();
-        host.setAddress(node.host);
-        host.setPort(node.port);
-        respond_event(event, message_from_builder(message));
       }
+      respond_event(event, message_from_builder(message));
 
     } catch (const std::out_of_range &) {
+      ::capnp::MallocMessageBuilder message;
+      RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
       auto response = this->check_with_other_registries(path);
       if (response.has_value()) {
         auto value = response.value();
         this->_logger.debug(
             "another query returned following values: %s at port %d",
             value.first.c_str(), value.second);
-        ::capnp::MallocMessageBuilder message;
-        RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
         res.setCode(200);
         auto host = res.initHost();
         host.setAddress(std::get<0>(value));
@@ -226,6 +259,15 @@ void Registry::handle_request(RouterEvent event) {
         respond_event(event, message_from_builder(message));
       } else {
         this->_logger.debug("querying topic not found, pending to notify");
+        if (request.hasNetworks()) {
+          res.setCode(404);
+          std::string error_message =
+              "Topic " + std::string(path.cStr(), path.size()) + " not found";
+          res.initErrorMessage(error_message.size());
+          res.setErrorMessage(error_message);
+          respond_event(event, message_from_builder(message));
+          return;
+        }
         _topic_to_waiters[path].emplace_back((char *)event.identity.data(),
                                              event.identity.size());
       }
@@ -239,6 +281,8 @@ Registry::check_with_other_registries(const std::string &path) {
   std::string other_registry =
       this->get_argument<std::string>("--registry-uri");
   if (other_registry.length()) {
+    this->_logger.debug("Querying registry at %s for topic %s",
+                        other_registry.c_str(), path);
     return query_another_registry(path, other_registry);
   }
 
