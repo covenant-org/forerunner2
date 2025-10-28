@@ -142,7 +142,8 @@ void processDetections(
     const sl::ObjectDetectionRuntimeParameters& detection_parameters_rt,
     sl::Objects& objects, std::unordered_set<int>& saved_ids,
     float& depth_value, list<cv::Mat>& images, bool save_image,
-    Core::Logger& _logger) {
+    Core::Logger& _logger,
+    const std::function<void(const cv::Mat&)>& publish_frame) {
   // Control variable for 3D bounding box visualization
   // Set to true: Shows 3D bounding boxes (yellow wireframe) with 3D coordinates
   // Set to false: Shows 2D bounding boxes (green rectangles) with calculated
@@ -346,6 +347,16 @@ void processDetections(
       }
     }
     cv::resize(cv_image, cv_image, cv::Size(), 0.7, 0.7);
+    if (publish_frame) {
+      static auto last_publish = std::chrono::steady_clock::now();
+      auto now = std::chrono::steady_clock::now();
+      if (std::chrono::duration_cast<std::chrono::seconds>(now - last_publish)
+              .count() >= 1) {
+        publish_frame(cv_image);
+        last_publish = now;
+      }
+    }
+
     // cv::imshow("ZED Detections", cv_image);
     cv::waitKey(1);
   }

@@ -49,6 +49,7 @@ struct PersonLocation {
 class Detection : public Core::Vertex {
  private:
   std::shared_ptr<Core::Publisher<DetectionImage>> _detection_pub;
+  std::shared_ptr<Core::Publisher<ImageData>> _zed_image_pub;
   std::shared_ptr<Core::Subscriber<LLMResult>> _result_sub;
   std::vector<PersonLocation> _detected_persons;
   std::string _description;
@@ -69,6 +70,7 @@ class Detection : public Core::Vertex {
   Detection(Core::ArgumentParser);
   void handle_llm_result(const Core::IncomingMessage<LLMResult>&);
   void run_detection();
+  void publish_zed_image(const cv::Mat&);
 
  private:
   void send_detection_image(const cv::Mat&, float, float, float);

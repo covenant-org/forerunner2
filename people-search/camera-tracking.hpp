@@ -2,6 +2,7 @@
 #define CAMERA_TRACKING_HPP
 
 #include "logger.hpp"
+#include <functional>
 #include <opencv2/opencv.hpp>
 #include <sl/Camera.hpp>
 #include <string>
@@ -30,7 +31,8 @@ void processDetections(
     const sl::ObjectDetectionRuntimeParameters& detection_parameters_rt,
     sl::Objects& objects, std::unordered_set<int>& saved_ids,
     float& depth_value, list<cv::Mat>& images, bool save_image,
-    Core::Logger& _logger);
+    Core::Logger& _logger,
+    const std::function<void(const cv::Mat&)>& publish_frame = {});
 
 void setObjectDetectionRuntimeParameters(
     sl::Camera& zed,

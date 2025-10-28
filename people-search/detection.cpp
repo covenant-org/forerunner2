@@ -50,6 +50,7 @@ Detection::Detection(Core::ArgumentParser parser) : Core::Vertex(parser) {
 
   // Setup communication
   _detection_pub = this->create_publisher<DetectionImage>("detection_images");
+  _zed_image_pub = this->create_publisher<ImageData>("zed_image");
   _result_sub = this->create_subscriber<LLMResult>(
       "llm_results",
       std::bind(&Detection::handle_llm_result, this, std::placeholders::_1));
@@ -73,6 +74,32 @@ void Detection::handle_llm_result(const Core::IncomingMessage<LLMResult>& msg) {
   } else {
     this->_logger.info("Detection ID %u: NOT a valid person",
                        result.getObjectId());
+  }
+}
+
+void Detection::publish_zed_image(const cv::Mat& image) {
+  if (!_zed_image_pub) return;
+  if (image.empty()) {
+    this->_logger.debug("Skipping publish of empty ZED frame");
+    return;
+  }
+  try {
+    std::vector<uchar> buffer;
+    const std::vector<int> jpeg_params = {cv::IMWRITE_JPEG_QUALITY, 50};
+    cv::imencode(".jpg", image, buffer, jpeg_params);
+
+    auto msg = _zed_image_pub->new_msg();
+    auto image_data = msg.content;
+    image_data.setWidth(image.cols);
+    image_data.setHeight(image.rows);
+    image_data.setType(static_cast<uint32_t>(image.type()));
+    image_data.setData(kj::arrayPtr(buffer.data(), buffer.size()));
+
+    msg.publish();
+    this->_logger.debug("Published raw ZED frame (%dx%d)", image.cols,
+                        image.rows);
+  } catch (const std::exception& e) {
+    this->_logger.error("Error publishing ZED frame: %s", e.what());
   }
 }
 
@@ -103,12 +130,15 @@ void Detection::run_detection() {
   bool save_image = true;
   list<cv::Mat> images;
   auto timer = std::chrono::high_resolution_clock::now();
+  const auto publish_frame = [this](const cv::Mat& frame) {
+    this->publish_zed_image(frame);
+  };
   _logger.info("Entering main detection loop...");
   while (true) {
     auto grab_status = zed.grab();
     if (grab_status == sl::ERROR_CODE::SUCCESS) {
       processDetections(zed, detection_parameters_rt, objects, saved_ids,
-                        depth_value, images, save_image, _logger);
+                        depth_value, images, save_image, _logger, publish_frame);
       // DEBUG: Log how many images were detected
       if (!images.empty()) {
         this->_logger.debug("Found %zu detected images", images.size());
