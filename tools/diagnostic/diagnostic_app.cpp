@@ -73,7 +73,7 @@ void DiagnosticApp::run() {
     for (const auto& checker : checkers) {
         const DiagnosticResult result = checker->run();
         if (result.success) {
-            _logger.success("[%s] ✅ %s", result.name.c_str(), result.message.c_str());
+            _logger.info("[%s] ✅ %s", result.name.c_str(), result.message.c_str());
         } else {
             _logger.error("[%s] ❌ %s", result.name.c_str(), result.message.c_str());
         }
