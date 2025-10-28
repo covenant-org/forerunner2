@@ -1,6 +1,7 @@
 #pragma once
 
 #include "logger.hpp"
+#include "utils.hpp"
 
 #include <string>
 #include <utility>
@@ -30,8 +31,6 @@ private:
     std::string name_;
     Core::Logger& logger_;
 };
-
-#include "utils.hpp"
 
 inline BaseChecker::BaseChecker(std::string name, Core::Logger& logger)
     : name_(std::move(name)), logger_(logger) {}

@@ -8,4 +8,3 @@ struct CommandResult {
 };
 
 CommandResult run_command(const std::string& command);
-std::string find_repo_root(int max_levels = 10);

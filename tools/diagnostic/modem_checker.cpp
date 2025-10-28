@@ -8,6 +8,31 @@
 
 namespace {
 constexpr const char* kCommand = "ip -br addr";
+
+bool usb_interface_with_ip(const std::string& line, const std::string& hint) {
+    std::istringstream line_stream(line);
+    std::string iface;
+    std::string state;
+    if (!(line_stream >> iface >> state)) {
+        return false;
+    }
+
+    if (iface.find(hint) == std::string::npos) {
+        return false;
+    }
+
+    if (state == "DOWN") {
+        return false;
+    }
+
+    std::string token;
+    while (line_stream >> token) {
+        if (token.find('/') != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
 }
 
 ModemChecker::ModemChecker(Core::Logger& logger, std::string interface_hint)
@@ -21,19 +46,10 @@ DiagnosticResult ModemChecker::run() {
         return {name(), false, "Unable to execute `ip -br addr`"};
     }
 
-    std::istringstream stream(result.output);
+        std::istringstream stream(result.output);
     std::string line;
     while (std::getline(stream, line)) {
-        if (line.find(interface_hint_) == std::string::npos) {
-            continue;
-        }
-        if (line.find("UNKNOWN") != std::string::npos) {
-            continue;
-        }
-        if (line.find("DOWN") != std::string::npos) {
-            continue;
-        }
-        if (line.find("inet") != std::string::npos) {
+        if (usb_interface_with_ip(line, interface_hint_)) {
             logger().debug("Matched 4G interface line: %s", line.c_str());
             return {name(), true, "4G modem connected with assigned IP"};
         }
