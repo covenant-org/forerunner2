@@ -4,13 +4,13 @@ executables:
       options: # Argumentos con valores
         --mavlink-uri: "serial:///dev/ttyTHS1:921600"  
   - name: mavlink-mission
-  - name: people_search 
+  - name: people_search_controller
     args:
       options: # Argumentos con valores
         --x: 2
         --y: 2
-  - name: llm_processor
-  - name: people_detection  
+  - name: people_search_llm
+  - name: people_search_detection
     args:
       options: # Argumentos con valores
         --description: "person wearing a green tshirt and blue pants standing"
