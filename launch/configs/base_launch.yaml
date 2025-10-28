@@ -11,14 +11,8 @@ executables:
     args:
       options:
         --registry-uri tcp://localhost:4020
-  # - name: planner
-  #   args:
-  #     flags:
-  #       - --publish-octree
-  #     options:
-  #       --max-distance: 7.5
-  # - name: controller
-  #   args:
-  #     flags:
-  #       - --debug
   - name: rerun
+    args:
+      flags:
+        --debug
+

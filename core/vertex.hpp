@@ -124,7 +124,7 @@ class Vertex : public BaseVertex {
   }
 
   void notification_cb(const IncomingMessage<RegistryNotification> &msg) {
-    if (msg.content.getType() == RegistryNotificationType::NODE_ADDED) {
+    if (msg.content.getType() == RegistryNotificationType::NODE_CHANGE) {
       auto node = msg.content.getNodeAdded().getPath();
       auto path = std::string(node.cStr(), node.size());
       try {

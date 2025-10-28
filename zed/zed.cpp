@@ -66,7 +66,7 @@ Zed::Zed(const Core::ArgumentParser &parser) : Core::Vertex(parser) {
       _camera.close();
       throw std::runtime_error("zed camera can't enable positional tracking");
     }
-    this->_map_pub = this->create_publisher<PointCloudChunk>("map");
+    this->_map_pub = this->create_publisher<PointCloudChunk>("map_chunk");
   }
 
   pcl::io::compression_Profiles_e compressionProfile =
@@ -122,8 +122,16 @@ void Zed::run() {
       cloud->width = default_image_size.width;
       cloud->height = default_image_size.height;
 
-      memcpy(cloud->points.data(), point_cloud.getPtr<sl::float4>(),
-             sizeof(sl::float4) * default_image_size.area());
+      sl::float4 *data = point_cloud.getPtr<sl::float4>();
+      for (size_t i = 0; i < point_cloud.getWidth() * point_cloud.getHeight();
+           i++) {
+        cloud->points[i].x = data[i].x;
+        cloud->points[i].y = data[i].y;
+        cloud->points[i].z = data[i].z;
+        uint32_t color_uint = ((uint32_t)data[i].b << 16 |
+                               (uint32_t)data[i].g << 8 | (uint32_t)data[i].r);
+        cloud->points[i].rgb = *reinterpret_cast<float *>(&color_uint);
+      }
 
       Eigen::Affine3f transform = Eigen::Affine3f::Identity();
       transform.rotate(Eigen::AngleAxisf(-M_PI_2f, Eigen::Vector3f::UnitX()));

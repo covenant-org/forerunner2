@@ -253,14 +253,11 @@ inline std::optional<std::pair<std::string, uint32_t>> query_another_registry(
     auto msg = _make_request_to_registry(topic, RequestType::QUERY_NODE, uri,
                                          networks);
     if (msg.content.which() == RegistryResponse::ERROR_MESSAGE) {
-      std::cerr << "Error while querying topic: "
-                << msg.content.getErrorMessage().cStr() << std::endl;
       return std::nullopt;
     }
     return std::make_pair(msg.content.getHost().getAddress(),
-                           msg.content.getHost().getPort());
+                          msg.content.getHost().getPort());
   } catch (std::runtime_error& error) {
-    std::cerr << "Error while querying topic: " << error.what() << std::endl;
     return std::nullopt;
   }
   return std::nullopt;

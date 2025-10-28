@@ -14,8 +14,8 @@
 #include <cmath>
 #include <cstring>
 #include <exception>
-#include <iostream>
 #include <pcl/impl/point_types.hpp>
+#include <pcl/point_cloud.h>
 #include <rerun.hpp>
 #include <rerun/recording_stream.hpp>
 #include <string>
@@ -24,6 +24,8 @@
 
 Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
   this->_point_cloud_decoder =
+      new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>();
+  this->_map_point_cloud_decoder =
       new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>();
 
   this->_rec = std::make_shared<rerun::RecordingStream>("Forerunner v2");
@@ -46,25 +48,36 @@ Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
     this->_rec->spawn().exit_on_failure();
   }
 
-  this->_sub = this->create_subscriber<PointCloud>(
-      "point_cloud",
-      std::bind(&Viewer::point_cloud_cb, this, std::placeholders::_1));
-  this->_map_sub = this->create_subscriber<PointCloudChunk>(
-      "map", std::bind(&Viewer::map_cloud_cb, this, std::placeholders::_1));
-  this->_goal_sub = this->create_subscriber<Position>(
-      "goal", std::bind(&Viewer::goal_cb, this, std::placeholders::_1));
-  this->_mic_sub = this->create_subscriber<StereoMic>(
-      "mic", std::bind(&Viewer::mic_cb, this, std::placeholders::_1));
   this->_odom_sub = this->create_subscriber<Odometry>(
       "odometry", std::bind(&Viewer::odom_cb, this, std::placeholders::_1));
-  this->_octree_sub = this->create_subscriber<MarkerArray>(
-      "octree", std::bind(&Viewer::octree_cb, this, std::placeholders::_1));
-  this->_octree_layers_sub = this->create_subscriber<MarkerArray>(
-      "octree_layers",
-      std::bind(&Viewer::octree_layers_cb, this, std::placeholders::_1));
-  this->_planned_path_sub = this->create_subscriber<Path>(
-      "planned_path",
-      std::bind(&Viewer::planned_path_cb, this, std::placeholders::_1));
+  if (!args.get_argument<bool>("--no-cloud-sub")) {
+    this->_sub = this->create_subscriber<PointCloud>(
+        "point_cloud",
+        std::bind(&Viewer::point_cloud_cb, this, std::placeholders::_1));
+  }
+  if (!args.get_argument<bool>("--no-map-sub")) {
+    this->_map_sub = this->create_subscriber<PointCloud>(
+        "map", std::bind(&Viewer::map_cloud_cb, this, std::placeholders::_1));
+    this->_map_chunk_sub = this->create_subscriber<PointCloudChunk>(
+        "map_chunk",
+        std::bind(&Viewer::map_cloud_chunk_cb, this, std::placeholders::_1));
+  }
+  if (!args.get_argument<bool>("--no-goal-sub")) {
+    this->_goal_sub = this->create_subscriber<Position>(
+        "goal", std::bind(&Viewer::goal_cb, this, std::placeholders::_1));
+  }
+  if (!args.get_argument<bool>("--no-octree-sub")) {
+    this->_octree_sub = this->create_subscriber<MarkerArray>(
+        "octree", std::bind(&Viewer::octree_cb, this, std::placeholders::_1));
+    this->_octree_layers_sub = this->create_subscriber<MarkerArray>(
+        "octree_layers",
+        std::bind(&Viewer::octree_layers_cb, this, std::placeholders::_1));
+  }
+  if (!args.get_argument<bool>("--no-plan-sub")) {
+    this->_planned_path_sub = this->create_subscriber<Path>(
+        "planned_path",
+        std::bind(&Viewer::planned_path_cb, this, std::placeholders::_1));
+  }
 }
 
 rerun::Color Viewer::distance_to_color(float distance) {
@@ -308,7 +321,48 @@ void Viewer::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
                                  std::to_string(height)));
 }
 
-void Viewer::map_cloud_cb(const Core::IncomingMessage<PointCloudChunk> &msg) {
+void Viewer::log_map(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud,
+                     std::string index = "") {
+  auto width = cloud->width;
+  auto height = cloud->height;
+  size_t num_points = cloud->points.size();
+  _logger.debug("Received chunk with %d points", num_points);
+  if (num_points == 0) return;
+
+  std::vector<rerun::Position3D> positions;
+  std::vector<rerun::Color> colors;
+
+  positions.reserve(num_points);
+  colors.reserve(num_points);
+
+  for (size_t i = 0; i < num_points; ++i) {
+    auto point = cloud->points[i];
+    float x = point.x;
+    float y = point.y;
+    float z = point.z;
+    positions.emplace_back(x, y, z);
+    colors.emplace_back(rerun::Color(point.r, point.g, point.b));
+  }
+
+  if (index.size() > 0) {
+    index += "/";
+  }
+  // Log to Rerun
+  this->_rec->log("world/map/" + index,
+                  rerun::Points3D(positions).with_colors(colors));
+
+  // Log statistics
+  this->_rec->log("stats/map/" + index + "point_count",
+                  rerun::Scalars(static_cast<double>(positions.size())));
+  this->_rec->log("stats/map/" + index + "total_received",
+                  rerun::Scalars(static_cast<double>(num_points)));
+  this->_rec->log("stats/map/" + index + "image_dimensions",
+                  rerun::TextLog("Dimensions: " + std::to_string(width) + "x" +
+                                 std::to_string(height)));
+}
+
+void Viewer::map_cloud_chunk_cb(
+    const Core::IncomingMessage<PointCloudChunk> &msg) {
   auto cloud_msg = msg.content.getCloud();
   auto data_reader = cloud_msg.getData();
   auto width = cloud_msg.getWidth();
@@ -345,37 +399,29 @@ void Viewer::map_cloud_cb(const Core::IncomingMessage<PointCloudChunk> &msg) {
            (unsigned char *)data_reader.begin(), data_reader.size());
   }
 
-  size_t num_points = cloud->points.size();
-  _logger.debug("Received chunk with %d points", num_points);
-  if (num_points == 0) return;
-
-  std::vector<rerun::Position3D> positions;
-  std::vector<rerun::Color> colors;
-
-  positions.reserve(num_points);
-  colors.reserve(num_points);
-
-  for (size_t i = 0; i < num_points; ++i) {
-    auto point = cloud->points[i];
-    float x = point.x;
-    float y = point.y;
-    float z = point.z;
-    positions.emplace_back(x, y, z);
-    colors.emplace_back(rerun::Color(point.r, point.g, point.b));
-  }
   auto index = std::to_string(msg.content.getIndex());
-  // Log to Rerun
-  this->_rec->log("world/map/" + index,
-                  rerun::Points3D(positions).with_colors(colors));
+  this->log_map(cloud, index);
+}
 
-  // Log statistics
-  this->_rec->log("stats/map/" + index + "/point_count",
-                  rerun::Scalars(static_cast<double>(positions.size())));
-  this->_rec->log("stats/map/" + index + "/total_received",
-                  rerun::Scalars(static_cast<double>(num_points)));
-  this->_rec->log("stats/map/" + index + "/image_dimensions",
-                  rerun::TextLog("Dimensions: " + std::to_string(width) + "x" +
-                                 std::to_string(height)));
+void Viewer::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
+  auto data_reader = msg.content.getData();
+  auto width = msg.content.getWidth();
+  auto height = msg.content.getHeight();
+
+  pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
+      new pcl::PointCloud<pcl::PointXYZRGBA>(width, height));
+
+  std::stringstream buffer(
+      std::string((char *)data_reader.begin(), data_reader.size()));
+
+  try {
+    _map_point_cloud_decoder->decodePointCloud(buffer, cloud);
+  } catch (const std::exception &e) {
+    _logger.warn("Error while decoding cloudpoint: %s", e.what());
+    return;
+  }
+
+  this->log_map(cloud);
 }
 
 void Viewer::run() {
@@ -400,6 +446,31 @@ int main(int argc, char **argv) {
     root.push_back('/');
   }
   std::string default_model_path = root + "rerun/assets/X500.glb";
+  args.add_argument("--no-goal-sub")
+      .default_value(false)
+      .implicit_value(false)
+      .help("Disable goal subscriber")
+      .flag();
+  args.add_argument("--no-octree-sub")
+      .default_value(false)
+      .implicit_value(false)
+      .help("Disable octree subscriber")
+      .flag();
+  args.add_argument("--no-plan-sub")
+      .default_value(false)
+      .implicit_value(false)
+      .help("Disable plan subscriber")
+      .flag();
+  args.add_argument("--no-map-sub")
+      .default_value(false)
+      .implicit_value(false)
+      .help("Disable map subscriber")
+      .flag();
+  args.add_argument("--no-cloud-sub")
+      .default_value(false)
+      .implicit_value(false)
+      .help("Disable cloud subscriber")
+      .flag();
   args.add_argument("--drone-model")
       .default_value(default_model_path)
       .help("stl file to use for rendering the drone");

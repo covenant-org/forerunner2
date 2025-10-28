@@ -38,7 +38,7 @@ GZ::GZ(Core::ArgumentParser args) : Core::Vertex(args) {
 
   pcl::io::compression_Profiles_e compression_profile =
       pcl::io::MED_RES_ONLINE_COMPRESSION_WITH_COLOR;
-  _cloud_encoder = new pcl::io::OctreePointCloudCompression<pcl::PointXYZ>(
+  _cloud_encoder = new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>(
       compression_profile, false);
 }
 
@@ -83,8 +83,8 @@ void GZ::on_point_cb(const gz::msgs::PointCloudPacked &pt) {
   msg.content.setHeight(pt.height());
   msg.content.setWidth(pt.width());
 
-  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(
-      new pcl::PointCloud<pcl::PointXYZ>());
+  pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
+      new pcl::PointCloud<pcl::PointXYZRGBA>());
   cloud->width = pt.width();
   cloud->height = pt.height();
   cloud->is_dense = pt.is_dense();
@@ -102,26 +102,32 @@ void GZ::on_point_cb(const gz::msgs::PointCloudPacked &pt) {
   for (size_t i = 0; i < cloud->points.size(); ++i) {
     size_t point_offset = i * pt.point_step();
 
-    float x, y, z;
+    float x, y, z, rgb;
     memcpy(&x, data_ptr + point_offset + 0, sizeof(float));
     memcpy(&y, data_ptr + point_offset + 4, sizeof(float));
     memcpy(&z, data_ptr + point_offset + 8, sizeof(float));
+    memcpy(&rgb, data_ptr + point_offset + 12, sizeof(float));
 
     // sometimes the points for some axis have a Inf value
     if (std::isfinite(x) && std::isfinite(y) && std::isfinite(z)) {
+      uint32_t color_uint = 0xFF0000;
+      unsigned char *color_uchar = (unsigned char *)&color_uint;
+      color_uint = ((uint32_t)color_uchar[2] << 16 |
+                    (uint32_t)color_uchar[1] << 8 | (uint32_t)color_uchar[0]);
       cloud->points[i].x = x;
       cloud->points[i].y = y;
       cloud->points[i].z = z;
+      cloud->points[i].rgb = *reinterpret_cast<float *>(&color_uint);
     }
   }
 
-  pcl::PassThrough<pcl::PointXYZ> pass;
+  pcl::PassThrough<pcl::PointXYZRGBA> pass;
   pass.setInputCloud(cloud);
   pass.setFilterFieldName("x");
   pass.setFilterLimits(0.0f, 10.0f);
   pass.filter(*cloud);
 
-  pcl::VoxelGrid<pcl::PointXYZ> voxel_filter;
+  pcl::VoxelGrid<pcl::PointXYZRGBA> voxel_filter;
   voxel_filter.setInputCloud(cloud);
   // this is 5cm
   voxel_filter.setLeafSize(0.5f, 0.5f, 0.5f);
