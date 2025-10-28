@@ -15,6 +15,7 @@
 #include <cstring>
 #include <exception>
 #include <pcl/impl/point_types.hpp>
+#include <pcl/point_cloud.h>
 #include <rerun.hpp>
 #include <rerun/recording_stream.hpp>
 #include <string>
@@ -57,6 +58,9 @@ Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
   if (!args.get_argument<bool>("--no-map-sub")) {
     this->_map_sub = this->create_subscriber<PointCloud>(
         "map", std::bind(&Viewer::map_cloud_cb, this, std::placeholders::_1));
+    this->_map_chunk_sub = this->create_subscriber<PointCloudChunk>(
+        "map_chunk",
+        std::bind(&Viewer::map_cloud_chunk_cb, this, std::placeholders::_1));
   }
   if (!args.get_argument<bool>("--no-goal-sub")) {
     this->_goal_sub = this->create_subscriber<Position>(
@@ -317,25 +321,10 @@ void Viewer::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
                                  std::to_string(height)));
 }
 
-void Viewer::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
-  auto data_reader = msg.content.getData();
-  auto width = msg.content.getWidth();
-  auto height = msg.content.getHeight();
-
-  auto compression = _args.get_argument<bool>("--map-compression");
-  pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
-      new pcl::PointCloud<pcl::PointXYZRGBA>());
-
-  std::stringstream buffer(
-      std::string((char *)data_reader.begin(), data_reader.size()));
-
-  try {
-    _map_point_cloud_decoder->decodePointCloud(buffer, cloud);
-  } catch (const std::exception &e) {
-    _logger.warn("Error while decoding cloudpoint: %s", e.what());
-    return;
-  }
-
+void Viewer::log_map(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud,
+                     std::string index = "") {
+  auto width = cloud->width;
+  auto height = cloud->height;
   size_t num_points = cloud->points.size();
   _logger.debug("Received chunk with %d points", num_points);
   if (num_points == 0) return;
@@ -354,17 +343,85 @@ void Viewer::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
     positions.emplace_back(x, y, z);
     colors.emplace_back(rerun::Color(point.r, point.g, point.b));
   }
+
+  if (index.size() > 0) {
+    index += "/";
+  }
   // Log to Rerun
-  this->_rec->log("world/map", rerun::Points3D(positions).with_colors(colors));
+  this->_rec->log("world/map/" + index,
+                  rerun::Points3D(positions).with_colors(colors));
 
   // Log statistics
-  this->_rec->log("stats/map/point_count",
+  this->_rec->log("stats/map/" + index + "point_count",
                   rerun::Scalars(static_cast<double>(positions.size())));
-  this->_rec->log("stats/map/total_received",
+  this->_rec->log("stats/map/" + index + "total_received",
                   rerun::Scalars(static_cast<double>(num_points)));
-  this->_rec->log("stats/map/image_dimensions",
+  this->_rec->log("stats/map/" + index + "image_dimensions",
                   rerun::TextLog("Dimensions: " + std::to_string(width) + "x" +
                                  std::to_string(height)));
+}
+
+void Viewer::map_cloud_chunk_cb(
+    const Core::IncomingMessage<PointCloudChunk> &msg) {
+  auto cloud_msg = msg.content.getCloud();
+  auto data_reader = cloud_msg.getData();
+  auto width = cloud_msg.getWidth();
+  auto height = cloud_msg.getHeight();
+
+  auto compression = _args.get_argument<bool>("--map-compression");
+  pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
+      new pcl::PointCloud<pcl::PointXYZRGBA>(width, height));
+  if (compression) {
+    size_t len = cloud->points.size() * sizeof(pcl::PointXYZRGBA);
+    auto res =
+        uncompress(reinterpret_cast<Bytef *>(cloud->points.data()), &len,
+                   (unsigned char *)data_reader.begin(), data_reader.size());
+    if (res != Z_OK) {
+      _logger.error("Error while uncompressing map");
+      switch (res) {
+        case Z_MEM_ERROR:
+          _logger.error("Z_MEM_ERROR: insufficient memory");
+          break;
+        case Z_BUF_ERROR:
+          _logger.error("Z_BUF_ERROR: insufficient output buffer");
+          break;
+        case Z_DATA_ERROR:
+          _logger.error("Z_DATA_ERROR: corrupted input data");
+          break;
+        default:
+          break;
+      }
+      return;
+    }
+    _logger.debug("Read %d bytes", len);
+  } else {
+    memcpy((unsigned char *)cloud->points.data(),
+           (unsigned char *)data_reader.begin(), data_reader.size());
+  }
+
+  auto index = std::to_string(msg.content.getIndex());
+  this->log_map(cloud, index);
+}
+
+void Viewer::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
+  auto data_reader = msg.content.getData();
+  auto width = msg.content.getWidth();
+  auto height = msg.content.getHeight();
+
+  pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
+      new pcl::PointCloud<pcl::PointXYZRGBA>(width, height));
+
+  std::stringstream buffer(
+      std::string((char *)data_reader.begin(), data_reader.size()));
+
+  try {
+    _map_point_cloud_decoder->decodePointCloud(buffer, cloud);
+  } catch (const std::exception &e) {
+    _logger.warn("Error while decoding cloudpoint: %s", e.what());
+    return;
+  }
+
+  this->log_map(cloud);
 }
 
 void Viewer::run() {

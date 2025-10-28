@@ -18,7 +18,7 @@ class Mapping : public Core::Vertex {
   pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA> *_point_cloud_decoder;
 
  public:
-  void stich_cloud(const Core::IncomingMessage<PointCloud> &);
+  void stitch_cloud(const Core::IncomingMessage<PointCloud> &);
   void odom_cb(const Core::IncomingMessage<Odometry> &);
   Mapping(Core::ArgumentParser);
 };

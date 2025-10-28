@@ -66,7 +66,7 @@ Zed::Zed(const Core::ArgumentParser &parser) : Core::Vertex(parser) {
       _camera.close();
       throw std::runtime_error("zed camera can't enable positional tracking");
     }
-    this->_map_pub = this->create_publisher<PointCloudChunk>("map");
+    this->_map_pub = this->create_publisher<PointCloudChunk>("map_chunk");
   }
 
   pcl::io::compression_Profiles_e compressionProfile =

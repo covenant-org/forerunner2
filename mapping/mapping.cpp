@@ -19,7 +19,7 @@ Mapping::Mapping(Core::ArgumentParser args)
       "odometry", std::bind(&Mapping::odom_cb, this, std::placeholders::_1));
   this->_cloud_sub = this->create_subscriber<PointCloud>(
       "point_cloud",
-      std::bind(&Mapping::stich_cloud, this, std::placeholders::_1));
+      std::bind(&Mapping::stitch_cloud, this, std::placeholders::_1));
   this->_full_cloud_publisher = this->create_publisher<PointCloud>("map");
   pcl::io::compression_Profiles_e compressionProfile =
       pcl::io::MED_RES_ONLINE_COMPRESSION_WITH_COLOR;
@@ -37,7 +37,7 @@ void Mapping::odom_cb(const Core::IncomingMessage<Odometry>& odom) {
       Eigen::Quaterniond(q.getW(), q.getX(), -q.getY(), -q.getZ());
 }
 
-void Mapping::stich_cloud(const Core::IncomingMessage<PointCloud>& msg) {
+void Mapping::stitch_cloud(const Core::IncomingMessage<PointCloud>& msg) {
   auto data_reader = msg.content.getData();
 
   pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
@@ -57,7 +57,6 @@ void Mapping::stich_cloud(const Core::IncomingMessage<PointCloud>& msg) {
   if (height < _cloud->height) {
     height = _cloud->height;
   }
-  auto width = _cloud->width + cloud->width;
 
   Eigen::Affine3d transform = Eigen::Affine3d::Identity();
   transform.translate(this->_position);

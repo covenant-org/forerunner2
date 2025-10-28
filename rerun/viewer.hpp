@@ -11,6 +11,7 @@
 #include <memory>
 #include <pcl/compression/octree_pointcloud_compression.h>
 #include <pcl/impl/point_types.hpp>
+#include <pcl/point_cloud.h>
 #include <rerun.hpp>
 #include <rerun/recording_stream.hpp>
 
@@ -21,6 +22,7 @@ class Viewer : Core::Vertex {
  private:
   std::shared_ptr<Core::Subscriber<PointCloud>> _sub;
   std::shared_ptr<Core::Subscriber<PointCloud>> _map_sub;
+  std::shared_ptr<Core::Subscriber<PointCloudChunk>> _map_chunk_sub;
   std::shared_ptr<Core::Subscriber<Position>> _goal_sub;
   std::shared_ptr<Core::Subscriber<StereoMic>> _mic_sub;
   std::shared_ptr<Core::Subscriber<Odometry>> _odom_sub;
@@ -47,6 +49,9 @@ class Viewer : Core::Vertex {
   void local_planned_path_cb(const Core::IncomingMessage<Path> &);
   void render_path(const Core::IncomingMessage<Path> &, const std::string &,
                    const std::string &);
+  void log_map(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud,
+               std::string index);
+  void map_cloud_chunk_cb(const Core::IncomingMessage<PointCloudChunk> &msg);
   rerun::Color distance_to_color(float distance);
   Viewer(Core::ArgumentParser);
   void run();
