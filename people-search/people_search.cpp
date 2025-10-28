@@ -388,8 +388,8 @@ void PeopleSearch::run() {
 
   auto setpoint_req = this->_controller_client->new_msg();
   auto wp = setpoint_req.content.initWaypoint();
-  wp.setX(0);
-  wp.setY(0);
+  wp.setX(this->_drone_x);
+  wp.setY(this->_drone_y);
   wp.setZ(z);
   auto setpoint_res = setpoint_req.send();
   auto setpoint_resp = setpoint_res.value().content;

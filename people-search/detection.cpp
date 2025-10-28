@@ -236,8 +236,8 @@ void Detection::send_detection_image(const cv::Mat& image, float x, float y,
 
     // Fill detection data with Point structure
     auto coordinates = msg.content.initCoordinates();
-    coordinates.setX(x);
-    coordinates.setY(z);
+    coordinates.setX(z);
+    coordinates.setY(x);
     coordinates.setZ(y);
 
     msg.content.setDescription(_description);

@@ -90,7 +90,7 @@ void initDetectionParameters(
     sl::Camera& zed, sl::ObjectDetectionParameters& detection_parameters,
     Core::Logger& _logger) {
   // Define the Objects detection module parameters
-  detection_parameters.enable_tracking = true;  // Enable tracking
+  detection_parameters.enable_tracking = false;  // Enable tracking
   detection_parameters.enable_segmentation =
       true;  // Enable segmentation (to get person pixel mask)
   // detection_parameters.detection_model = OBJECT_DETECTION_MODEL::YOLO_V8_1M;
