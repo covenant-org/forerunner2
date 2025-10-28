@@ -233,6 +233,8 @@ void Viewer::detection_image_cb(
   std::vector<uint8_t> bytes(encoded.begin(), encoded.end());
 
   const auto coordinates = detection.getCoordinates();
+  if (detection.getObjectId() == 0)
+    this->_rec->log("person_search/detections", rerun::Clear(true));
   const std::string base_path =
       "person_search/detections/" + std::to_string(detection.getObjectId());
 
@@ -245,14 +247,13 @@ void Viewer::detection_image_cb(
   this->_rec->log(base_path + "/description",
                   rerun::TextLog(detection.getDescription().cStr()));
 
-  this->_rec->log(
-      base_path + "/position",
-      rerun::Boxes3D::from_centers_and_sizes(
-          {{static_cast<float>(coordinates.getX()),
-            static_cast<float>(-coordinates.getY()),
-            static_cast<float>(-coordinates.getZ())}},
-          {{0.15F, 0.15F, 0.15F}})
-          .with_colors({rerun::Color(255, 165, 0)}));
+  this->_rec->log(base_path + "/position",
+                  rerun::Boxes3D::from_centers_and_sizes(
+                      {{static_cast<float>(coordinates.getX()),
+                        static_cast<float>(-coordinates.getY()),
+                        static_cast<float>(-coordinates.getZ())}},
+                      {{0.15F, 0.15F, 0.15F}})
+                      .with_colors({rerun::Color(255, 165, 0)}));
 
   this->_rec->log(
       base_path + "/stats",
@@ -277,10 +278,9 @@ void Viewer::zed_image_cb(const Core::IncomingMessage<ImageData>& msg) {
           rerun::Collection<uint8_t>::take_ownership(std::move(bytes)),
           rerun::components::MediaType::jpeg()));
 
-  this->_rec->log(
-      "zed/stats",
-      rerun::TextLog("Image " + std::to_string(image.getWidth()) + "x" +
-                     std::to_string(image.getHeight())));
+  this->_rec->log("zed/stats",
+                  rerun::TextLog("Image " + std::to_string(image.getWidth()) +
+                                 "x" + std::to_string(image.getHeight())));
 }
 
 void Viewer::goal_cb(const Core::IncomingMessage<Position>& msg) {
