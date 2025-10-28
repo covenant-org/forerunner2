@@ -60,27 +60,21 @@ void initZed(sl::Camera& zed, const std::string& svo_path,
   // Set configuration parameters
   sl::InitParameters init_parameters;
   if (svo_path.empty()) {
-    // init_parameters.input.setFromSVOFile(svo_path.c_str());
-    init_parameters.svo_real_time_mode =
-        true;  // <-- Important for offline processing
-    init_parameters.coordinate_system =
-        sl::COORDINATE_SYSTEM::RIGHT_HANDED_Y_UP;  // Use right-handed Y-up
+    _logger.debug("Zed live camera...");
+    // 
+    init_parameters.svo_real_time_mode = true;  // <-- Important for offline processing
+    init_parameters.coordinate_system = sl::COORDINATE_SYSTEM::RIGHT_HANDED_Y_UP;  // Use right-handed Y-up
                                                    // coordinate system
+  } else{
+    init_parameters.input.setFromSVOFile(svo_path.c_str());
   }
-  if (svo_path == "gz") {
-    init_parameters.coordinate_units = sl::UNIT::METER;
-    init_parameters.camera_resolution = sl::RESOLUTION::HD720;
-    init_parameters.depth_mode = sl::DEPTH_MODE::NONE;
-    init_parameters.sdk_verbose = true;
-  } else {
+
     _logger.debug("Zed parameters...");
-    init_parameters.depth_mode =
-        sl::DEPTH_MODE::NEURAL;  // Use NEURAL depth mode
-    // init_parameters.coordinate_units = UNIT::METER; // Set coordinate units
-    // init_parameters.sdk_verbose = true; // Enable verbose mode
-    // init_parameters.depth_maximum_distance = 10*1000.f; // Set maximum depth
-    // distance
-  }
+    init_parameters.depth_mode = sl::DEPTH_MODE::NEURAL;  // Use NEURAL depth mode
+     init_parameters.coordinate_units = sl::UNIT::METER; // Set coordinate units
+     init_parameters.sdk_verbose = true; // Enable verbose mode
+     init_parameters.depth_maximum_distance = 10*1000.f; // Set maximum depth distance
+  
 
   // Open the camera
 
@@ -357,7 +351,7 @@ void processDetections(
       }
     }
 
-    // cv::imshow("ZED Detections", cv_image);
+    cv::imshow("ZED Detections", cv_image);
     cv::waitKey(1);
   }
 }
