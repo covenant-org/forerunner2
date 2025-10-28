@@ -138,7 +138,8 @@ void Detection::run_detection() {
     auto grab_status = zed.grab();
     if (grab_status == sl::ERROR_CODE::SUCCESS) {
       processDetections(zed, detection_parameters_rt, objects, saved_ids,
-                        depth_value, images, save_image, _logger, publish_frame);
+                        depth_value, images, save_image, _logger,
+                        publish_frame);
       // DEBUG: Log how many images were detected
       if (!images.empty()) {
         this->_logger.debug("Found %zu detected images", images.size());
@@ -187,6 +188,7 @@ void Detection::run_detection() {
             }
           }
         }
+        _next_object_id = 0;
         images.clear();
       }
 
@@ -239,7 +241,7 @@ void Detection::send_detection_image(const cv::Mat& image, float x, float y,
     coordinates.setZ(y);
 
     msg.content.setDescription(_description);
-    msg.content.setObjectId(0);
+    msg.content.setObjectId(_next_object_id++);
 
     // Publish
     msg.publish();
