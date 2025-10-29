@@ -232,7 +232,7 @@ bool PeopleSearch::confirm_valid_person(
   float approach_y = _drone_y + (person_y - _drone_y) / 4.0f;
   float person_distance = std::sqrt(person_x * person_x + person_y * person_y);
   if (person_distance > 2.0f) {
-    move_and_wait(approach_x, approach_y, -3.0f, 0.0f);
+    move_and_wait(approach_x, approach_y, this->_search_altitude, 0.0f);
   }
   // wait for a fresh detection (detection_time must be newer than
   // snapshot_time)
@@ -277,7 +277,7 @@ bool PeopleSearch::confirm_valid_person(
   float drone_x_backup = _drone_x;
   float drone_y_backup = _drone_y;
 
-  move_and_wait(drone_x_backup, drone_y_backup, -3.0f, 0.0f);
+  move_and_wait(drone_x_backup, drone_y_backup, this->_search_altitude, 0.0f);
   return false;
 }
 
@@ -298,7 +298,7 @@ bool PeopleSearch::check_valid_person() {
 
   if (!_valid_person_found.load()) return false;
 
-  send_coordinate(_drone_x, _drone_y, -3.0f, 0.0f);
+  send_coordinate(_drone_x, _drone_y, this->_search_altitude, 0.0f);
 
   float person_x, person_y, person_z;
   std::chrono::steady_clock::time_point detection_time;
@@ -342,7 +342,7 @@ bool PeopleSearch::check_valid_person() {
     return true;
   }
   // send_coordinate(_drone_x, _drone_y, -4.0f, 0.0f);
-  move_and_wait(person_x, person_y, -3.0f, 0.0f);
+  move_and_wait(person_x, person_y, this->_search_altitude, 0.0f);
   land();
   // send_coordinate(_drone_x, _drone_y, -0.0f, 0.0f);
   return true;
@@ -359,6 +359,7 @@ void PeopleSearch::run() {
     takeoff_altitude = 3.0f;
   }
   const float search_altitude = -takeoff_altitude;
+  this->_search_altitude = search_altitude;
 
   if (!this->_has_odometry.load(std::memory_order_acquire)) {
     this->_logger.info("Waiting for initial odometry...");
