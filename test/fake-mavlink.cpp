@@ -61,6 +61,9 @@ FakeMavlink::FakeMavlink(Core::ArgumentParser parser)
   q[1] = 0;
   q[2] = 0;
   q[3] = 0;
+  pos[0] = 0;
+  pos[1] = 0;
+  pos[2] = 0;
 }
 
 void FakeMavlink::command_cb(const Core::IncomingMessage<Command> &command,
@@ -71,6 +74,7 @@ void FakeMavlink::command_cb(const Core::IncomingMessage<Command> &command,
   switch (command.content.which()) {
     case Command::LAND: {
       sleep(1);
+      this->pos[2] = 0;
       res.setCode(500);
       res.setMessage("Error while landing");
       return;
@@ -195,6 +199,7 @@ void FakeMavlink::publish_telemtry() {
   battery.setPercentage(80);
   msg.content.setInAir(this->in_air);
   msg.content.setMode(this->mode);
+  msg.publish();
 }
 
 void FakeMavlink::publish_odometry() {
@@ -225,7 +230,7 @@ void FakeMavlink::run() {
   while (true) {
     publish_telemtry();
     publish_odometry();
-    this->_logger.info("Position: %d %d %d", pos[0], pos[1], pos[0]);
+    this->_logger.info("Position: %f %f %f", pos[0], pos[1], pos[2]);
     rk.keep();
   }
 }
