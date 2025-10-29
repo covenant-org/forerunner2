@@ -61,8 +61,8 @@ FakeMavlink::FakeMavlink(Core::ArgumentParser parser)
   q[1] = 0;
   q[2] = 0;
   q[3] = 0;
-  pos[0] = this->get_argument<float>("--x");
-  pos[1] = this->get_argument<float>("--y");
+  pos[0] = this->get_argument<float>("-x");
+  pos[1] = this->get_argument<float>("-y");
   pos[2] = 0;
 }
 
