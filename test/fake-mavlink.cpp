@@ -77,8 +77,6 @@ void FakeMavlink::command_cb(const Core::IncomingMessage<Command> &command,
       this->pos[2] = 0;
       this->armed = false;
       this->in_air = false;
-      res.setCode(500);
-      res.setMessage("Error while landing");
       return;
     }
     case Command::TAKEOFF: {
@@ -136,7 +134,7 @@ void FakeMavlink::command_cb(const Core::IncomingMessage<Command> &command,
         res.setMessage("Drone not armed - cannot set waypoints");
         return;
       }
-      sleep(1);
+      sleep(5);
 
       this->_logger.debug(
           "Waypoint setpoint set successfully - ready for offboard mode");
