@@ -78,7 +78,7 @@ bool CommandChecker::evaluate_output(const std::string& output,
     std::istringstream stream(output);
     std::string line;
     while (std::getline(stream, line)) {
-        std::string comparison = case_sensitive_ ? line : to_lower(line);
+        std::string comparison = prepare_line(line);
         for (size_t i = 0; i < markers_processed_.size(); ++i) {
             if (found[i]) {
                 continue;
@@ -127,6 +127,38 @@ std::string CommandChecker::to_lower(const std::string& value) const {
         return static_cast<char>(std::tolower(c));
     });
     return transformed;
+}
+
+std::string CommandChecker::strip_ansi_sequences(const std::string& value) const {
+    std::string result;
+    result.reserve(value.size());
+
+    for (size_t i = 0; i < value.size();) {
+        unsigned char c = static_cast<unsigned char>(value[i]);
+        if (c == 0x1B) {
+            ++i;
+            if (i < value.size() && value[i] == '[') {
+                ++i;
+                while (i < value.size() && value[i] < '@') {
+                    ++i;
+                }
+                if (i < value.size()) {
+                    ++i;
+                }
+            }
+            continue;
+        }
+
+        result.push_back(static_cast<char>(c));
+        ++i;
+    }
+
+    return result;
+}
+
+std::string CommandChecker::prepare_line(const std::string& line) const {
+    std::string cleaned = strip_ansi_sequences(line);
+    return case_sensitive_ ? cleaned : to_lower(cleaned);
 }
 
 void CommandChecker::log_expected_patterns() const {

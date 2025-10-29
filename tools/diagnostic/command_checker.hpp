@@ -26,6 +26,8 @@ private:
                          std::vector<std::string>& matched_lines,
                          std::vector<std::string>& missing_markers) const;
 
+    std::string strip_ansi_sequences(const std::string& value) const;
+    std::string prepare_line(const std::string& line) const;
     std::string to_lower(const std::string& value) const;
     void log_expected_patterns() const;
 
