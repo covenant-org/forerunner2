@@ -77,7 +77,9 @@ void FakeMavlink::command_cb(const Core::IncomingMessage<Command> &command,
     }
     case Command::TAKEOFF: {
       this->armed = true;
+      auto info = command.content.getTakeoff();
       sleep(1);
+      this->pos[2] = -info.getAltitude();
       return;
     }
     case Command::OFFBOARD: {
@@ -214,7 +216,7 @@ void FakeMavlink::publish_odometry() {
   q.setY(0);
   q.setZ(0);
   q.setW(1);
-  msg.content.setHeading(this->heading);
+  msg.content.setHeading(0);
   msg.publish();
 }
 
