@@ -35,8 +35,8 @@ void PeopleSearch::handle_llm_result(
     float z_cam = coords.getZ();
 
     float yaw = _drone_yaw;  // you need to store this from odometry
-    float x_world = _drone_x + z_cam * cos(yaw) - x_cam * sin(yaw);
-    float y_world = _drone_y + z_cam * sin(yaw) + x_cam * cos(yaw);
+    float x_world = _drone_x + x_cam * cos(yaw) - y_cam * sin(yaw);
+    float y_world = _drone_y + x_cam * sin(yaw) + y_cam * cos(yaw);
     float z_world = _drone_z;  // keep altitude constant or adjust as needed
 
     {
