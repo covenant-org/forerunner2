@@ -225,6 +225,7 @@ void FakeMavlink::run() {
   while (true) {
     publish_telemtry();
     publish_odometry();
+    this->_logger.info("Position: %d %d %d", pos[0], pos[1], pos[0]);
     rk.keep();
   }
 }
