@@ -1,12 +1,12 @@
 #include "argument_parser.hpp"
 #include "people_search.hpp"
+#include <bits/stdc++.h>
 #include <chrono>
 #include <cmath>
+#include <iostream>
+#include <string>
 #include <thread>
 #include <tuple>
-#include <bits/stdc++.h>
-#include <string>
-#include <iostream>
 
 PeopleSearch::PeopleSearch(Core::ArgumentParser parser) : Core::Vertex(parser) {
   this->_mission_client =
@@ -360,28 +360,28 @@ void PeopleSearch::run() {
     const float search_altitude = -takeoff_altitude;
     this->_search_altitude = search_altitude;
 
-    if (!this->_has_odometry.load(std::memory_order_acquire)) {
-      this->_logger.info("Waiting for initial odometry...");
-      while (!this->_has_odometry.load(std::memory_order_acquire)) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      }
+  if (!this->_has_odometry.load(std::memory_order_acquire)) {
+    this->_logger.info("Waiting for initial odometry...");
+    while (!this->_has_odometry.load(std::memory_order_acquire)) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
+  }
 
   float start_x = this->_drone_x;
   float start_y = this->_drone_y;
 
-    const float center_x = start_x + offset_x;
-    const float center_y = start_y + offset_y;
-    
-    // Takeoff to 4 meters
+  const float center_x = start_x + offset_x;
+  const float center_y = start_y + offset_y;
+
+  // Takeoff to 4 meters
   this->_logger.info("Initiating takeoff to %.2f meters", takeoff_altitude);
-    auto request = this->_mission_client->new_msg();
-    request.content.initTakeoff();
+  auto request = this->_mission_client->new_msg();
+  request.content.initTakeoff();
   request.content.getTakeoff().setDesiredAltitude(takeoff_altitude);
-    auto result = request.send();
-    auto response = result.value().content;
-    
-    if (response.getCode() != 200) {
+  auto result = request.send();
+  auto response = result.value().content;
+
+  if (response.getCode() != 200) {
     this->_logger.error("Takeoff failed with code %d and message %s",
                         response.getCode(), response.getMessage());
   }
@@ -416,8 +416,8 @@ void PeopleSearch::run() {
 
   // Move to initial position
   this->_logger.info(
-    "Moving to target GPS location (%.6f, %.6f) at %.2f meters", center_x,
-    center_y, takeoff_altitude);
+      "Moving to target GPS location (%.6f, %.6f) at %.2f meters", center_x,
+      center_y, takeoff_altitude);
   move_and_wait(center_x, center_y, search_altitude, 0.0f);
 
   // Lawn-mower pattern search starting from center
@@ -427,10 +427,8 @@ void PeopleSearch::run() {
   bool forward = true;
 
   this->_logger.info("Starting lawn-mower search pattern...");
-  // Start at center line, expand outwards
 
   // calculate waypoints
-
   std::list<std::tuple<float, float, float>> waypoints;
 
   for (int i = 0; i <= length / (2 * step); i++) {
@@ -477,7 +475,7 @@ void PeopleSearch::run() {
     float home_y = this->_home_set.load(std::memory_order_acquire)
                        ? this->_home_y
                        : this->_drone_y;
-  move_and_wait(home_x, home_y, search_altitude, 0.0f);
+    move_and_wait(home_x, home_y, search_altitude, 0.0f);
     land();
   }
 }
@@ -485,13 +483,9 @@ void PeopleSearch::run() {
 int main(int argc, char** argv) {
   Core::BaseArgumentParser parser(argc, argv);
 
-    parser.add_argument("--x")
-	    .scan<'g', float>()
-	    .help("x distance in meters");
-    parser.add_argument("--y")
-	    .scan<'g', float>()
-	    .help("x distance in meters");
-    parser.add_argument("--altitude")
+  parser.add_argument("--x").scan<'g', float>().help("x distance in meters");
+  parser.add_argument("--y").scan<'g', float>().help("x distance in meters");
+  parser.add_argument("--altitude")
       .scan<'g', float>()
       .default_value(3.0f)
       .help("Takeoff altitude in meters (positive, default 3.0)");
@@ -499,6 +493,6 @@ int main(int argc, char** argv) {
   std::shared_ptr<PeopleSearch> people_search =
       std::make_shared<PeopleSearch>(parser);
 
-    people_search->run();
-    return 0;
+  people_search->run();
+  return 0;
 }
