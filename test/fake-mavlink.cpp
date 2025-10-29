@@ -61,8 +61,8 @@ FakeMavlink::FakeMavlink(Core::ArgumentParser parser)
   q[1] = 0;
   q[2] = 0;
   q[3] = 0;
-  pos[0] = 0;
-  pos[1] = 0;
+  pos[0] = this->get_argument<float>("--x");
+  pos[1] = this->get_argument<float>("--y");
   pos[2] = 0;
 }
 
@@ -251,6 +251,10 @@ int main(int argc, char **argv) {
   base.add_argument("--ftp-dir")
       .help("Root directory for the ftp server")
       .default_value("/tmp/mavlink.XXXXXX");
+  base.add_argument("-x").default_value(0).scan<'g', float>().help(
+      "Initial x position");
+  base.add_argument("-y").default_value(0).scan<'g', float>().help(
+      "Initial y position");
 
   std::shared_ptr<FakeMavlink> mavlink =
       std::make_shared<FakeMavlink>(std::move(base));

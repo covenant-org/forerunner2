@@ -333,13 +333,10 @@ bool PeopleSearch::check_valid_person() {
   if (person_distance < 2.0f) {
     std::cout << "Person very close, descending directly." << std::endl;
     // send_coordinate(_drone_x, _drone_y, -4.0f, 0.0f);
-    move_and_wait(_drone_x, _drone_y, -3.0f, 0.0f);
     land();
     // send_coordinate(_drone_x, _drone_y, -0.0f, 0.0f);
     return true;
   }
-  move_and_wait(person_x, person_y, -3.0f, 0.0f);
-
   // send_coordinate(_drone_x, _drone_y, -4.0f, 0.0f);
   move_and_wait(person_x, person_y, -3.0f, 0.0f);
   land();
@@ -348,16 +345,16 @@ bool PeopleSearch::check_valid_person() {
 }
 
 void PeopleSearch::run() {
-    const float offset_x = this->get_argument<float>("--x");
-    const float offset_y = this->get_argument<float>("--y");
-    float takeoff_altitude = std::fabs(this->get_argument<float>("--altitude"));
-    if (takeoff_altitude <= 0.0f) {
-      this->_logger.warn(
-          "Configured altitude %.2f is non-positive, defaulting to 3.0m",
-          takeoff_altitude);
-      takeoff_altitude = 3.0f;
-    }
-    const float search_altitude = -takeoff_altitude;
+  const float offset_x = this->get_argument<float>("--x");
+  const float offset_y = this->get_argument<float>("--y");
+  float takeoff_altitude = std::fabs(this->get_argument<float>("--altitude"));
+  if (takeoff_altitude <= 0.0f) {
+    this->_logger.warn(
+        "Configured altitude %.2f is non-positive, defaulting to 3.0m",
+        takeoff_altitude);
+    takeoff_altitude = 3.0f;
+  }
+  const float search_altitude = -takeoff_altitude;
 
   if (!this->_has_odometry.load(std::memory_order_acquire)) {
     this->_logger.info("Waiting for initial odometry...");
