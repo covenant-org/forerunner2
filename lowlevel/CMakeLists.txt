@@ -1,0 +1,17 @@
+cmake_minimum_required(VERSION 3.15)
+project(lowlevel)
+
+find_package(cppzmq REQUIRED)
+find_package(capnp_schemas REQUIRED)
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+
+
+add_executable(${PROJECT_NAME} lowlevel.cpp)
+target_link_libraries(${PROJECT_NAME} PRIVATE
+	core
+	cppzmq
+	capnp
+	capnp_schemas
+	kj
+	Eigen3::Eigen
+	${PCL_LIBRARIES})
