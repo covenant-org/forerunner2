@@ -313,25 +313,29 @@ bool PeopleSearch::check_valid_person() {
 
   _is_handling_person = true;
 
-  std::cout << "Starting person validation (snapshot at time="
-            << detection_time.time_since_epoch().count() << ")" << std::endl;
+  this->_logger.info(
+      "Starting person validation at (%.3f, %.3f, %.3f) detected at time=%lld",
+      person_x, person_y, person_z,
+      static_cast<long long>(detection_time.time_since_epoch().count()));
 
   if (!confirm_valid_person(person_x, person_y, person_z, detection_time)) {
     _is_handling_person = false;
-    std::cout << "Continue search" << std::endl;
+    this->_logger.info("Person validation failed, resuming search");
     return false;
   }
 
   // proceed to go to person (use the locked snapshot or locking as needed)
-  std::cout << "Interrupting search! Flying to detected person at (" << person_x
-            << ", " << person_y << ", " << person_z << ")" << std::endl;
+  this->_logger.info("Navigating to confirmed person at (%.3f, %.3f, %.3f)",
+                     person_x, person_y, person_z);
 
   float person_distance =
       std::sqrt((person_x - _drone_x) * (person_x - _drone_x) +
                 (person_y - _drone_y) * (person_y - _drone_y));
 
   if (person_distance < 2.0f) {
-    std::cout << "Person very close, descending directly." << std::endl;
+    this->_logger.info(
+        "Person is within %.2f meters, initiating landing sequence",
+        person_distance);
     // send_coordinate(_drone_x, _drone_y, -4.0f, 0.0f);
     land();
     // send_coordinate(_drone_x, _drone_y, -0.0f, 0.0f);
