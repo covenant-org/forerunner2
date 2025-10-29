@@ -100,34 +100,6 @@ void PeopleSearch::move_and_wait(float x, float y, float z, float yaw_deg) {
           distance);
       break;
     }
-    int n_div = std::ceil(abs(x_end - x_start) / (4));
-
-    if (forward) {
-        this->_logger.debug("Moving x from %.2f to %.2f at y=%.2f", x_start, x_end, y_offset);
-
-        if (move_and_check(x_start, y_offset, z, 0.0f, wait)) return;
-        for (int i = 0; i < n_div; i++) {
-            float x_mid = x_start + (i + 1) * (length / n_div);
-            auto msg = this->_path_publisher->new_msg();
-            msg.content.setX(static_cast<float>(x_mid));
-            msg.content.setY(static_cast<float>(y_offset));
-            msg.content.setZ(static_cast<float>(z));
-            msg.publish();
-            if (move_and_check(x_mid, y_offset, z, 0.0f, wait)) return;
-        }
-    } else {
-        this->_logger.debug("Moving x from %.2f to %.2f at y=%.2f", x_end, x_start, y_offset);
-        if (move_and_check(x_end, y_offset, z, 0.0f, wait)) return;
-        for (int i = 0; i < n_div; i++) {
-            float x_mid = x_end - (i + 1) * (length / n_div);
-            auto msg = this->_path_publisher->new_msg();
-            msg.content.setX(static_cast<float>(x_mid));
-            msg.content.setY(static_cast<float>(y_offset));
-            msg.content.setZ(static_cast<float>(z));
-            msg.publish();
-            if (move_and_check(x_mid, y_offset, z, 0.0f, wait)) return;
-        }
-    }
 
     // Sleep briefly before next check
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -367,7 +339,7 @@ bool PeopleSearch::check_valid_person() {
 }
 
 void PeopleSearch::run() {
-  float x, y, z;
+    float x, y, z;
 
     x = this->get_argument<float>("--x");
     y = this->get_argument<float>("--y");
@@ -388,8 +360,8 @@ void PeopleSearch::run() {
 
   auto setpoint_req = this->_controller_client->new_msg();
   auto wp = setpoint_req.content.initWaypoint();
-  wp.setX(this->_drone_x);
-  wp.setY(this->_drone_y);
+  wp.setX(0);
+  wp.setY(0);
   wp.setZ(z);
   auto setpoint_res = setpoint_req.send();
   auto setpoint_resp = setpoint_res.value().content;
@@ -460,27 +432,6 @@ void PeopleSearch::run() {
     if (i > 0) {  // skip duplicate center
       fly_scan_line(x, offset_down, z, length, forward);
       forward = !forward;
-    }
-    // Lawn-mower pattern search starting from center
-    const float length = 5.0f;   // search box size (meters)
-    const float step   = 1.0f;   // spacing between lines
-    const int   wait   = 4;     // wait between moves (seconds)
-
-    bool forward = true;
-
-    this->_logger.info("Starting lawn-mower search pattern...");
-    // Start at center line, expand outwards
-    for (int i = 0; i <= length / (2 * step); i++) {
-        float offset_up   = y + i * step;
-        float offset_down = y - i * step;
-
-        fly_scan_line(x, offset_up, z, length, forward, wait);
-        forward = !forward;
-
-        if (i > 0) { // skip duplicate center
-            fly_scan_line(x, offset_down, z, length, forward, wait);
-            forward = !forward;
-        }
     }
   }
 
