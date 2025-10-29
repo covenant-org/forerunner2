@@ -28,6 +28,7 @@ private:
     std::atomic<bool> _has_odometry{false};
     std::atomic<bool> _home_set{false};
     float _home_x{0.0f}, _home_y{0.0f}, _home_z{0.0f};
+    float _search_altitude{-3.0f};
 
     std::chrono::steady_clock::time_point _last_detection_time = std::chrono::steady_clock::time_point::min();
 
