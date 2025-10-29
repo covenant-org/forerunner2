@@ -11,8 +11,12 @@ set(EXCLUDED_SUBDIRS
     "vendor"
     "core"
     "messages"
-    "rerun"
 )
+
+if (EXISTS "/etc/nv_tegra_release")
+  message(WARNING "Jetson Detected not compiling rerun")
+  list(APPEND EXCLUDED_SUBDIRS "rerun")
+endif()
 
 find_package(ZED)
 if(NOT DEFINED ZED_FOUND OR NOT ZED_FOUND)
