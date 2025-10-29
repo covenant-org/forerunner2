@@ -79,6 +79,15 @@ void PeopleSearch::get_position(const Core::IncomingMessage<Odometry>& msg) {
   float cosy_cosp = 1 - 2 * (q.getY() * q.getY() + q.getZ() * q.getZ());
   float yaw = std::atan2(siny_cosp, cosy_cosp);
   this->_drone_yaw = yaw;
+
+  if (!this->_home_set.load(std::memory_order_acquire)) {
+    this->_home_x = this->_drone_x;
+    this->_home_y = this->_drone_y;
+    this->_home_z = this->_drone_z;
+    this->_home_set.store(true, std::memory_order_release);
+  }
+
+  this->_has_odometry.store(true, std::memory_order_release);
 }
 
 void PeopleSearch::move_and_wait(float x, float y, float z, float yaw_deg) {
@@ -339,11 +348,22 @@ bool PeopleSearch::check_valid_person() {
 }
 
 void PeopleSearch::run() {
-    float x, y, z;
+    const float offset_x = this->get_argument<float>("--x");
+    const float offset_y = this->get_argument<float>("--y");
+    const float search_altitude = -3.0f; // Fixed altitude of 3 meters
 
-    x = this->get_argument<float>("--x");
-    y = this->get_argument<float>("--y");
-    z = -3.0f; // Fixed altitude of 4 meters
+    if (!this->_has_odometry.load(std::memory_order_acquire)) {
+      this->_logger.info("Waiting for initial odometry...");
+      while (!this->_has_odometry.load(std::memory_order_acquire)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+      }
+    }
+
+  float start_x = this->_drone_x;
+  float start_y = this->_drone_y;
+
+    const float center_x = start_x + offset_x;
+    const float center_y = start_y + offset_y;
     
     // Takeoff to 4 meters
     this->_logger.info("Initiating takeoff to 3.0 meters");
@@ -360,9 +380,9 @@ void PeopleSearch::run() {
 
   auto setpoint_req = this->_controller_client->new_msg();
   auto wp = setpoint_req.content.initWaypoint();
-  wp.setX(0);
-  wp.setY(0);
-  wp.setZ(z);
+  wp.setX(this->_drone_x);
+  wp.setY(this->_drone_y);
+  wp.setZ(search_altitude);
   auto setpoint_res = setpoint_req.send();
   auto setpoint_resp = setpoint_res.value().content;
   if (setpoint_resp.getCode() != 200) {
@@ -388,8 +408,9 @@ void PeopleSearch::run() {
 
   // Move to initial position
   this->_logger.info(
-      "Moving to target GPS location (%.6f, %.6f) at %.2f meters", x, y, -z);
-  move_and_wait(x, y, z, 0.0f);
+    "Moving to target GPS location (%.6f, %.6f) at %.2f meters", center_x,
+    center_y, -search_altitude);
+  move_and_wait(center_x, center_y, search_altitude, 0.0f);
 
   // Lawn-mower pattern search starting from center
   const float length = 10.0f;  // search box size (meters)
@@ -405,32 +426,34 @@ void PeopleSearch::run() {
   std::list<std::tuple<float, float, float>> waypoints;
 
   for (int i = 0; i <= length / (2 * step); i++) {
-    float offset_up = y + i * step;
-    float offset_down = y - i * step;
+    float offset_up = center_y + i * step;
+    float offset_down = center_y - i * step;
 
-    calculateWaypoints(x, offset_up, z, length, forward, waypoints);
+    calculateWaypoints(center_x, offset_up, search_altitude, length, forward,
+                       waypoints);
     forward = !forward;
 
     if (i > 0) {  // skip duplicate center
-      calculateWaypoints(x, offset_down, z, length, forward, waypoints);
+      calculateWaypoints(center_x, offset_down, search_altitude, length,
+                         forward, waypoints);
       forward = !forward;
     }
   }
 
   for (int i = 0; i <= length / (2 * step); i++) {
-    float offset_up = y + i * step;
-    float offset_down = y - i * step;
+    float offset_up = center_y + i * step;
+    float offset_down = center_y - i * step;
 
     std::lock_guard<std::mutex> lock(this->_person_mutex);
     if (this->_valid_person_found) {
       break;
     }
 
-    fly_scan_line(x, offset_up, z, length, forward);
+    fly_scan_line(center_x, offset_up, search_altitude, length, forward);
     forward = !forward;
 
     if (i > 0) {  // skip duplicate center
-      fly_scan_line(x, offset_down, z, length, forward);
+      fly_scan_line(center_x, offset_down, search_altitude, length, forward);
       forward = !forward;
     }
   }
@@ -440,7 +463,13 @@ void PeopleSearch::run() {
   // Go home if no person found
   if (!check_valid_person()) {
     this->_logger.info("No valid person found, returning to home position.");
-    move_and_wait(0.0f, 0.0f, -3.0f, 0.0f);
+    float home_x = this->_home_set.load(std::memory_order_acquire)
+                       ? this->_home_x
+                       : this->_drone_x;
+    float home_y = this->_home_set.load(std::memory_order_acquire)
+                       ? this->_home_y
+                       : this->_drone_y;
+    move_and_wait(home_x, home_y, search_altitude, 0.0f);
     land();
   }
 }

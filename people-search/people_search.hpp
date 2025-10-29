@@ -10,6 +10,7 @@
 #include <memory>
 #include <iostream>
 #include <atomic>
+#include <mutex>
 
 class PeopleSearch : public Core::Vertex {
 private:
@@ -24,6 +25,9 @@ private:
     float _person_x{0.0f}, _person_y{0.0f}, _person_z{0.0f};
     float _drone_x{0.0f}, _drone_y{0.0f}, _drone_z{0.0f}, _drone_vel{0.0f};
     float _drone_yaw{0.0f};
+    std::atomic<bool> _has_odometry{false};
+    std::atomic<bool> _home_set{false};
+    float _home_x{0.0f}, _home_y{0.0f}, _home_z{0.0f};
 
     std::chrono::steady_clock::time_point _last_detection_time = std::chrono::steady_clock::time_point::min();
 
