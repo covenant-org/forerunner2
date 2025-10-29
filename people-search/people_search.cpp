@@ -350,7 +350,14 @@ bool PeopleSearch::check_valid_person() {
 void PeopleSearch::run() {
     const float offset_x = this->get_argument<float>("--x");
     const float offset_y = this->get_argument<float>("--y");
-    const float search_altitude = -3.0f; // Fixed altitude of 3 meters
+    float takeoff_altitude = std::fabs(this->get_argument<float>("--altitude"));
+    if (takeoff_altitude <= 0.0f) {
+      this->_logger.warn(
+          "Configured altitude %.2f is non-positive, defaulting to 3.0m",
+          takeoff_altitude);
+      takeoff_altitude = 3.0f;
+    }
+    const float search_altitude = -takeoff_altitude;
 
     if (!this->_has_odometry.load(std::memory_order_acquire)) {
       this->_logger.info("Waiting for initial odometry...");
@@ -366,10 +373,10 @@ void PeopleSearch::run() {
     const float center_y = start_y + offset_y;
     
     // Takeoff to 4 meters
-    this->_logger.info("Initiating takeoff to 3.0 meters");
+  this->_logger.info("Initiating takeoff to %.2f meters", takeoff_altitude);
     auto request = this->_mission_client->new_msg();
     request.content.initTakeoff();
-    request.content.getTakeoff().setDesiredAltitude(3.0);
+  request.content.getTakeoff().setDesiredAltitude(takeoff_altitude);
     auto result = request.send();
     auto response = result.value().content;
     
@@ -409,7 +416,7 @@ void PeopleSearch::run() {
   // Move to initial position
   this->_logger.info(
     "Moving to target GPS location (%.6f, %.6f) at %.2f meters", center_x,
-    center_y, -search_altitude);
+    center_y, takeoff_altitude);
   move_and_wait(center_x, center_y, search_altitude, 0.0f);
 
   // Lawn-mower pattern search starting from center
@@ -469,7 +476,7 @@ void PeopleSearch::run() {
     float home_y = this->_home_set.load(std::memory_order_acquire)
                        ? this->_home_y
                        : this->_drone_y;
-    move_and_wait(home_x, home_y, search_altitude, 0.0f);
+  move_and_wait(home_x, home_y, search_altitude, 0.0f);
     land();
   }
 }
@@ -483,6 +490,10 @@ int main(int argc, char** argv) {
     parser.add_argument("--y")
 	    .scan<'g', float>()
 	    .help("x distance in meters");
+    parser.add_argument("--altitude")
+      .scan<'g', float>()
+      .default_value(3.0f)
+      .help("Takeoff altitude in meters (positive, default 3.0)");
 
   std::shared_ptr<PeopleSearch> people_search =
       std::make_shared<PeopleSearch>(parser);
