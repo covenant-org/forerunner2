@@ -230,6 +230,9 @@ void FakeMavlink::run() {
   while (true) {
     publish_telemtry();
     publish_odometry();
+    auto altitude_msg = this->_altitude_publisher->new_msg();
+    altitude_msg.content.setLocal(-this->pos[2]);
+    altitude_msg.publish();
     this->_logger.info("Position: %f %f %f", pos[0], pos[1], pos[2]);
     rk.keep();
   }
