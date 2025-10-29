@@ -75,14 +75,17 @@ void FakeMavlink::command_cb(const Core::IncomingMessage<Command> &command,
     case Command::LAND: {
       sleep(1);
       this->pos[2] = 0;
+      this->armed = false;
+      this->in_air = false;
       res.setCode(500);
       res.setMessage("Error while landing");
       return;
     }
     case Command::TAKEOFF: {
-      this->armed = true;
       auto info = command.content.getTakeoff();
       sleep(1);
+      this->armed = true;
+      this->in_air = true;
       this->pos[2] = -info.getAltitude();
       return;
     }
@@ -110,6 +113,7 @@ void FakeMavlink::command_cb(const Core::IncomingMessage<Command> &command,
         res.setMessage("Already armed");
         return;
       }
+      this->armed = true;
 
       this->_logger.info("Armed succesfully");
       return;
