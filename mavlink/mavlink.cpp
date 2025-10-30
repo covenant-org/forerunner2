@@ -564,6 +564,12 @@ void Mavlink::run() {
         home_position_msg.publish();
       });
 
+  this->_passthrough->subscribe_message(
+    OPTICAL_FLOW_MESSAGE_ID, [this](const _mavlink_message &msg) {
+        mavlink_msg_optical_flow_decode(&msg, &this->_mavlink_optical_flow);
+      this->optical_flow_altitude = this->_mavlink_optical_flow.ground_distance;
+    });
+
   this->_telemetry->subscribe_odometry(
       std::bind(&Mavlink::odometry_cb, this, std::placeholders::_1));
 
