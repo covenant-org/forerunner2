@@ -18,7 +18,6 @@ target_link_libraries(test PRIVATE
 )
 
 add_executable(remote remote.cpp)
-
 target_link_libraries(remote PRIVATE
     core
     cppzmq 
@@ -28,7 +27,6 @@ target_link_libraries(remote PRIVATE
 )
 
 add_executable(chatter chatter.cpp)
-
 target_link_libraries(chatter PRIVATE
     core
     cppzmq
@@ -38,11 +36,19 @@ target_link_libraries(chatter PRIVATE
 )
 
 add_executable(action action.cpp)
-
 target_link_libraries(action PRIVATE
     core
     cppzmq
     capnp_schemas
     capnp
+    kj
+)
+
+add_executable(fake-mavlink fake-mavlink.cpp)
+target_link_libraries(fake-mavlink PRIVATE
+    core
+    cppzmq 
+    capnp 
+    capnp_schemas 
     kj
 )
