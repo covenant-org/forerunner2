@@ -128,20 +128,19 @@ void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z,
 
   int n_div = std::ceil(abs(x_end - x_start) / (4));
 
-    this->_logger.debug("Moving x from %.2f to %.2f at y=%.2f", x_start, x_end,
-                        y_offset);
- 
-    if (move_and_check(x, y_offset, z, 0.0f)) return;
-    for (int i = 0; i < n_div; i++) {
-      float x_mid = x + (i + 1) * (length / n_div);
-      auto msg = this->_path_publisher->new_msg();
-      msg.content.setX(static_cast<float>(x_mid));
-      msg.content.setY(static_cast<float>(y_offset));
-      msg.content.setZ(static_cast<float>(z));
-      msg.publish();
-      if (move_and_check(x_mid, y_offset, z, 0.0f)) return;
-    }
-  
+  this->_logger.debug("Moving x from %.2f to %.2f at y=%.2f", x_start, x_end,
+                      y_offset);
+
+  if (move_and_check(x, y_offset, z, 0.0f)) return;
+  for (int i = 0; i < n_div; i++) {
+    float x_mid = x + (i + 1) * (length / n_div);
+    auto msg = this->_path_publisher->new_msg();
+    msg.content.setX(static_cast<float>(x_mid));
+    msg.content.setY(static_cast<float>(y_offset));
+    msg.content.setZ(static_cast<float>(z));
+    msg.publish();
+    if (move_and_check(x_mid, y_offset, z, 0.0f)) return;
+  }
 }
 
 void PeopleSearch::calculateWaypoints(
@@ -220,9 +219,8 @@ bool PeopleSearch::confirm_valid_person(
   float person_distance = std::sqrt(person_x * person_x + person_y * person_y);
   if (person_distance > 2.0f) {
     move_and_wait(approach_x, approach_y, this->_search_altitude, 0.0f);
-    this->_logger.info(
-        "Approached to (%.3f, %.3f, %.3f) for confirmation", approach_x,
-        approach_y, this->_search_altitude);
+    this->_logger.info("Approached to (%.3f, %.3f, %.3f) for confirmation",
+                       approach_x, approach_y, this->_search_altitude);
   }
   // wait for a fresh detection (detection_time must be newer than
   // snapshot_time)
@@ -284,11 +282,11 @@ bool PeopleSearch::check_valid_person() {
     float dx = _person_x - _last_confirmed_x;
     float dy = _person_y - _last_confirmed_y;
     float dz = _person_z - _last_confirmed_z;
-    if (std::sqrt(dx * dx + dy * dy + dz * dz) < 2.0f){
+    if (std::sqrt(dx * dx + dy * dy + dz * dz) < 2.0f) {
       this->_logger.debug(
           "Detected person is within 2m of last confirmed, ignoring");
-      return false}
-    ;
+      return false;
+    }
   }
 
   if (!_valid_person_found.load()) return false;
@@ -305,7 +303,6 @@ bool PeopleSearch::check_valid_person() {
     detection_time = _last_detection_time;
     // do NOT clear _valid_person_found here — let confirm consume/clear it
   }
-
 
   this->_logger.info(
       "Starting person validation at (%.3f, %.3f, %.3f) detected at time=%lld",
