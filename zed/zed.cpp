@@ -168,7 +168,7 @@ void Zed::run() {
           sl::Mat zed_image;
           _camera.retrieveImage(zed_image, sl::VIEW::LEFT, sl::MEM::CPU);
           cv::Mat cv_image = slMat2cvMat(zed_image);
-          std::string image_folder = this->_args.get_argument("--images_dir");
+          std::string image_folder = this->_args.get_argument("--images-dir");
           std::string filename =
               image_folder + "/" +
               std::to_string(now.time_since_epoch().count()) + ".jpeg";
