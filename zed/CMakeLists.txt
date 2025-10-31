@@ -15,9 +15,11 @@ find_package(cppzmq REQUIRED)
 find_package(capnp_schemas REQUIRED)
 find_package(PCL 1.15 REQUIRED)
 find_package(MAVSDK REQUIRED)
+find_package(OpenCV REQUIRED)
 
 include_directories(${ZED_INCLUDE_DIRS})
 include_directories(${CUDA_INCLUDE_DIRS})
+include_directories(${OpenCV_INCLUDE_DIRS})
 
 link_directories(${ZED_LIBRARY_DIR})
 link_directories(${CUDA_LIBRARY_DIRS})
@@ -42,6 +44,7 @@ TARGET_LINK_LIBRARIES(${PROJECT_NAME}
                         capnp 
                         capnp_schemas 
                         kj
+                        ${OpenCV_LIBS}
                         ${PCL_LIBRARIES})
 
 TARGET_LINK_LIBRARIES(ftp_bridge

@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <opencv2/opencv.hpp>  // OpenCV header
 #include <pcl/common/point_tests.h>
 #include <pcl/common/transforms.h>
 #include <pcl/conversions.h>
@@ -21,6 +22,7 @@
 #include <pthread.h>
 #include <sl/Camera.hpp>
 #include <sstream>
+#include <string>
 #include <unistd.h>
 #include <vector>
 #include <zlib.h>
@@ -75,6 +77,48 @@ Zed::Zed(const Core::ArgumentParser &parser) : Core::Vertex(parser) {
       compressionProfile, false);
 }
 
+int getOCVtype(sl::MAT_TYPE type) {
+  int cv_type = -1;
+  switch (type) {
+    case sl::MAT_TYPE::F32_C1:
+      cv_type = CV_32FC1;
+      break;
+    case sl::MAT_TYPE::F32_C2:
+      cv_type = CV_32FC2;
+      break;
+    case sl::MAT_TYPE::F32_C3:
+      cv_type = CV_32FC3;
+      break;
+    case sl::MAT_TYPE::F32_C4:
+      cv_type = CV_32FC4;
+      break;
+    case sl::MAT_TYPE::U8_C1:
+      cv_type = CV_8UC1;
+      break;
+    case sl::MAT_TYPE::U8_C2:
+      cv_type = CV_8UC2;
+      break;
+    case sl::MAT_TYPE::U8_C3:
+      cv_type = CV_8UC3;
+      break;
+    case sl::MAT_TYPE::U8_C4:
+      cv_type = CV_8UC4;
+      break;
+    default:
+      break;
+  }
+  return cv_type;
+}
+
+cv::Mat slMat2cvMat(sl::Mat &input) {
+  // Since cv::Mat data requires a uchar* pointer, we get the uchar1 pointer
+  // from sl::Mat (getPtr<T>()) cv::Mat and sl::Mat will share a single memory
+  // structure
+  return cv::Mat(
+      input.getHeight(), input.getWidth(), getOCVtype(input.getDataType()),
+      input.getPtr<sl::uchar1>(sl::MEM::CPU), input.getStepBytes(sl::MEM::CPU));
+}
+
 void Zed::run() {
   sl::Pose pose;
   sl::FusedPointCloud map;
@@ -115,7 +159,23 @@ void Zed::run() {
       msg.content.setWidth(default_image_size.width);
       msg.content.setHeight(default_image_size.height);
 
-      auto ptr = point_cloud.getPtr<float>();
+      if (this->_args.present("--images-dir")) {
+        auto now = std::chrono::steady_clock::now();
+        if (std::chrono::duration_cast<std::chrono::seconds>(
+                now - _last_published_frame)
+                .count() >= 0.25) {
+          _last_published_frame = now;
+          sl::Mat zed_image;
+          _camera.retrieveImage(zed_image, sl::VIEW::LEFT, sl::MEM::CPU);
+          cv::Mat cv_image = slMat2cvMat(zed_image);
+          std::string image_folder = this->_args.get_argument("--images_dir");
+          std::string filename =
+              image_folder + "/" +
+              std::to_string(now.time_since_epoch().count()) + ".jpeg";
+          cv::imwrite(filename, cv_image);
+        }
+      }
+
       pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
           new pcl::PointCloud<pcl::PointXYZRGBA>(default_image_size.width,
                                                  default_image_size.height));
@@ -252,6 +312,7 @@ void Zed::run() {
 
 int main(int argc, char **argv) {
   Core::BaseArgumentParser arguments(argc, argv);
+  arguments.add_argument("--images-dir").help("Directory to store frames");
   arguments.add_argument("--map")
       .default_value(false)
       .implicit_value(true)
