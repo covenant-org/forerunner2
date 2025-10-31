@@ -147,7 +147,6 @@ void processDetections(
   zed.retrieveImage(zed_image, sl::VIEW::LEFT, sl::MEM::CPU);
   cv::Mat cv_image = slMat2cvMat(zed_image);
   if (objects.is_new && !objects.object_list.empty()) {
-    
     // Keep a copy of the original frame before drawing detections
     cv::Mat original_image = cv_image.clone();
 
@@ -187,6 +186,7 @@ void processDetections(
       std::string label = "ID:" + std::to_string(obj.id) +
                           " conf:" + std::to_string(obj.confidence) + " " +
                           depth_label + coords_3d_label;
+      _logger.debug(label);
 
       // Position label above the bounding box
       cv::Point label_pos;
@@ -221,13 +221,13 @@ void processDetections(
     }
   }
   cv::resize(cv_image, cv_image, cv::Size(), 0.7, 0.7);
-    if (publish_frame) {
-      static auto last_publish = std::chrono::steady_clock::now();
-      auto now = std::chrono::steady_clock::now();
-      if (std::chrono::duration_cast<std::chrono::seconds>(now - last_publish)
-              .count() >= 1) {
-        publish_frame(cv_image);
-        last_publish = now;
-      }
+  if (publish_frame) {
+    static auto last_publish = std::chrono::steady_clock::now();
+    auto now = std::chrono::steady_clock::now();
+    if (std::chrono::duration_cast<std::chrono::seconds>(now - last_publish)
+            .count() >= 1) {
+      publish_frame(cv_image);
+      last_publish = now;
     }
+  }
 }
