@@ -143,10 +143,11 @@ void processDetections(
   zed.retrieveObjects(objects);
   //  _logger.debug("Number of objects detected: %d",
   //  static_cast<int>(objects.object_list.size()));
+  sl::Mat zed_image;
+  zed.retrieveImage(zed_image, sl::VIEW::LEFT, sl::MEM::CPU);
+  cv::Mat cv_image = slMat2cvMat(zed_image);
   if (objects.is_new && !objects.object_list.empty()) {
-    sl::Mat zed_image;
-    zed.retrieveImage(zed_image, sl::VIEW::LEFT, sl::MEM::CPU);
-    cv::Mat cv_image = slMat2cvMat(zed_image);
+    
     // Keep a copy of the original frame before drawing detections
     cv::Mat original_image = cv_image.clone();
 
@@ -218,7 +219,8 @@ void processDetections(
         saved_ids.insert(obj.id);
       }
     }
-    cv::resize(cv_image, cv_image, cv::Size(), 0.7, 0.7);
+  }
+  cv::resize(cv_image, cv_image, cv::Size(), 0.7, 0.7);
     if (publish_frame) {
       static auto last_publish = std::chrono::steady_clock::now();
       auto now = std::chrono::steady_clock::now();
@@ -228,5 +230,4 @@ void processDetections(
         last_publish = now;
       }
     }
-  }
 }
