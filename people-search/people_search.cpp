@@ -93,7 +93,7 @@ void PeopleSearch::get_position(const Core::IncomingMessage<Odometry>& msg) {
 void PeopleSearch::move_and_wait(float x, float y, float z, float yaw_deg) {
   this->send_coordinate(x, y, z, yaw_deg);
 
-  const float position_threshold = 1.0f;  // 50cm tolerance
+  const float position_threshold = 0.5f;  // 50cm tolerance
 
   while (true) {
     // Calculate distance to target
@@ -124,16 +124,16 @@ void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z,
                                  float length, bool forward) {
   float x_start = x_center - length / 2;
   float x_end = x_center + length / 2;
+  float x = forward ? x_start : x_end;
 
   int n_div = std::ceil(abs(x_end - x_start) / (4));
 
-  if (forward) {
     this->_logger.debug("Moving x from %.2f to %.2f at y=%.2f", x_start, x_end,
                         y_offset);
-
-    if (move_and_check(x_start, y_offset, z, 0.0f)) return;
+ 
+    if (move_and_check(x, y_offset, z, 0.0f)) return;
     for (int i = 0; i < n_div; i++) {
-      float x_mid = x_start + (i + 1) * (length / n_div);
+      float x_mid = x + (i + 1) * (length / n_div);
       auto msg = this->_path_publisher->new_msg();
       msg.content.setX(static_cast<float>(x_mid));
       msg.content.setY(static_cast<float>(y_offset));
@@ -141,20 +141,7 @@ void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z,
       msg.publish();
       if (move_and_check(x_mid, y_offset, z, 0.0f)) return;
     }
-  } else {
-    this->_logger.debug("Moving x from %.2f to %.2f at y=%.2f", x_end, x_start,
-                        y_offset);
-    if (move_and_check(x_end, y_offset, z, 0.0f)) return;
-    for (int i = 0; i < n_div; i++) {
-      float x_mid = x_end - (i + 1) * (length / n_div);
-      auto msg = this->_path_publisher->new_msg();
-      msg.content.setX(static_cast<float>(x_mid));
-      msg.content.setY(static_cast<float>(y_offset));
-      msg.content.setZ(static_cast<float>(z));
-      msg.publish();
-      if (move_and_check(x_mid, y_offset, z, 0.0f)) return;
-    }
-  }
+  
 }
 
 void PeopleSearch::calculateWaypoints(
@@ -233,6 +220,9 @@ bool PeopleSearch::confirm_valid_person(
   float person_distance = std::sqrt(person_x * person_x + person_y * person_y);
   if (person_distance > 2.0f) {
     move_and_wait(approach_x, approach_y, this->_search_altitude, 0.0f);
+    this->_logger.info(
+        "Approached to (%.3f, %.3f, %.3f) for confirmation", approach_x,
+        approach_y, this->_search_altitude);
   }
   // wait for a fresh detection (detection_time must be newer than
   // snapshot_time)
@@ -285,15 +275,20 @@ bool PeopleSearch::check_valid_person() {
   auto now = std::chrono::steady_clock::now();
 
   // Skip if we are already handling a confirmed person
-  if (_is_handling_person) return false;
 
   // Cooldown: ignore detections within 5s and 2m of last confirmed
   const auto cooldown = std::chrono::seconds(5);
   if (now - _last_confirmed_time < cooldown) {
+    this->_logger.debug(
+        "In cooldown period after last confirmed person, ignoring detections");
     float dx = _person_x - _last_confirmed_x;
     float dy = _person_y - _last_confirmed_y;
     float dz = _person_z - _last_confirmed_z;
-    if (std::sqrt(dx * dx + dy * dy + dz * dz) < 2.0f) return false;
+    if (std::sqrt(dx * dx + dy * dy + dz * dz) < 2.0f){
+      this->_logger.debug(
+          "Detected person is within 2m of last confirmed, ignoring");
+      return false}
+    ;
   }
 
   if (!_valid_person_found.load()) return false;
@@ -311,7 +306,6 @@ bool PeopleSearch::check_valid_person() {
     // do NOT clear _valid_person_found here — let confirm consume/clear it
   }
 
-  _is_handling_person = true;
 
   this->_logger.info(
       "Starting person validation at (%.3f, %.3f, %.3f) detected at time=%lld",
@@ -342,8 +336,8 @@ bool PeopleSearch::check_valid_person() {
     return true;
   }
   // send_coordinate(_drone_x, _drone_y, -4.0f, 0.0f);
-  float landing_x = person_x - std::cos(_drone_yaw) * 2.0f;
-  float landing_y = person_y - std::sin(_drone_yaw) * 2.0f;
+  float landing_x = person_x - std::cos(_drone_yaw) * 1.5f;
+  float landing_y = person_y - std::sin(_drone_yaw) * 1.5f;
   float dx = landing_x - _drone_x;
   float dy = landing_y - _drone_y;
   float distance = std::sqrt(dx * dx + dy * dy);
