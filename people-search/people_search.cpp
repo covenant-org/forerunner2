@@ -342,7 +342,16 @@ bool PeopleSearch::check_valid_person() {
     return true;
   }
   // send_coordinate(_drone_x, _drone_y, -4.0f, 0.0f);
-  move_and_wait(person_x, person_y, this->_search_altitude, 0.0f);
+  float landing_x = person_x - std::cos(_drone_yaw) * 2.0f;
+  float landing_y = person_y - std::sin(_drone_yaw) * 2.0f;
+  float dx = landing_x - _drone_x;
+  float dy = landing_y - _drone_y;
+  float distance = std::sqrt(dx * dx + dy * dy);
+  if (distance > 0.5f) {
+    move_and_wait(landing_x, landing_y, this->_search_altitude, 0.0f);
+  } else {
+    move_and_wait(person_x, person_y, this->_search_altitude, 0.0f);
+  }
   land();
   // send_coordinate(_drone_x, _drone_y, -0.0f, 0.0f);
   return true;
