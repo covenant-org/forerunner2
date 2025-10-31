@@ -151,9 +151,7 @@ std::string sendLLMRequest(const std::string& api_key,
                 {"content", content}
             }
         });
-
-    curl_easy_setopt(curl, CURLOPT_URL, "https://api.anthropic.com/v1/messages");
-}
+    }
 
 
     std::string json_string = request_body.dump();
