@@ -161,7 +161,7 @@ std::string sendLLMRequest(const std::string& api_key,
     if (!use_alt_llm){
       // fixed: removed stray prefix
       curl_easy_setopt(curl, CURLOPT_URL,
-                       "f https://api.openai.com/v1/chat/completions");
+                       "https://api.openai.com/v1/chat/completions");
     } else {
       curl_easy_setopt(curl, CURLOPT_URL,
                        "https://api.anthropic.com/v1/messages");
@@ -206,16 +206,18 @@ std::string sendLLMRequest(const std::string& api_key,
 
 bool parseLLMResponse(const std::string& response) {
   //std::cout << "LLM Raw Response: " << response << std::endl;  // Debug output
+  bool use_alt_llm = false;
+  std::string answer;
   try {
     nlohmann::json response_json = nlohmann::json::parse(response);
     if (!response_json.contains("choices") ||
         !response_json["choices"].is_array() ||
         response_json["choices"].empty()) {
-      std::cerr << "Unexpected LLM response structure: " << response_json.dump()
-                << std::endl;
-      throw std::runtime_error("Missing choices in response");
+      // std::cerr << "Unexpected LLM response structure: " << response_json.dump()
+      //           << std::endl;
+      use_alt_llm = !use_alt_llm;
     }
-
+    if (!use_alt_llm){
     const auto& choice = response_json["choices"][0];
     if (!choice.is_object()) {
       std::cerr << "Unexpected choice format: " << choice.dump() << std::endl;
@@ -236,7 +238,7 @@ bool parseLLMResponse(const std::string& response) {
     }
 
     auto msg = choice["message"];
-    std::string answer;
+    
     if (msg.contains("content")) {
       const auto& content = msg["content"];
       if (content.is_string()) {
@@ -260,14 +262,24 @@ bool parseLLMResponse(const std::string& response) {
       std::cerr << "Unexpected message format: " << msg.dump() << std::endl;
       return false;
     }
+  } else{
+    const auto& content = response_json["content"][0];
+    //std::cout << "Content: " << content.dump() << std::endl;
+    if (content.contains("text") && content["text"].is_string()) {
+      answer = content["text"].get<std::string>();
+    } else {
+      std::cerr << "Unexpected content format: " << content.dump() << std::endl;
+      return false;
+    }
+  }
 
     std::string lower_answer = answer;
     std::transform(lower_answer.begin(), lower_answer.end(),
                    lower_answer.begin(),
                    [](unsigned char c) { return std::tolower(c); });
 
-    std::cout << "LLM Answer: \"" << answer << "\""
-              << std::endl;  // Debug output
+    // std::cout << "LLM Answer: \"" << answer << "\""
+              // << std::endl;  // Debug output
     if (lower_answer.find("yes") != std::string::npos) {
       return true;
     } else {
