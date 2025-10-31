@@ -29,6 +29,7 @@
 
 Zed::Zed(const Core::ArgumentParser &parser) : Core::Vertex(parser) {
   this->_cloud_point_pub = this->create_publisher<PointCloud>("point_cloud");
+  this->_img_publisher = this->create_publisher<ImageData>("zed_image");
 
   _camera = sl::Camera();
 
@@ -75,6 +76,31 @@ Zed::Zed(const Core::ArgumentParser &parser) : Core::Vertex(parser) {
       pcl::io::MED_RES_ONLINE_COMPRESSION_WITH_COLOR;
   _cloud_encoder = new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>(
       compressionProfile, false);
+}
+
+void Zed::publish_zed_image(const cv::Mat &image) {
+  if (image.empty()) {
+    this->_logger.debug("Skipping publish of empty ZED frame");
+    return;
+  }
+  try {
+    std::vector<uchar> buffer;
+    const std::vector<int> jpeg_params = {cv::IMWRITE_JPEG_QUALITY, 50};
+    cv::imencode(".jpg", image, buffer, jpeg_params);
+
+    auto msg = _img_publisher->new_msg();
+    auto image_data = msg.content;
+    image_data.setWidth(image.cols);
+    image_data.setHeight(image.rows);
+    image_data.setType(static_cast<uint32_t>(image.type()));
+    image_data.setData(kj::arrayPtr(buffer.data(), buffer.size()));
+
+    msg.publish();
+    this->_logger.debug("Published raw ZED frame (%dx%d)", image.cols,
+                        image.rows);
+  } catch (const std::exception &e) {
+    this->_logger.error("Error publishing ZED frame: %s", e.what());
+  }
 }
 
 int getOCVtype(sl::MAT_TYPE type) {
@@ -173,6 +199,7 @@ void Zed::run() {
               image_folder + "/" +
               std::to_string(now.time_since_epoch().count()) + ".jpeg";
           cv::imwrite(filename, cv_image);
+          this->publish_zed_image(cv_image);
         }
       }
 
