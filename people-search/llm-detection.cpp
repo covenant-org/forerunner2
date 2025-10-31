@@ -112,28 +112,59 @@ std::string sendLLMRequest(const std::string& api_key,
   if (curl) {
     nlohmann::json request_body;
     if (!use_alt_llm){
+      // OpenAI-style request (unchanged)
       request_body["model"] = "gpt-4o-mini";
+      request_body["messages"] = nlohmann::json::array(
+          {{{"role", "user"},
+            {"content",
+             nlohmann::json::array(
+                 {{{"type", "text"}, {"text", prompt}},
+                  {{"type", "image_url"},
+                   {"image_url",
+                    {{"url", "data:image/jpeg;base64," + image_base64}}}}})}}});
+      request_body["max_tokens"] = 50;
     } else {
-      request_body["model"] = "claude-2";
-    }
-    request_body["messages"] = nlohmann::json::array(
-        {{{"role", "user"},
-          {"content",
-           nlohmann::json::array(
-               {{{"type", "text"}, {"text", prompt}},
-                {{"type", "image_url"},
-                 {"image_url",
-                  {{"url", "data:image/jpeg;base64," + image_base64}}}}})}}});
-    request_body["max_tokens"] = 50;
+        request_body["model"] = "claude-sonnet-4-5-20250929";
+        request_body["max_tokens"] = 50;
+
+        nlohmann::json content = nlohmann::json::array();
+
+        // text block
+        content.push_back({
+            {"type", "text"},
+            {"text", prompt}
+        });
+
+        // image block
+        content.push_back({
+            {"type", "image"},
+            {"source", {
+                {"type", "base64"},
+                {"media_type", "image/jpeg"},
+                {"data", image_base64}
+            }}
+        });
+
+        request_body["messages"] = nlohmann::json::array({
+            {
+                {"role", "user"},
+                {"content", content}
+            }
+        });
+
+    curl_easy_setopt(curl, CURLOPT_URL, "https://api.anthropic.com/v1/messages");
+}
+
 
     std::string json_string = request_body.dump();
     
     if (!use_alt_llm){
-    curl_easy_setopt(curl, CURLOPT_URL,
-                     "https://api.openai.com/v1/chat/completions");
+      // fixed: removed stray prefix
+      curl_easy_setopt(curl, CURLOPT_URL,
+                       "f https://api.openai.com/v1/chat/completions");
     } else {
       curl_easy_setopt(curl, CURLOPT_URL,
-                       "https://api.anthropic.com/v1/complete");
+                       "https://api.anthropic.com/v1/messages");
     }
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_string.c_str());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
@@ -143,14 +174,20 @@ std::string sendLLMRequest(const std::string& api_key,
     if (!use_alt_llm){
       auth_header = "Authorization: Bearer " + api_key;
     } else{
-      auth_header = "Authorization: Bearer " + api_key_alt;
+      auth_header = "x-api-key: " + api_key_alt;
     }
     
-
+    // Always send JSON content-type
     headers = curl_slist_append(headers, "Content-Type: application/json");
+    // Add auth header
     headers = curl_slist_append(headers, auth_header.c_str());
+    // For Anthropic, the API requires the anthropic-version header (lowercase)
+    if (use_alt_llm) {
+      headers = curl_slist_append(headers, "anthropic-version: 2023-06-01");
+    }
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 
+    //std::cout << "Curl Request Body: " << json_string << std::endl;  // Debug output
     res = curl_easy_perform(curl);
 
     if (res != CURLE_OK) {
@@ -168,6 +205,7 @@ std::string sendLLMRequest(const std::string& api_key,
 }
 
 bool parseLLMResponse(const std::string& response) {
+  //std::cout << "LLM Raw Response: " << response << std::endl;  // Debug output
   try {
     nlohmann::json response_json = nlohmann::json::parse(response);
     if (!response_json.contains("choices") ||
