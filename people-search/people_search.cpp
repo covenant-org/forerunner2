@@ -318,11 +318,11 @@ bool PeopleSearch::check_valid_person() {
       person_x, person_y, person_z,
       static_cast<long long>(detection_time.time_since_epoch().count()));
 
-  if (!confirm_valid_person(person_x, person_y, person_z, detection_time)) {
-    _is_handling_person = false;
-    this->_logger.info("Person validation failed, resuming search");
-    return false;
-  }
+  // if (!confirm_valid_person(person_x, person_y, person_z, detection_time)) {
+  //   _is_handling_person = false;
+  //   this->_logger.info("Person validation failed, resuming search");
+  //   return false;
+  // }
 
   // proceed to go to person (use the locked snapshot or locking as needed)
   this->_logger.info("Navigating to confirmed person at (%.3f, %.3f, %.3f)",
@@ -348,9 +348,9 @@ bool PeopleSearch::check_valid_person() {
   float dy = landing_y - _drone_y;
   float distance = std::sqrt(dx * dx + dy * dy);
   if (distance > 0.5f) {
-    move_and_wait(landing_x, landing_y, this->_search_altitude, 0.0f);
+    move_and_wait(landing_x, landing_y, this->_search_altitude / 2, 0.0f);
   } else {
-    move_and_wait(person_x, person_y, this->_search_altitude, 0.0f);
+    move_and_wait(_drone_x, _drone_y, this->_search_altitude / 2, 0.0f);
   }
   land();
   // send_coordinate(_drone_x, _drone_y, -0.0f, 0.0f);
