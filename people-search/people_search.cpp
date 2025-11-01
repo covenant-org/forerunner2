@@ -67,6 +67,7 @@ void PeopleSearch::process_detection(
   std::lock_guard<std::mutex> lock(this->_person_mutex);
   auto index = this->get_matching_record(record);
   if (index < 0) {
+    this->_logger.debug("New detection at %f %f", record.x, record.y);
     this->_detections[this->_detections.size()] = record;
     return;
   }
@@ -268,73 +269,11 @@ void PeopleSearch::send_coordinate(float x, float y, float z, float yaw_deg) {
   }
 }
 
-bool PeopleSearch::confirm_valid_person(
-    float person_x, float person_y, float person_z,
-    std::chrono::steady_clock::time_point detection_time) {
-  this->_logger.info(
-      "Confirming person at (%.3f, %.3f, %.3f) detected at time=%lld", person_x,
-      person_y, person_z,
-      static_cast<long long>(detection_time.time_since_epoch().count()));
-
-  // Approach halfway (keep movement code outside of locks)
-  float approach_x = _drone_x + (person_x - _drone_x) / 4.0f;
-  float approach_y = _drone_y + (person_y - _drone_y) / 4.0f;
-  float person_distance = std::sqrt(person_x * person_x + person_y * person_y);
-  if (person_distance > 2.0f) {
-    move_and_wait(approach_x, approach_y, this->_search_altitude, 0.0f);
-  }
-  // wait for a fresh detection (detection_time must be newer than
-  // snapshot_time)
-  bool confirmed = false;
-  const auto timeout = std::chrono::seconds(5);
-  const auto deadline = std::chrono::steady_clock::now() + timeout;
-
-  std::unique_lock<std::mutex> lk(this->_person_mutex);
-  // lambda predicate: new detection time is later than snapshot and spatially
-  // close
-  auto predicate = [&](void) -> bool {
-    if (this->_last_detection_time <= detection_time) return false;  // not new
-    float dx = this->_person_x - person_x;
-    float dy = this->_person_y - person_y;
-    float dz = this->_person_z - person_z;
-    float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-    const float threshold = 2.0f;  // tune: 0.5..1.5 meters
-    return dist <= threshold;
-  };
-
-  // wait until predicate or timeout
-  if (_person_cv.wait_until(lk, deadline, predicate)) {
-    // predicate true: fresh detection within spatial threshold
-    confirmed = true;
-    // consume detection
-    this->_valid_person_found.store(false);
-  }
-  lk.unlock();
-
-  if (confirmed) {
-    this->_logger.info("Person confirmed at (%.3f, %.3f, %.3f)", person_x,
-                       person_y, person_z);
-    _last_confirmed_time = std::chrono::steady_clock::now();
-    _last_confirmed_x = person_x;
-    _last_confirmed_y = person_y;
-    _last_confirmed_z = person_z;
-    return true;
-  }
-
-  this->_logger.info("Person NOT confirmed, resuming search");
-  // return to backup
-  float drone_x_backup = _drone_x;
-  float drone_y_backup = _drone_y;
-
-  move_and_wait(drone_x_backup, drone_y_backup, this->_search_altitude, 0.0f);
-  return false;
-}
-
 bool PeopleSearch::check_valid_person() {
   while (this->are_missing_validations()) {
     this->_logger.debug("Wating for validations");
     send_coordinate(_drone_x, _drone_y, this->_search_altitude, 0.0f);
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
 
   auto record = this->get_confirmed_record();
@@ -344,6 +283,8 @@ bool PeopleSearch::check_valid_person() {
   float angle = std::atan2(_drone_y - person.y, _drone_x - person.x);
   float landing_x = person.x - std::cos(angle) * 1.5f;
   float landing_y = person.y - std::sin(angle) * 1.5f;
+  this->_logger.warn("Found valid person and landing at %f %f", landing_x,
+                     landing_y);
   move_and_wait(landing_x, landing_y, this->_search_altitude / 2, 0.0f);
   land();
   // send_coordinate(_drone_x, _drone_y, -0.0f, 0.0f);
