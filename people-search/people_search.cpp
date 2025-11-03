@@ -192,7 +192,7 @@ void PeopleSearch::move_and_wait(float x, float y, float z, float yaw_deg) {
 void PeopleSearch::move_and_wait_global(float latitude, float longitude, float altitude, float yaw_deg) {
   this->send_global_coordinate(latitude, longitude, altitude, yaw_deg);
 
-  const float position_threshold = 0.001f;  // 50cm tolerance
+  const float position_threshold = 0.00001f;  // 50cm tolerance
 
   while (true) {
     // Calculate distance to target
@@ -372,6 +372,7 @@ void PeopleSearch::run() {
 
   float start_x = this->_drone_x;
   float start_y = this->_drone_y;
+  this->_logger.info("Starting position at (%.2f, %.2f)", start_x, start_y);
 
 
   // Takeoff to 4 meters
@@ -386,6 +387,14 @@ void PeopleSearch::run() {
     this->_logger.error("Takeoff failed with code %d and message %s",
                         response.getCode(), response.getMessage());
   }
+
+  // Move to initial position
+  this->_logger.info(
+      "Moving to target GPS location (%.6f, %.6f) at %.2f meters", latitude, longitude,
+       takeoff_altitude);
+  // move_and_wait(center_x, center_y, search_altitude, 0.0f);
+
+  move_and_wait_global(latitude, longitude, takeoff_altitude, 0.0f);
 
   auto setpoint_req = this->_controller_client->new_msg();
   auto wp = setpoint_req.content.initWaypoint();
@@ -414,14 +423,6 @@ void PeopleSearch::run() {
         "Offboard activation failed with code %d and message %s",
         cmd_response.getCode(), cmd_response.getMessage());
   }
-
-  // Move to initial position
-  this->_logger.info(
-      "Moving to target GPS location (%.6f, %.6f) at %.2f meters", latitude, longitude,
-       takeoff_altitude);
-  // move_and_wait(center_x, center_y, search_altitude, 0.0f);
-
-  move_and_wait_global(latitude, longitude, takeoff_altitude, 0.0f);
 
   const float center_x = this->_drone_x;
   const float center_y = this->_drone_y;
