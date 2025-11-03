@@ -27,6 +27,7 @@ class Mavlink : public Core::Vertex {
  private:
   std::shared_ptr<Core::Publisher<HomePosition>> _home_position_publisher;
   std::shared_ptr<Core::Publisher<Odometry>> _odometry_publisher;
+  std::shared_ptr<Core::Publisher<GPS>> _position_publisher;
   std::shared_ptr<Core::Publisher<Telemetry>> _telemetry_publisher;
   std::shared_ptr<Core::Publisher<Altitude>> _altitude_publisher;
   std::shared_ptr<Core::Publisher<KeyValue>> _config_publisher;
@@ -61,6 +62,7 @@ class Mavlink : public Core::Vertex {
   void command_cb(const Core::IncomingMessage<Command> &,
                   GenericResponse::Builder &);
   void odometry_cb(const mavsdk::Telemetry::Odometry &);
+  void position_cb(const mavsdk::Telemetry::Position &);
   void publish_telemtry();
   void publish_config();
 

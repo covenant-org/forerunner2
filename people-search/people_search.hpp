@@ -28,6 +28,7 @@ class PeopleSearch : public Core::Vertex {
       _mission_client;
   std::shared_ptr<Core::Subscriber<LLMResult>> _llm_subscriber;
   std::shared_ptr<Core::Subscriber<Odometry>> _odometry_subscriber;
+  std::shared_ptr<Core::Subscriber<GPS>> _gps_subscriber;
   std::shared_ptr<Core::Publisher<Point>> _path_publisher;
   std::shared_ptr<Core::Subscriber<DetectionImage>> _detection_sub;
   std::map<uint32_t, PersonRecord> _detections;
@@ -36,6 +37,7 @@ class PeopleSearch : public Core::Vertex {
   std::mutex _person_mutex;
   float _person_x{0.0f}, _person_y{0.0f}, _person_z{0.0f};
   float _drone_x{0.0f}, _drone_y{0.0f}, _drone_z{0.0f}, _drone_vel{0.0f};
+  float _drone_lat{0.0f}, _drone_lon{0.0f}, _drone_alt{0.0f};
   float _drone_yaw{0.0f};
   std::atomic<bool> _has_odometry{false};
   std::atomic<bool> _home_set{false};
@@ -58,6 +60,7 @@ class PeopleSearch : public Core::Vertex {
 
   // Send a single coordinate (NED) to the drone
   void send_coordinate(float north, float east, float up, float yaw_deg = 0.0f);
+  void send_global_coordinate(float latitude, float longitude, float altitude, float yaw_deg = 0.0f);
   void process_detection(const Core::IncomingMessage<DetectionImage>&);
   PersonRecord transform_to_NED_from_ZED(float x, float y);
   int get_matching_record(const PersonRecord&);
@@ -65,6 +68,7 @@ class PeopleSearch : public Core::Vertex {
   bool are_missing_validations();
 
   void move_and_wait(float x, float y, float z, float yaw_deg);
+  void move_and_wait_global(float latitude, float longitude, float altitude, float yaw_deg);
 
   void handle_llm_result(const Core::IncomingMessage<LLMResult>& msg);
 
@@ -75,6 +79,7 @@ class PeopleSearch : public Core::Vertex {
       std::chrono::steady_clock::time_point detection_time);
 
   void get_position(const Core::IncomingMessage<Odometry>& msg);
+  void get_gps(const Core::IncomingMessage<GPS>& msg);
 
   bool move_and_check(float x, float y, float z, float yaw_deg);
 

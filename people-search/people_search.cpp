@@ -22,6 +22,9 @@ PeopleSearch::PeopleSearch(Core::ArgumentParser parser) : Core::Vertex(parser) {
   this->_odometry_subscriber = this->create_subscriber<Odometry>(
       "odometry",
       std::bind(&PeopleSearch::get_position, this, std::placeholders::_1));
+  this->_gps_subscriber = this->create_subscriber<GPS>(
+      "gps",
+      std::bind(&PeopleSearch::get_gps, this, std::placeholders::_1));
   this->_path_publisher = this->create_publisher<Point>("path_point");
   this->_detection_sub = this->create_subscriber<DetectionImage>(
       "detection_images",
@@ -133,10 +136,10 @@ void PeopleSearch::handle_llm_result(
 void PeopleSearch::get_position(const Core::IncomingMessage<Odometry>& msg) {
   auto odom = msg.content;
   auto pos = odom.getPosition();
+  auto gps = odom.getGps();
   this->_drone_x = pos.getX();
   this->_drone_y = pos.getY();
   this->_drone_z = pos.getZ();
-
   auto q = odom.getQ();
   // Convert quaternion to yaw (in radians)
   float siny_cosp = 2 * (q.getW() * q.getZ() + q.getX() * q.getY());
@@ -152,6 +155,13 @@ void PeopleSearch::get_position(const Core::IncomingMessage<Odometry>& msg) {
   }
 
   this->_has_odometry.store(true, std::memory_order_release);
+}
+
+void PeopleSearch::get_gps(const Core::IncomingMessage<GPS>& msg) {
+  auto gps = msg.content;
+  this->_drone_lat = gps.getLatitude();
+  this->_drone_lon = gps.getLongitude();
+  this->_drone_alt = gps.getAltitude();
 }
 
 void PeopleSearch::move_and_wait(float x, float y, float z, float yaw_deg) {
@@ -171,6 +181,33 @@ void PeopleSearch::move_and_wait(float x, float y, float z, float yaw_deg) {
       this->_logger.debug(
           "Reached waypoint (%.2f, %.2f, %.2f), distance: %.3fm", x, y, z,
           distance);
+      break;
+    }
+
+    // Sleep briefly before next check
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+}
+
+void PeopleSearch::move_and_wait_global(float latitude, float longitude, float altitude, float yaw_deg) {
+  this->send_global_coordinate(latitude, longitude, altitude, yaw_deg);
+
+  const float position_threshold = 1.0f;  // 50cm tolerance
+
+  while (true) {
+    // Calculate distance to target
+    float dlat = std::abs(_drone_lat - latitude);
+    float dlon = std::abs(_drone_lon - longitude);
+    float dalt = std::abs(_drone_alt - altitude);
+    
+    this->_logger.debug(
+          "Desired GPS waypoint (%.6f, %.6f, %.2f), Actual GPS location:(%.6f, %.6f, %.2f)", latitude, longitude, altitude,
+          _drone_lat, _drone_lon, _drone_alt);
+    // Check if reached target
+    if (dlat < position_threshold && dlon < position_threshold && dalt < position_threshold) {
+      this->_logger.debug(
+          "Reached GPS waypoint (%.6f, %.6f, %.2f), desired gps location:(%.6f, %.6f, %.2f)", latitude, longitude, altitude,
+          _drone_lat, _drone_lon, _drone_alt);
       break;
     }
 
@@ -269,6 +306,27 @@ void PeopleSearch::send_coordinate(float x, float y, float z, float yaw_deg) {
   }
 }
 
+void PeopleSearch::send_global_coordinate(float latitude, float longitude, float altitude, float yaw_deg) {
+  auto request = _controller_client->new_msg();
+  auto location = request.content.initGotoLocation();
+  location.setLatitude(static_cast<float>(latitude));
+  location.setLongitude(static_cast<float>(longitude));
+  location.setAltitude(static_cast<float>(altitude));
+  location.setYaw(static_cast<float>(yaw_deg));
+
+  auto result = request.send();
+  if (!result.has_value()) {
+    std::cerr << "Failed to send coordinate: no response\n";
+    return;
+  }
+
+  auto response = result.value().content;
+  if (response.getCode() != 200) {
+    std::cerr << "Waypoint rejected! Code: " << response.getCode()
+              << " Message: " << response.getMessage().cStr() << "\n";
+  }
+}
+
 bool PeopleSearch::check_valid_person() {
   while (this->are_missing_validations()) {
     this->_logger.debug("Wating for validations");
@@ -292,8 +350,10 @@ bool PeopleSearch::check_valid_person() {
 }
 
 void PeopleSearch::run() {
-  const float offset_x = this->get_argument<float>("--x");
-  const float offset_y = this->get_argument<float>("--y");
+  // const float offset_x = this->get_argument<float>("--x");
+  // const float offset_y = this->get_argument<float>("--y");
+  const float latitude = this->get_argument<float>("--latitude");
+  const float longitude = this->get_argument<float>("--longitude");
   float takeoff_altitude = std::fabs(this->get_argument<float>("--altitude"));
   if (takeoff_altitude <= 0.0f) {
     this->_logger.warn(
@@ -314,8 +374,6 @@ void PeopleSearch::run() {
   float start_x = this->_drone_x;
   float start_y = this->_drone_y;
 
-  const float center_x = start_x + offset_x;
-  const float center_y = start_y + offset_y;
 
   // Takeoff to 4 meters
   this->_logger.info("Initiating takeoff to %.2f meters", takeoff_altitude);
@@ -360,10 +418,14 @@ void PeopleSearch::run() {
 
   // Move to initial position
   this->_logger.info(
-      "Moving to target GPS location (%.6f, %.6f) at %.2f meters", center_x,
-      center_y, takeoff_altitude);
-  move_and_wait(center_x, center_y, search_altitude, 0.0f);
+      "Moving to target GPS location (%.6f, %.6f) at %.2f meters", latitude, longitude,
+       takeoff_altitude);
+  // move_and_wait(center_x, center_y, search_altitude, 0.0f);
 
+  move_and_wait_global(latitude, longitude, takeoff_altitude, 0.0f);
+
+  const float center_x = this->_drone_x;
+  const float center_y = this->_drone_y;
   // Lawn-mower pattern search starting from center
   const float length = 10.0f;  // search box size (meters)
   const float step = 2.0f;     // spacing between lines
@@ -426,8 +488,8 @@ void PeopleSearch::run() {
 int main(int argc, char** argv) {
   Core::BaseArgumentParser parser(argc, argv);
 
-  parser.add_argument("--x").scan<'g', float>().help("x distance in meters");
-  parser.add_argument("--y").scan<'g', float>().help("x distance in meters");
+  parser.add_argument("--latitude").scan<'g', float>().help("Latitude");
+  parser.add_argument("--longitude").scan<'g', float>().help("Longitude");
   parser.add_argument("--altitude")
       .scan<'g', float>()
       .default_value(3.0f)
