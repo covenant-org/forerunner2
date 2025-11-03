@@ -192,19 +192,18 @@ void PeopleSearch::move_and_wait(float x, float y, float z, float yaw_deg) {
 void PeopleSearch::move_and_wait_global(float latitude, float longitude, float altitude, float yaw_deg) {
   this->send_global_coordinate(latitude, longitude, altitude, yaw_deg);
 
-  const float position_threshold = 1.0f;  // 50cm tolerance
+  const float position_threshold = 0.001f;  // 50cm tolerance
 
   while (true) {
     // Calculate distance to target
     float dlat = std::abs(_drone_lat - latitude);
     float dlon = std::abs(_drone_lon - longitude);
-    float dalt = std::abs(_drone_alt - altitude);
     
     this->_logger.debug(
           "Desired GPS waypoint (%.6f, %.6f, %.2f), Actual GPS location:(%.6f, %.6f, %.2f)", latitude, longitude, altitude,
           _drone_lat, _drone_lon, _drone_alt);
     // Check if reached target
-    if (dlat < position_threshold && dlon < position_threshold && dalt < position_threshold) {
+    if (dlat < position_threshold && dlon < position_threshold) {
       this->_logger.debug(
           "Reached GPS waypoint (%.6f, %.6f, %.2f), desired gps location:(%.6f, %.6f, %.2f)", latitude, longitude, altitude,
           _drone_lat, _drone_lon, _drone_alt);

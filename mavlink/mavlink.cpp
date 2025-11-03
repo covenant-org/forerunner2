@@ -37,6 +37,7 @@ Mavlink::Mavlink(Core::ArgumentParser parser)
   this->_home_position_publisher =
       this->create_publisher<HomePosition>("home_position");
   this->_odometry_publisher = this->create_publisher<Odometry>("odometry");
+  this->_position_publisher = this->create_publisher<GPS>("gps");
   this->_telemetry_publisher = this->create_publisher<Telemetry>("telemetry");
   this->_altitude_publisher = this->create_publisher<Altitude>("altitude");
   this->_config_publisher = this->create_publisher<KeyValue>("config/ftp");
