@@ -67,7 +67,37 @@ std::string load_api_key(const std::string& path) {
       "file");
 }
 
+
+std::string load_api_key_alt(const std::string& path) {
+  // First, try to get API key from environment variable
+  const char* env_api_key = std::getenv("ALT_API_KEY");
+  if (env_api_key != nullptr && std::string(env_api_key).length() > 0) {
+    std::cout << "Using API key from environment variable ALT_API_KEY"
+              << std::endl;
+    return std::string(env_api_key);
+  }
+
+  // If not found in environment, try to load from .env file
+  std::ifstream env(path);
+  if (!env.is_open()) {
+    throw std::runtime_error(
+        "Could not open .env file: " + path +
+        " and ANTHROPIC_API_KEY environment variable not set");
+  }
+
+  std::string line;
+  while (std::getline(env, line)) {
+    if (line.rfind("ALT_API_KEY=", 0) == 0) {
+      return line.substr(15);  // Skip "CLAUDE_API_KEY="
+    }
+  }
+  throw std::runtime_error(
+      "API key not found in environment variable ALT_API_KEY or in .env "
+      "file");
+}
+
 std::string sendLLMRequest(const std::string& api_key,
+                           const std::string& api_key_alt,
                            const std::string& prompt,
                            const std::string& image_base64) {
   CURL* curl;
@@ -77,37 +107,89 @@ std::string sendLLMRequest(const std::string& api_key,
   curl_global_init(CURL_GLOBAL_DEFAULT);
   curl = curl_easy_init();
 
+  static bool use_alt_llm = false;
+
   if (curl) {
     nlohmann::json request_body;
-    request_body["model"] = "gpt-4o-mini";
-    request_body["messages"] = nlohmann::json::array(
-        {{{"role", "user"},
-          {"content",
-           nlohmann::json::array(
-               {{{"type", "text"}, {"text", prompt}},
-                {{"type", "image_url"},
-                 {"image_url",
-                  {{"url", "data:image/jpeg;base64," + image_base64}}}}})}}});
-    request_body["max_tokens"] = 50;
+    if (!use_alt_llm){
+      // OpenAI-style request (unchanged)
+      request_body["model"] = "gpt-4o-mini";
+      request_body["messages"] = nlohmann::json::array(
+          {{{"role", "user"},
+            {"content",
+             nlohmann::json::array(
+                 {{{"type", "text"}, {"text", prompt}},
+                  {{"type", "image_url"},
+                   {"image_url",
+                    {{"url", "data:image/jpeg;base64," + image_base64}}}}})}}});
+      request_body["max_tokens"] = 50;
+    } else {
+        request_body["model"] = "claude-sonnet-4-5-20250929";
+        request_body["max_tokens"] = 50;
+
+        nlohmann::json content = nlohmann::json::array();
+
+        // text block
+        content.push_back({
+            {"type", "text"},
+            {"text", prompt}
+        });
+
+        // image block
+        content.push_back({
+            {"type", "image"},
+            {"source", {
+                {"type", "base64"},
+                {"media_type", "image/jpeg"},
+                {"data", image_base64}
+            }}
+        });
+
+        request_body["messages"] = nlohmann::json::array({
+            {
+                {"role", "user"},
+                {"content", content}
+            }
+        });
+    }
+
 
     std::string json_string = request_body.dump();
-
-    curl_easy_setopt(curl, CURLOPT_URL,
-                     "https://api.openai.com/v1/chat/completions");
+    
+    if (!use_alt_llm){
+      // fixed: removed stray prefix
+      curl_easy_setopt(curl, CURLOPT_URL,
+                       "https://api.openai.com/v1/chat/completions");
+    } else {
+      curl_easy_setopt(curl, CURLOPT_URL,
+                       "https://api.anthropic.com/v1/messages");
+    }
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_string.c_str());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
-
+    std::string auth_header;
     struct curl_slist* headers = NULL;
-    std::string auth_header = "Authorization: Bearer " + api_key;
-
+    if (!use_alt_llm){
+      auth_header = "Authorization: Bearer " + api_key;
+    } else{
+      auth_header = "x-api-key: " + api_key_alt;
+    }
+    
+    // Always send JSON content-type
     headers = curl_slist_append(headers, "Content-Type: application/json");
+    // Add auth header
     headers = curl_slist_append(headers, auth_header.c_str());
+    // For Anthropic, the API requires the anthropic-version header (lowercase)
+    if (use_alt_llm) {
+      headers = curl_slist_append(headers, "anthropic-version: 2023-06-01");
+    }
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 
+    //std::cout << "Curl Request Body: " << json_string << std::endl;  // Debug output
     res = curl_easy_perform(curl);
 
     if (res != CURLE_OK) {
+      use_alt_llm = !use_alt_llm;
       throw std::runtime_error("cURL error: " +
                                std::string(curl_easy_strerror(res)));
     }
@@ -121,16 +203,19 @@ std::string sendLLMRequest(const std::string& api_key,
 }
 
 bool parseLLMResponse(const std::string& response) {
+  //std::cout << "LLM Raw Response: " << response << std::endl;  // Debug output
+  bool use_alt_llm = false;
+  std::string answer;
   try {
     nlohmann::json response_json = nlohmann::json::parse(response);
     if (!response_json.contains("choices") ||
         !response_json["choices"].is_array() ||
         response_json["choices"].empty()) {
-      std::cerr << "Unexpected LLM response structure: " << response_json.dump()
-                << std::endl;
-      throw std::runtime_error("Missing choices in response");
+      // std::cerr << "Unexpected LLM response structure: " << response_json.dump()
+      //           << std::endl;
+      use_alt_llm = !use_alt_llm;
     }
-
+    if (!use_alt_llm){
     const auto& choice = response_json["choices"][0];
     if (!choice.is_object()) {
       std::cerr << "Unexpected choice format: " << choice.dump() << std::endl;
@@ -151,7 +236,7 @@ bool parseLLMResponse(const std::string& response) {
     }
 
     auto msg = choice["message"];
-    std::string answer;
+    
     if (msg.contains("content")) {
       const auto& content = msg["content"];
       if (content.is_string()) {
@@ -175,14 +260,24 @@ bool parseLLMResponse(const std::string& response) {
       std::cerr << "Unexpected message format: " << msg.dump() << std::endl;
       return false;
     }
+  } else{
+    const auto& content = response_json["content"][0];
+    //std::cout << "Content: " << content.dump() << std::endl;
+    if (content.contains("text") && content["text"].is_string()) {
+      answer = content["text"].get<std::string>();
+    } else {
+      std::cerr << "Unexpected content format: " << content.dump() << std::endl;
+      return false;
+    }
+  }
 
     std::string lower_answer = answer;
     std::transform(lower_answer.begin(), lower_answer.end(),
                    lower_answer.begin(),
                    [](unsigned char c) { return std::tolower(c); });
 
-    std::cout << "LLM Answer: \"" << answer << "\""
-              << std::endl;  // Debug output
+    // std::cout << "LLM Answer: \"" << answer << "\""
+              // << std::endl;  // Debug output
     if (lower_answer.find("yes") != std::string::npos) {
       return true;
     } else {
@@ -205,6 +300,7 @@ std::string matToBase64(const cv::Mat& image) {
 LLMDetection::LLMDetection(Core::ArgumentParser parser) : Core::Vertex(parser) {
   // Load API key
   _api_key = load_api_key();
+  _api_key_alt = load_api_key_alt();
   this->_logger.info("API key loaded successfully");
 
   // Setup communication
@@ -255,7 +351,7 @@ void LLMDetection::process_detection(
     // Send to LLM
     _logger.debug("Sending request to LLM for detection ID %u",
                   detection.getObjectId());
-    std::string response = sendLLMRequest(_api_key, prompt, image_base64);
+    std::string response = sendLLMRequest(_api_key, _api_key_alt, prompt, image_base64);
     _logger.debug("Parsing LLM response for detection ID %u",
                   detection.getObjectId());
     bool is_valid = parseLLMResponse(response);
