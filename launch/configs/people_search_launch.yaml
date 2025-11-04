@@ -1,14 +1,18 @@
-# executables:
-#   - name: mavlink
-#     args:
-#       options: # Argumentos con valores
-#         --mavlink-uri: "serial:///dev/ttyTHS1:921600"  
-#   - name: mavlink-mission
-#   - name: people_search_controller
-#     args:
-#       options: # Argumentos con valores
-#         --x: 2
-#         --y: 2
+executables:
+  - name: mavlink
+    args:
+      options: # Argumentos con valores
+        --mavlink-uri: "serial:///dev/ttyTHS1:921600"  
+  - name: mavlink-mission
+  - name: people_search_controller
+    args:
+      options: # Argumentos con valores
+        # --latitude: 47.3985
+        # --longitude: 8.5465
+        -- latitude: 18.9438158
+        --longitude: -98.188531
+        --altitude: 4.0
+        --approach-altitude: 25.0
   - name: people_search_llm
   - name: people_search_detection
     args:

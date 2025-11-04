@@ -362,7 +362,16 @@ void PeopleSearch::run() {
         takeoff_altitude);
     takeoff_altitude = 3.0f;
   }
+  float approach_altitude = std::fabs(this->get_argument<float>("--approach-altitude"));
+  if (approach_altitude <= 0.0f) {
+    this->_logger.warn(
+        "Configured altitude %.2f is non-positive, defaulting to 3.0m",
+        approach_altitude);
+    approach_altitude = 25.0f;
+  }
+
   const float search_altitude = -takeoff_altitude;
+  
   this->_search_altitude = search_altitude;
 
   if (!this->_has_odometry.load(std::memory_order_acquire)) {
@@ -381,7 +390,7 @@ void PeopleSearch::run() {
   this->_logger.info("Initiating takeoff to %.2f meters", takeoff_altitude);
   auto request = this->_mission_client->new_msg();
   request.content.initTakeoff();
-  request.content.getTakeoff().setDesiredAltitude(takeoff_altitude);
+  request.content.getTakeoff().setDesiredAltitude(20.0f);
   auto result = request.send();
   auto response = result.value().content;
 
@@ -393,16 +402,16 @@ void PeopleSearch::run() {
   // Move to initial position
   this->_logger.info(
       "Moving to target GPS location (%.6f, %.6f) at %.2f meters", latitude, longitude,
-       takeoff_altitude);
+       20.0f);
   // move_and_wait(center_x, center_y, search_altitude, 0.0f);
 
-  move_and_wait_global(latitude, longitude, takeoff_altitude, 0.0f);
+  move_and_wait_global(latitude, longitude, 20.0f, 0.0f);
 
   auto setpoint_req = this->_controller_client->new_msg();
   auto wp = setpoint_req.content.initWaypoint();
   wp.setX(this->_drone_x);
   wp.setY(this->_drone_y);
-  wp.setZ(search_altitude);
+  wp.setZ(-20.0f);
   auto setpoint_res = setpoint_req.send();
   auto setpoint_resp = setpoint_res.value().content;
   if (setpoint_resp.getCode() != 200) {
@@ -429,10 +438,12 @@ void PeopleSearch::run() {
   const float center_x = this->_drone_x;
   const float center_y = this->_drone_y;
   // Lawn-mower pattern search starting from center
-  const float length = 10.0f;  // search box size (meters)
-  const float step = 2.0f;     // spacing between lines
+  const float length = 24.0f;  // search box size (meters)
+  const float step = 6.0f;     // spacing between lines
 
   bool forward = true;
+
+  move_and_wait(_drone_x, _drone_y, search_altitude, 0);
 
   this->_logger.info("Starting lawn-mower search pattern...");
 
@@ -482,6 +493,8 @@ void PeopleSearch::run() {
     float home_y = this->_home_set.load(std::memory_order_acquire)
                        ? this->_home_y
                        : this->_drone_y;
+    move_and_wait(_drone_x, _drone_y, -20.0f, 0.0f);
+    move_and_wait(home_x, home_y, -20.0f, 0.0f);
     move_and_wait(home_x, home_y, search_altitude, 0.0f);
     land();
   }
@@ -495,7 +508,11 @@ int main(int argc, char** argv) {
   parser.add_argument("--altitude")
       .scan<'g', float>()
       .default_value(3.0f)
-      .help("Takeoff altitude in meters (positive, default 3.0)");
+      .help("Search altitude in meters (positive, default 3.0)");
+  parser.add_argument("--approach-altitude")
+      .scan<'g', float>()
+      .default_value(20.0f)
+      .help("Approach altitude in meters (positive, default 20.0)");
 
   std::shared_ptr<PeopleSearch> people_search =
       std::make_shared<PeopleSearch>(parser);
