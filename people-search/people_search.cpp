@@ -438,8 +438,8 @@ void PeopleSearch::run() {
   const float center_x = this->_drone_x;
   const float center_y = this->_drone_y;
   // Lawn-mower pattern search starting from center
-  const float length = 24.0f;  // search box size (meters)
-  const float step = 6.0f;     // spacing between lines
+  const float length = 62.0f;  // search box size (meters)
+  const float step = 8.0f;     // spacing between lines
 
   bool forward = true;
 
