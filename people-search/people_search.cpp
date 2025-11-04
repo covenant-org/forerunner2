@@ -56,6 +56,8 @@ int PeopleSearch::get_matching_record(const PersonRecord& record) {
     if (distance(record.x, record.y, item.x, item.y) <= 2.0f) {
       if (detection.second.detetion_time < record.detetion_time) {
         detection.second.detetion_time = record.detetion_time;
+	detection.second.x = record.x;
+	detection.second.y = record.y;
       }
       return detection.first;
     }
@@ -342,7 +344,7 @@ bool PeopleSearch::check_valid_person() {
   float landing_y = person.y - std::sin(angle) * 1.5f;
   this->_logger.warn("Found valid person and landing at %f %f", landing_x,
                      landing_y);
-  move_and_wait(landing_x, landing_y, this->_search_altitude / 2, 0.0f);
+  move_and_wait(landing_x, landing_y, this->_search_altitude, 0.0f);
   land();
   // send_coordinate(_drone_x, _drone_y, -0.0f, 0.0f);
   return true;
