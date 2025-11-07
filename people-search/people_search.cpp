@@ -23,8 +23,7 @@ PeopleSearch::PeopleSearch(Core::ArgumentParser parser) : Core::Vertex(parser) {
       "odometry",
       std::bind(&PeopleSearch::get_position, this, std::placeholders::_1));
   this->_gps_subscriber = this->create_subscriber<GPS>(
-      "gps",
-      std::bind(&PeopleSearch::get_gps, this, std::placeholders::_1));
+      "gps", std::bind(&PeopleSearch::get_gps, this, std::placeholders::_1));
   this->_path_publisher = this->create_publisher<Point>("path_point");
   this->_detection_sub = this->create_subscriber<DetectionImage>(
       "detection_images",
@@ -56,8 +55,8 @@ int PeopleSearch::get_matching_record(const PersonRecord& record) {
     if (distance(record.x, record.y, item.x, item.y) <= 2.0f) {
       if (detection.second.detetion_time < record.detetion_time) {
         detection.second.detetion_time = record.detetion_time;
-	detection.second.x = record.x;
-	detection.second.y = record.y;
+        detection.second.x = record.x;
+        detection.second.y = record.y;
       }
       return detection.first;
     }
@@ -191,7 +190,8 @@ void PeopleSearch::move_and_wait(float x, float y, float z, float yaw_deg) {
   }
 }
 
-void PeopleSearch::move_and_wait_global(float latitude, float longitude, float altitude, float yaw_deg) {
+void PeopleSearch::move_and_wait_global(float latitude, float longitude,
+                                        float altitude, float yaw_deg) {
   this->send_global_coordinate(latitude, longitude, altitude, yaw_deg);
 
   const float position_threshold = 0.00001f;  // 50cm tolerance
@@ -200,15 +200,17 @@ void PeopleSearch::move_and_wait_global(float latitude, float longitude, float a
     // Calculate distance to target
     float dlat = std::abs(_drone_lat - latitude);
     float dlon = std::abs(_drone_lon - longitude);
-    
+
     this->_logger.debug(
-          "Desired GPS waypoint (%.6f, %.6f, %.2f), Actual GPS location:(%.6f, %.6f, %.2f)", latitude, longitude, altitude,
-          _drone_lat, _drone_lon, _drone_alt);
+        "Desired GPS waypoint (%.6f, %.6f, %.2f), Actual GPS location:(%.6f, "
+        "%.6f, %.2f)",
+        latitude, longitude, altitude, _drone_lat, _drone_lon, _drone_alt);
     // Check if reached target
     if (dlat < position_threshold && dlon < position_threshold) {
       this->_logger.debug(
-          "Reached GPS waypoint (%.6f, %.6f, %.2f), desired gps location:(%.6f, %.6f, %.2f)", latitude, longitude, altitude,
-          _drone_lat, _drone_lon, _drone_alt);
+          "Reached GPS waypoint (%.6f, %.6f, %.2f), desired gps "
+          "location:(%.6f, %.6f, %.2f)",
+          latitude, longitude, altitude, _drone_lat, _drone_lon, _drone_alt);
       break;
     }
 
@@ -307,7 +309,8 @@ void PeopleSearch::send_coordinate(float x, float y, float z, float yaw_deg) {
   }
 }
 
-void PeopleSearch::send_global_coordinate(float latitude, float longitude, float altitude, float yaw_deg) {
+void PeopleSearch::send_global_coordinate(float latitude, float longitude,
+                                          float altitude, float yaw_deg) {
   auto request = _controller_client->new_msg();
   auto location = request.content.initGotoLocation();
   location.setLatitude(static_cast<float>(latitude));
@@ -339,12 +342,13 @@ bool PeopleSearch::check_valid_person() {
   if (!record.has_value()) return false;
   auto person = record.value();
 
-  float angle = std::atan2(_drone_y - person.y, _drone_x - person.x);
+  float angle = std::atan2(person.y - _drone_y, person.x - _drone_x);
   float landing_x = person.x - std::cos(angle) * 1.5f;
   float landing_y = person.y - std::sin(angle) * 1.5f;
   this->_logger.warn("Found valid person and landing at %f %f", landing_x,
                      landing_y);
   move_and_wait(landing_x, landing_y, this->_search_altitude, 0.0f);
+  move_and_wait(landing_x, landing_y, this->_search_altitude / 2, 0.0f);
   land();
   // send_coordinate(_drone_x, _drone_y, -0.0f, 0.0f);
   return true;
@@ -362,7 +366,8 @@ void PeopleSearch::run() {
         takeoff_altitude);
     takeoff_altitude = 3.0f;
   }
-  float approach_altitude = std::fabs(this->get_argument<float>("--approach-altitude"));
+  float approach_altitude =
+      std::fabs(this->get_argument<float>("--approach-altitude"));
   if (approach_altitude <= 0.0f) {
     this->_logger.warn(
         "Configured altitude %.2f is non-positive, defaulting to 3.0m",
@@ -371,7 +376,7 @@ void PeopleSearch::run() {
   }
 
   const float search_altitude = -takeoff_altitude;
-  
+
   this->_search_altitude = search_altitude;
 
   if (!this->_has_odometry.load(std::memory_order_acquire)) {
@@ -384,7 +389,6 @@ void PeopleSearch::run() {
   float start_x = this->_drone_x;
   float start_y = this->_drone_y;
   this->_logger.info("Starting position at (%.2f, %.2f)", start_x, start_y);
-
 
   // Takeoff to 4 meters
   this->_logger.info("Initiating takeoff to %.2f meters", takeoff_altitude);
@@ -401,8 +405,8 @@ void PeopleSearch::run() {
 
   // Move to initial position
   this->_logger.info(
-      "Moving to target GPS location (%.6f, %.6f) at %.2f meters", latitude, longitude,
-       20.0f);
+      "Moving to target GPS location (%.6f, %.6f) at %.2f meters", latitude,
+      longitude, 20.0f);
   // move_and_wait(center_x, center_y, search_altitude, 0.0f);
 
   move_and_wait_global(latitude, longitude, 20.0f, 0.0f);
