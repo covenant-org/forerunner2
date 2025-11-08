@@ -1,9 +1,11 @@
 #include "argument_parser.hpp"
+#include "message.hpp"
 #include "people_search.hpp"
 #include <bits/stdc++.h>
 #include <chrono>
 #include <cmath>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <thread>
 #include <tuple>
@@ -20,59 +22,125 @@ PeopleSearch::PeopleSearch(Core::ArgumentParser parser) : Core::Vertex(parser) {
   this->_odometry_subscriber = this->create_subscriber<Odometry>(
       "odometry",
       std::bind(&PeopleSearch::get_position, this, std::placeholders::_1));
+  this->_gps_subscriber = this->create_subscriber<GPS>(
+      "gps", std::bind(&PeopleSearch::get_gps, this, std::placeholders::_1));
   this->_path_publisher = this->create_publisher<Point>("path_point");
+  this->_detection_sub = this->create_subscriber<DetectionImage>(
+      "detection_images",
+      std::bind(&PeopleSearch::process_detection, this, std::placeholders::_1));
+}
+
+float distance(float x1, float y1, float x2, float y2) {
+  float x = x2 - x1;
+  float y = y2 - y1;
+  return std::sqrt(x * x + y * y);
+}
+
+PersonRecord PeopleSearch::transform_to_NED_from_ZED(float x, float y) {
+  float x_world = _drone_x + x * cos(_drone_yaw) - y * sin(_drone_yaw);
+  float y_world = _drone_y + x * sin(_drone_yaw) + y * cos(_drone_yaw);
+  float z_world = _drone_z;  // keep altitude constant or adjust as needed
+  return {
+      .x = x_world,
+      .y = y_world,
+      .z = z_world,
+      .validated = 0,
+      .detetion_time = std::chrono::steady_clock::now(),
+  };
+}
+
+int PeopleSearch::get_matching_record(const PersonRecord& record) {
+  for (auto& detection : this->_detections) {
+    auto item = detection.second;
+    if (distance(record.x, record.y, item.x, item.y) <= 2.0f) {
+      if (detection.second.detetion_time < record.detetion_time) {
+        detection.second.detetion_time = record.detetion_time;
+        detection.second.x = record.x;
+        detection.second.y = record.y;
+      }
+      return detection.first;
+    }
+  }
+  return -1;
+}
+
+void PeopleSearch::process_detection(
+    const Core::IncomingMessage<DetectionImage>& msg) {
+  auto coords = msg.content.getCoordinates();
+  auto record = this->transform_to_NED_from_ZED(coords.getX(), coords.getY());
+  std::lock_guard<std::mutex> lock(this->_person_mutex);
+  auto index = this->get_matching_record(record);
+  if (index < 0) {
+    this->_logger.debug("New detection at %f %f", record.x, record.y);
+    this->_detections[this->_detections.size()] = record;
+    return;
+  }
+}
+
+std::optional<PersonRecord> PeopleSearch::get_confirmed_record() {
+  for (auto record : this->_detections) {
+    if (record.second.validated > 1) return record.second;
+  }
+  return std::nullopt;
+}
+
+bool PeopleSearch::are_missing_validations() {
+  auto now = std::chrono::steady_clock::now();
+  for (auto record : this->_detections) {
+    auto person = record.second;
+    auto since = std::chrono::duration_cast<std::chrono::seconds>(
+                     person.detetion_time - now)
+                     .count();
+    if (person.validated == 0 && since < 10) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void PeopleSearch::handle_llm_result(
     const Core::IncomingMessage<LLMResult>& msg) {
   auto result = msg.content;
   auto id = result.getObjectId();
-  if (result.getIsValidPerson()) {
-    auto coords = result.getCoordinates();
-    auto now = std::chrono::steady_clock::now();
-    float x_cam = coords.getX();
-    float y_cam = coords.getY();
-    float z_cam = coords.getZ();
-
-    float yaw = _drone_yaw;  // you need to store this from odometry
-    float x_world = _drone_x + x_cam * cos(yaw) - y_cam * sin(yaw);
-    float y_world = _drone_y + x_cam * sin(yaw) + y_cam * cos(yaw);
-    float z_world = _drone_z;  // keep altitude constant or adjust as needed
-
-    {
-      std::lock_guard<std::mutex> lock(this->_person_mutex);
-      // remove test offset or make it configurable
-      this->_person_x = x_world;
-      this->_person_y = y_world;
-      this->_person_z = z_world;
-      this->_last_detection_time = now;
-      this->_valid_person_found.store(true);
-    }
-    // notify waiting confirmers
-    this->_person_cv.notify_one();
-
-    this->_logger.info(
-        "Valid person detected at WORLD (%.3f, %.3f, %.3f) id=%u time=%lld",
-        x_world, y_world, z_world, static_cast<unsigned>(id),
-        static_cast<long long>(now.time_since_epoch().count()));
-  } else {
-    this->_logger.info("Detection ID %u: NOT a valid person", id);
-    {
-      std::lock_guard<std::mutex> lock(this->_person_mutex);
-      this->_valid_person_found.store(false);
-      // optionally clear timestamp
-      // _last_detection_time = std::chrono::steady_clock::time_point::min();
+  auto coords = result.getCoordinates();
+  auto record = this->transform_to_NED_from_ZED(coords.getX(), coords.getY());
+  int index = -1;
+  {
+    std::lock_guard<std::mutex> lock(this->_person_mutex);
+    index = this->get_matching_record(record);
+    if (index < 0) {
+      index = this->_detections.size();
+      this->_detections[index] = record;
     }
   }
+  if (!result.getIsValidPerson()) {
+    this->_logger.info("Detection ID %u: NOT a valid person", id);
+    std::lock_guard<std::mutex> lock(this->_person_mutex);
+    this->_detections[index].validated--;
+    return;
+  }
+
+  auto now = std::chrono::steady_clock::now();
+  this->_last_detection_time = now;
+
+  {
+    std::lock_guard<std::mutex> lock(this->_person_mutex);
+    this->_detections[index].validated++;
+  }
+
+  this->_logger.info(
+      "Valid person detected at WORLD (%.3f, %.3f) id=%u time=%lld", record.x,
+      record.y, static_cast<unsigned>(id),
+      static_cast<long long>(now.time_since_epoch().count()));
 }
 
 void PeopleSearch::get_position(const Core::IncomingMessage<Odometry>& msg) {
   auto odom = msg.content;
   auto pos = odom.getPosition();
+  auto gps = odom.getGps();
   this->_drone_x = pos.getX();
   this->_drone_y = pos.getY();
   this->_drone_z = pos.getZ();
-
   auto q = odom.getQ();
   // Convert quaternion to yaw (in radians)
   float siny_cosp = 2 * (q.getW() * q.getZ() + q.getX() * q.getY());
@@ -88,6 +156,13 @@ void PeopleSearch::get_position(const Core::IncomingMessage<Odometry>& msg) {
   }
 
   this->_has_odometry.store(true, std::memory_order_release);
+}
+
+void PeopleSearch::get_gps(const Core::IncomingMessage<GPS>& msg) {
+  auto gps = msg.content;
+  this->_drone_lat = gps.getLatitude();
+  this->_drone_lon = gps.getLongitude();
+  this->_drone_alt = gps.getAltitude();
 }
 
 void PeopleSearch::move_and_wait(float x, float y, float z, float yaw_deg) {
@@ -115,6 +190,35 @@ void PeopleSearch::move_and_wait(float x, float y, float z, float yaw_deg) {
   }
 }
 
+void PeopleSearch::move_and_wait_global(float latitude, float longitude,
+                                        float altitude, float yaw_deg) {
+  this->send_global_coordinate(latitude, longitude, altitude, yaw_deg);
+
+  const float position_threshold = 0.00001f;  // 50cm tolerance
+
+  while (true) {
+    // Calculate distance to target
+    float dlat = std::abs(_drone_lat - latitude);
+    float dlon = std::abs(_drone_lon - longitude);
+
+    this->_logger.debug(
+        "Desired GPS waypoint (%.6f, %.6f, %.2f), Actual GPS location:(%.6f, "
+        "%.6f, %.2f)",
+        latitude, longitude, altitude, _drone_lat, _drone_lon, _drone_alt);
+    // Check if reached target
+    if (dlat < position_threshold && dlon < position_threshold) {
+      this->_logger.debug(
+          "Reached GPS waypoint (%.6f, %.6f, %.2f), desired gps "
+          "location:(%.6f, %.6f, %.2f)",
+          latitude, longitude, altitude, _drone_lat, _drone_lon, _drone_alt);
+      break;
+    }
+
+    // Sleep briefly before next check
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+}
+
 bool PeopleSearch::move_and_check(float x, float y, float z, float yaw_deg) {
   move_and_wait(x, y, z, yaw_deg);
   return check_valid_person();
@@ -122,48 +226,34 @@ bool PeopleSearch::move_and_check(float x, float y, float z, float yaw_deg) {
 
 void PeopleSearch::fly_scan_line(float x_center, float y_offset, float z,
                                  float length, bool forward) {
-  float x_start = x_center - length / 2;
-  float x_end = x_center + length / 2;
+  float x_start = x_center - length / 2.0f;
+  float x_end = x_center + length / 2.0f;
+  float x = forward ? x_start : x_end;
+  int n_div = std::ceil(std::abs(x_end - x_start) / (4.0f));
+  int direction = forward ? 1 : -1;
 
-  int n_div = std::ceil(abs(x_end - x_start) / (4));
+  this->_logger.debug("Moving x from %.2f to %.2f at y=%.2f", x_start, x_end,
+                      y_offset);
 
-  if (forward) {
-    this->_logger.debug("Moving x from %.2f to %.2f at y=%.2f", x_start, x_end,
-                        y_offset);
-
-    if (move_and_check(x_start, y_offset, z, 0.0f)) return;
-    for (int i = 0; i < n_div; i++) {
-      float x_mid = x_start + (i + 1) * (length / n_div);
-      auto msg = this->_path_publisher->new_msg();
-      msg.content.setX(static_cast<float>(x_mid));
-      msg.content.setY(static_cast<float>(y_offset));
-      msg.content.setZ(static_cast<float>(z));
-      msg.publish();
-      if (move_and_check(x_mid, y_offset, z, 0.0f)) return;
-    }
-  } else {
-    this->_logger.debug("Moving x from %.2f to %.2f at y=%.2f", x_end, x_start,
-                        y_offset);
-    if (move_and_check(x_end, y_offset, z, 0.0f)) return;
-    for (int i = 0; i < n_div; i++) {
-      float x_mid = x_end - (i + 1) * (length / n_div);
-      auto msg = this->_path_publisher->new_msg();
-      msg.content.setX(static_cast<float>(x_mid));
-      msg.content.setY(static_cast<float>(y_offset));
-      msg.content.setZ(static_cast<float>(z));
-      msg.publish();
-      if (move_and_check(x_mid, y_offset, z, 0.0f)) return;
-    }
+  if (move_and_check(x, y_offset, z, 0.0f)) return;
+  for (int i = 0; i < n_div; i++) {
+    float x_mid = x + direction * (i + 1) * (length / n_div);
+    auto msg = this->_path_publisher->new_msg();
+    msg.content.setX(static_cast<float>(x_mid));
+    msg.content.setY(static_cast<float>(y_offset));
+    msg.content.setZ(static_cast<float>(z));
+    msg.publish();
+    if (move_and_check(x_mid, y_offset, z, 0.0f)) return;
   }
 }
 
 void PeopleSearch::calculateWaypoints(
     float x_center, float y_offset, float z, float length, bool forward,
     std::list<std::tuple<float, float, float>>& waypoints) {
-  float x_start = x_center - length / 2;
-  float x_end = x_center + length / 2;
+  float x_start = x_center - length / 2.0f;
+  float x_end = x_center + length / 2.0f;
 
-  int n_div = std::ceil(abs(x_end - x_start) / (4));
+  int n_div = std::ceil(std::abs(x_end - x_start) / (4.0f));
 
   if (forward) {
     this->_logger.debug("Moving x from %.2f to %.2f at y=%.2f", x_start, x_end,
@@ -219,147 +309,56 @@ void PeopleSearch::send_coordinate(float x, float y, float z, float yaw_deg) {
   }
 }
 
-bool PeopleSearch::confirm_valid_person(
-    float person_x, float person_y, float person_z,
-    std::chrono::steady_clock::time_point detection_time) {
-  this->_logger.info(
-      "Confirming person at (%.3f, %.3f, %.3f) detected at time=%lld", person_x,
-      person_y, person_z,
-      static_cast<long long>(detection_time.time_since_epoch().count()));
+void PeopleSearch::send_global_coordinate(float latitude, float longitude,
+                                          float altitude, float yaw_deg) {
+  auto request = _controller_client->new_msg();
+  auto location = request.content.initGotoLocation();
+  location.setLatitude(static_cast<float>(latitude));
+  location.setLongitude(static_cast<float>(longitude));
+  location.setAltitude(static_cast<float>(altitude));
+  location.setYaw(static_cast<float>(yaw_deg));
 
-  // Approach halfway (keep movement code outside of locks)
-  float approach_x = _drone_x + (person_x - _drone_x) / 4.0f;
-  float approach_y = _drone_y + (person_y - _drone_y) / 4.0f;
-  float person_distance = std::sqrt(person_x * person_x + person_y * person_y);
-  if (person_distance > 2.0f) {
-    move_and_wait(approach_x, approach_y, this->_search_altitude, 0.0f);
-  }
-  // wait for a fresh detection (detection_time must be newer than
-  // snapshot_time)
-  bool confirmed = false;
-  const auto timeout = std::chrono::seconds(5);
-  const auto deadline = std::chrono::steady_clock::now() + timeout;
-
-  std::unique_lock<std::mutex> lk(this->_person_mutex);
-  // lambda predicate: new detection time is later than snapshot and spatially
-  // close
-  auto predicate = [&](void) -> bool {
-    if (this->_last_detection_time <= detection_time) return false;  // not new
-    float dx = this->_person_x - person_x;
-    float dy = this->_person_y - person_y;
-    float dz = this->_person_z - person_z;
-    float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-    const float threshold = 2.0f;  // tune: 0.5..1.5 meters
-    return dist <= threshold;
-  };
-
-  // wait until predicate or timeout
-  if (_person_cv.wait_until(lk, deadline, predicate)) {
-    // predicate true: fresh detection within spatial threshold
-    confirmed = true;
-    // consume detection
-    this->_valid_person_found.store(false);
-  }
-  lk.unlock();
-
-  if (confirmed) {
-    this->_logger.info("Person confirmed at (%.3f, %.3f, %.3f)", person_x,
-                       person_y, person_z);
-    _last_confirmed_time = std::chrono::steady_clock::now();
-    _last_confirmed_x = person_x;
-    _last_confirmed_y = person_y;
-    _last_confirmed_z = person_z;
-    return true;
+  auto result = request.send();
+  if (!result.has_value()) {
+    std::cerr << "Failed to send coordinate: no response\n";
+    return;
   }
 
-  this->_logger.info("Person NOT confirmed, resuming search");
-  // return to backup
-  float drone_x_backup = _drone_x;
-  float drone_y_backup = _drone_y;
-
-  move_and_wait(drone_x_backup, drone_y_backup, this->_search_altitude, 0.0f);
-  return false;
+  auto response = result.value().content;
+  if (response.getCode() != 200) {
+    std::cerr << "Waypoint rejected! Code: " << response.getCode()
+              << " Message: " << response.getMessage().cStr() << "\n";
+  }
 }
 
 bool PeopleSearch::check_valid_person() {
-  auto now = std::chrono::steady_clock::now();
-
-  // Skip if we are already handling a confirmed person
-  if (_is_handling_person) return false;
-
-  // Cooldown: ignore detections within 5s and 2m of last confirmed
-  const auto cooldown = std::chrono::seconds(5);
-  if (now - _last_confirmed_time < cooldown) {
-    float dx = _person_x - _last_confirmed_x;
-    float dy = _person_y - _last_confirmed_y;
-    float dz = _person_z - _last_confirmed_z;
-    if (std::sqrt(dx * dx + dy * dy + dz * dz) < 2.0f) return false;
+  while (this->are_missing_validations()) {
+    this->_logger.debug("Wating for validations");
+    send_coordinate(_drone_x, _drone_y, this->_search_altitude, 0.0f);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
 
-  if (!_valid_person_found.load()) return false;
+  auto record = this->get_confirmed_record();
+  if (!record.has_value()) return false;
+  auto person = record.value();
 
-  send_coordinate(_drone_x, _drone_y, this->_search_altitude, 0.0f);
-
-  float person_x, person_y, person_z;
-  std::chrono::steady_clock::time_point detection_time;
-  {
-    std::lock_guard<std::mutex> lock(this->_person_mutex);
-    person_x = _person_x;
-    person_y = _person_y;
-    person_z = _person_z;
-    detection_time = _last_detection_time;
-    // do NOT clear _valid_person_found here — let confirm consume/clear it
-  }
-
-  _is_handling_person = true;
-
-  this->_logger.info(
-      "Starting person validation at (%.3f, %.3f, %.3f) detected at time=%lld",
-      person_x, person_y, person_z,
-      static_cast<long long>(detection_time.time_since_epoch().count()));
-
-  // if (!confirm_valid_person(person_x, person_y, person_z, detection_time)) {
-  //   _is_handling_person = false;
-  //   this->_logger.info("Person validation failed, resuming search");
-  //   return false;
-  // }
-
-  // proceed to go to person (use the locked snapshot or locking as needed)
-  this->_logger.info("Navigating to confirmed person at (%.3f, %.3f, %.3f)",
-                     person_x, person_y, person_z);
-
-  float person_distance =
-      std::sqrt((person_x - _drone_x) * (person_x - _drone_x) +
-                (person_y - _drone_y) * (person_y - _drone_y));
-
-  if (person_distance < 2.0f) {
-    this->_logger.info(
-        "Person is within %.2f meters, initiating landing sequence",
-        person_distance);
-    // send_coordinate(_drone_x, _drone_y, -4.0f, 0.0f);
-    land();
-    // send_coordinate(_drone_x, _drone_y, -0.0f, 0.0f);
-    return true;
-  }
-  // send_coordinate(_drone_x, _drone_y, -4.0f, 0.0f);
-  float landing_x = person_x - std::cos(_drone_yaw) * 2.0f;
-  float landing_y = person_y - std::sin(_drone_yaw) * 2.0f;
-  float dx = landing_x - _drone_x;
-  float dy = landing_y - _drone_y;
-  float distance = std::sqrt(dx * dx + dy * dy);
-  if (distance > 0.5f) {
-    move_and_wait(landing_x, landing_y, this->_search_altitude / 2, 0.0f);
-  } else {
-    move_and_wait(_drone_x, _drone_y, this->_search_altitude / 2, 0.0f);
-  }
+  float angle = std::atan2(person.y - _drone_y, person.x - _drone_x);
+  float landing_x = person.x - std::cos(angle) * 1.5f;
+  float landing_y = person.y - std::sin(angle) * 1.5f;
+  this->_logger.warn("Found valid person and landing at %f %f", landing_x,
+                     landing_y);
+  move_and_wait(landing_x, landing_y, this->_search_altitude, 0.0f);
+  move_and_wait(landing_x, landing_y, this->_search_altitude / 2, 0.0f);
   land();
   // send_coordinate(_drone_x, _drone_y, -0.0f, 0.0f);
   return true;
 }
 
 void PeopleSearch::run() {
-  const float offset_x = this->get_argument<float>("--x");
-  const float offset_y = this->get_argument<float>("--y");
+  // const float offset_x = this->get_argument<float>("--x");
+  // const float offset_y = this->get_argument<float>("--y");
+  const float latitude = this->get_argument<float>("--latitude");
+  const float longitude = this->get_argument<float>("--longitude");
   float takeoff_altitude = std::fabs(this->get_argument<float>("--altitude"));
   if (takeoff_altitude <= 0.0f) {
     this->_logger.warn(
@@ -367,7 +366,17 @@ void PeopleSearch::run() {
         takeoff_altitude);
     takeoff_altitude = 3.0f;
   }
+  float approach_altitude =
+      std::fabs(this->get_argument<float>("--approach-altitude"));
+  if (approach_altitude <= 0.0f) {
+    this->_logger.warn(
+        "Configured altitude %.2f is non-positive, defaulting to 3.0m",
+        approach_altitude);
+    approach_altitude = 25.0f;
+  }
+
   const float search_altitude = -takeoff_altitude;
+
   this->_search_altitude = search_altitude;
 
   if (!this->_has_odometry.load(std::memory_order_acquire)) {
@@ -379,15 +388,13 @@ void PeopleSearch::run() {
 
   float start_x = this->_drone_x;
   float start_y = this->_drone_y;
-
-  const float center_x = start_x + offset_x;
-  const float center_y = start_y + offset_y;
+  this->_logger.info("Starting position at (%.2f, %.2f)", start_x, start_y);
 
   // Takeoff to 4 meters
   this->_logger.info("Initiating takeoff to %.2f meters", takeoff_altitude);
   auto request = this->_mission_client->new_msg();
   request.content.initTakeoff();
-  request.content.getTakeoff().setDesiredAltitude(takeoff_altitude);
+  request.content.getTakeoff().setDesiredAltitude(20.0f);
   auto result = request.send();
   auto response = result.value().content;
 
@@ -396,11 +403,19 @@ void PeopleSearch::run() {
                         response.getCode(), response.getMessage());
   }
 
+  // Move to initial position
+  this->_logger.info(
+      "Moving to target GPS location (%.6f, %.6f) at %.2f meters", latitude,
+      longitude, 20.0f);
+  // move_and_wait(center_x, center_y, search_altitude, 0.0f);
+
+  move_and_wait_global(latitude, longitude, 20.0f, 0.0f);
+
   auto setpoint_req = this->_controller_client->new_msg();
   auto wp = setpoint_req.content.initWaypoint();
   wp.setX(this->_drone_x);
   wp.setY(this->_drone_y);
-  wp.setZ(search_altitude);
+  wp.setZ(-20.0f);
   auto setpoint_res = setpoint_req.send();
   auto setpoint_resp = setpoint_res.value().content;
   if (setpoint_resp.getCode() != 200) {
@@ -424,17 +439,15 @@ void PeopleSearch::run() {
         cmd_response.getCode(), cmd_response.getMessage());
   }
 
-  // Move to initial position
-  this->_logger.info(
-      "Moving to target GPS location (%.6f, %.6f) at %.2f meters", center_x,
-      center_y, takeoff_altitude);
-  move_and_wait(center_x, center_y, search_altitude, 0.0f);
-
+  const float center_x = this->_drone_x;
+  const float center_y = this->_drone_y;
   // Lawn-mower pattern search starting from center
-  const float length = 10.0f;  // search box size (meters)
-  const float step = 2.0f;     // spacing between lines
+  const float length = 62.0f;  // search box size (meters)
+  const float step = 8.0f;     // spacing between lines
 
   bool forward = true;
+
+  move_and_wait(_drone_x, _drone_y, search_altitude, 0);
 
   this->_logger.info("Starting lawn-mower search pattern...");
 
@@ -484,6 +497,8 @@ void PeopleSearch::run() {
     float home_y = this->_home_set.load(std::memory_order_acquire)
                        ? this->_home_y
                        : this->_drone_y;
+    move_and_wait(_drone_x, _drone_y, -20.0f, 0.0f);
+    move_and_wait(home_x, home_y, -20.0f, 0.0f);
     move_and_wait(home_x, home_y, search_altitude, 0.0f);
     land();
   }
@@ -492,12 +507,16 @@ void PeopleSearch::run() {
 int main(int argc, char** argv) {
   Core::BaseArgumentParser parser(argc, argv);
 
-  parser.add_argument("--x").scan<'g', float>().help("x distance in meters");
-  parser.add_argument("--y").scan<'g', float>().help("x distance in meters");
+  parser.add_argument("--latitude").scan<'g', float>().help("Latitude");
+  parser.add_argument("--longitude").scan<'g', float>().help("Longitude");
   parser.add_argument("--altitude")
       .scan<'g', float>()
       .default_value(3.0f)
-      .help("Takeoff altitude in meters (positive, default 3.0)");
+      .help("Search altitude in meters (positive, default 3.0)");
+  parser.add_argument("--approach-altitude")
+      .scan<'g', float>()
+      .default_value(20.0f)
+      .help("Approach altitude in meters (positive, default 20.0)");
 
   std::shared_ptr<PeopleSearch> people_search =
       std::make_shared<PeopleSearch>(parser);

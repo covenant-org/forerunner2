@@ -37,6 +37,7 @@ Mavlink::Mavlink(Core::ArgumentParser parser)
   this->_home_position_publisher =
       this->create_publisher<HomePosition>("home_position");
   this->_odometry_publisher = this->create_publisher<Odometry>("odometry");
+  this->_position_publisher = this->create_publisher<GPS>("gps");
   this->_telemetry_publisher = this->create_publisher<Telemetry>("telemetry");
   this->_altitude_publisher = this->create_publisher<Altitude>("altitude");
   this->_config_publisher = this->create_publisher<KeyValue>("config/ftp");
@@ -479,6 +480,15 @@ void Mavlink::publish_telemtry() {
   msg.publish();
 }
 
+void Mavlink::position_cb(const mavsdk::Telemetry::Position &odom) {
+  auto msg = this->_position_publisher->new_msg();
+  auto gps = msg.content;
+  gps.setLatitude(odom.latitude_deg);
+  gps.setLongitude(odom.longitude_deg);
+  gps.setAltitude(odom.absolute_altitude_m);
+  msg.publish();
+}
+
 void Mavlink::odometry_cb(const mavsdk::Telemetry::Odometry &odom) {
   auto msg = this->_odometry_publisher->new_msg();
   auto angular = msg.content.initAngular();
@@ -519,6 +529,10 @@ void Mavlink::run() {
 
   this->_telemetry->subscribe_odometry(
       std::bind(&Mavlink::odometry_cb, this, std::placeholders::_1));
+
+  this->_telemetry->subscribe_position(
+      std::bind(&Mavlink::position_cb, this,  std::placeholders::_1)
+    );
 
   this->_telemetry->subscribe_battery(
       [this](const mavsdk::Telemetry::Battery &bat) {
