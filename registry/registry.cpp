@@ -67,48 +67,43 @@ zmq::message_t Registry::message_from_builder(
   return zmq::message_t(ptr.data(), packed_size);
 }
 
+void Registry::notify_node_change(std::string path, const Endpoint &endpoint) {
+  auto msg = this->_pub_notifications.new_msg();
+  msg.content.setType(RegistryNotificationType::NODE_CHANGE);
+  auto node = msg.content.initNodeAdded();
+  node.setPath(path);
+  node.setPort(endpoint.port);
+  msg.publish();
+}
+
 void Registry::notification_cb(
     const IncomingMessage<RegistryNotification> &msg) {
   if (msg.content.getType() == RegistryNotificationType::NODE_ADDED) {
     auto node = msg.content.getNodeAdded().getPath();
     auto path = std::string(node.cStr(), node.size());
     this->_logger.debug("Received node added event for %s", path.c_str());
-    try {
-      auto response = this->check_with_other_registries(path);
-      if (!response.has_value()) return;
-      auto value = response.value();
-      this->_logger.debug(
-          "another query returned following values: %s at port %d",
-          value.first.c_str(), value.second);
-      std::string address = std::get<0>(value);
-      uint port = std::get<1>(value);
-      for (auto id : _topic_to_waiters[path]) {
-        RouterEvent wait_event{
-            .identity = zmq::message_t(id.data(), id.size()),
-            .data = zmq::message_t(),
-        };
-        ::capnp::MallocMessageBuilder message;
-        RegistryResponse::Builder res = message.initRoot<RegistryResponse>();
-        res.setCode(200);
-        auto host = res.initHost();
-        host.setAddress(address);
-        host.setPort(port);
-        respond_event(wait_event, message_from_builder(message));
-      }
-    } catch (const std::out_of_range &) {
-    }
+    auto response = this->check_with_other_registries(path);
+    if (!response.has_value()) return;
+    auto value = response.value();
+    this->_logger.debug(
+        "Another query returned following values: %s at port %d",
+        value.first.c_str(), value.second);
+    std::string address = std::get<0>(value);
+    uint port = std::get<1>(value);
+    Endpoint endpoint{
+        .host = address,
+        .port = port,
+    };
+    this->notify_waiters(path, endpoint);
+    this->notify_node_change(path, endpoint);
     return;
   }
   if (msg.content.getType() == RegistryNotificationType::NODE_CHANGE) {
     auto node = msg.content.getNodeAdded().getPath();
     auto path = std::string(node.cStr(), node.size());
     try {
-      this->_logger.debug("Received node added event for %s", path.c_str());
-      auto msg = this->_pub_notifications.new_msg();
-      msg.content.setType(RegistryNotificationType::NODE_CHANGE);
-      auto node = msg.content.initNodeAdded();
-      node.setPath(path);
-      msg.publish();
+      this->_logger.debug("Received node change event for %s", path.c_str());
+      this->notify_node_change(path, {});
     } catch (const std::out_of_range &) {
       return;
     }
@@ -125,9 +120,8 @@ void Registry::respond_event(RouterEvent &event, zmq::message_t msg) {
   _router.send(msg, zmq::send_flags::none);
 }
 
-void Registry::notify_waiters(std::string path) {
+void Registry::notify_waiters(std::string path, const Endpoint &endpoint) {
   try {
-    auto endpoint = _topic_to_endpoint[path];
     for (auto id : _topic_to_waiters[path]) {
       RouterEvent wait_event{
           .identity = zmq::message_t(id.data(), id.size()),
@@ -174,14 +168,9 @@ void Registry::handle_request(RouterEvent event) {
     host.setAddress(endpoint.host);
     host.setPort(endpoint.port);
     respond_event(event, message_from_builder(message));
-    notify_waiters(path);
+    notify_waiters(path, endpoint);
     if (!insert_res.second) {
-      auto msg = this->_pub_notifications.new_msg();
-      msg.content.setType(RegistryNotificationType::NODE_CHANGE);
-      auto node = msg.content.initNodeAdded();
-      node.setPath(path);
-      node.setPort(endpoint.port);
-      msg.publish();
+      this->notify_node_change(path, endpoint);
     } else {
       auto msg = this->_pub_notifications.new_msg();
       msg.content.setType(RegistryNotificationType::NODE_ADDED);
@@ -282,7 +271,7 @@ Registry::check_with_other_registries(const std::string &path) {
       this->get_argument<std::string>("--registry-uri");
   if (other_registry.length()) {
     this->_logger.debug("Querying registry at %s for topic %s",
-                        other_registry.c_str(), path);
+                        other_registry.c_str(), path.c_str());
     return query_another_registry(path, other_registry);
   }
 

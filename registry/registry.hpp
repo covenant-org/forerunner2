@@ -56,7 +56,8 @@ class Registry : public BaseVertex {
   zmq::message_t message_from_builder(::capnp::MallocMessageBuilder& msg);
   std::optional<std::pair<std::string, uint32_t>> check_with_other_registries(
       const std::string&);
-  void notify_waiters(std::string path);
+  void notify_waiters(std::string path, const Endpoint&);
+  void notify_node_change(std::string path, const Endpoint&);
   void check_heartbeat();
 
  private:
