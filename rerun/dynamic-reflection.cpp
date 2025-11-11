@@ -1,80 +1,79 @@
-#include "capnp_schemas/std_msgs.capnp.h"   // genera los tipos estáticos
-#include <capnp/dynamic.h>
+#include "capnp/dynamic.h"
+#include "capnp/schema-loader.h"
+#include "capnp/serialize-packed.h"
 #include <capnp/message.h>
-#include <capnp/schema.h>
-#include <capnp/serialize-packed.h>
-#include <cstdint>
-#include <cstring>
 #include <iostream>
+#include <fstream>
 
 using namespace capnp;
 
-void dynamicExample(int fd, StructSchema schema) {
-    MallocMessageBuilder message;
-
-    DynamicStruct::Builder root = message.initRoot<DynamicStruct>(schema);
-
-    // Vamos a usar el tipo “Header” para este ejemplo dinámico,
-    // pero lo hacemos por reflexión (“sin saber de antemano los campos”).
-
-    root.set("seq", 42u);
-    root.set("stampSec", 1639999999ull);
-    root.set("stampNsec", 123456u);
-    root.set("frameId", "map");
-
-    // Serializamos el mensaje empaquetado
-    writePackedMessageToFd(fd, message);
-}
-
-void dynamicReadExample(int fd, StructSchema schema) {
-    PackedFdMessageReader reader(fd);
-
-    DynamicStruct::Reader root = reader.getRoot<DynamicStruct>(schema);
-
-    // Iteramos los campos de forma dinámica
-    for (auto field : schema.getFields()) {
-        auto name = field.getProto().getName().cStr();
-        auto type = field.getType();
-        std::cout << name << " = ";
-
-        switch (type.which()) {
-            case schema::Type::Which::VOID:
-                std::cout << "(void)";
-                break;
-            case schema::Type::Which::UINT8:
-            case schema::Type::Which::UINT16:
-            case schema::Type::Which::UINT32:
-            case schema::Type::Which::UINT64:
-                std::cout << root.get(field).as<uint64_t>();
-                break;
-            case schema::Type::Which::TEXT:
-                std::cout << "\"" << root.get(field).as<Text>().cStr() << "\"";
-                break;
-            // Aquí añadirías otros tipos según lo necesites
-            default:
-                std::cout << "(otro tipo)";
+void printValue(DynamicValue::Reader value, int indent = 0) {
+    std::string pad(indent, ' ');
+    switch (value.getType()) {
+        case DynamicValue::VOID:
+            std::cout << pad << "(void)";
+            break;
+        case DynamicValue::BOOL:
+            std::cout << pad << (value.as<bool>() ? "true" : "false");
+            break;
+        case DynamicValue::INT:
+            std::cout << pad << value.as<int64_t>();
+            break;
+        case DynamicValue::UINT:
+            std::cout << pad << value.as<uint64_t>();
+            break;
+        case DynamicValue::FLOAT:
+            std::cout << pad << value.as<double>();
+            break;
+        case DynamicValue::TEXT:
+            std::cout << pad << "\"" << value.as<Text>().cStr() << "\"";
+            break;
+        case DynamicValue::STRUCT: {
+            auto s = value.as<DynamicStruct>();
+            std::cout << pad << "{\n";
+            for (auto field : s.getSchema().getFields()) {
+                if (!s.has(field)) continue;
+                std::cout << pad << "  " << field.getProto().getName().cStr() << ": ";
+                printValue(s.get(field), indent + 4);
+                std::cout << "\n";
+            }
+            std::cout << pad << "}";
+            break;
         }
-        std::cout << "\n";
+        case DynamicValue::LIST: {
+            auto l = value.as<DynamicList>();
+            std::cout << pad << "[\n";
+            for (auto e : l) {
+                printValue(e, indent + 4);
+                std::cout << "\n";
+            }
+            std::cout << pad << "]";
+            break;
+        }
+        default:
+            std::cout << pad << "(unsupported)";
     }
 }
 
 int main(int argc, char* argv[]) {
-    if (argc < 2) {
-        std::cerr << "Usage: <write|read>\n";
+    if (argc != 2) {
+        std::cerr << "Usage: <schemaId or schemaFile>\n";
         return 1;
     }
 
-    // Obtenemos el esquema del tipo Header
-    StructSchema headerSchema = Schema::from<::Header>();
+    // 1. Cargar esquema dinámicamente
+    SchemaLoader loader;
+    // Si tienes un archivo .capnp o archivo .capnp.bin de esquema:
+    // loader.loadSchemaFile("std_msgs.capnp");
+    // Para simplicidad, supongamos usamos un esquema pre-generado (esto debes adaptar)
 
-    if (strcmp(argv[1], "write") == 0) {
-        dynamicExample(1, headerSchema);
-    } else if (strcmp(argv[1], "read") == 0) {
-        dynamicReadExample(0, headerSchema);
-    } else {
-        std::cerr << "Invalid arg: " << argv[1] << "\n";
-        return 1;
-    }
+    // 2. Leer mensaje desde stdin (fd 0) por ejemplo
+    MallocMessageBuilder message;
+    // En la práctica usarías PackedFdMessageReader reader(0);
+    // Reader root = reader.getRoot<DynamicStruct>(schema);
+
+    // 3. Impresion genérica
+    // printValue(root);
 
     return 0;
 }
