@@ -98,24 +98,25 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
         }
         return;
       }
-      
+
       // Check prerequisites for offboard mode
       if (!this->_telemetry->armed()) {
         res.setCode(400);
         res.setMessage("Cannot start offboard: drone not armed");
         return;
       }
-      
+
       if (!this->_telemetry->in_air()) {
         res.setCode(400);
         res.setMessage("Cannot start offboard: drone not in air");
         return;
       }
-      
+
       // Log current flight mode
       auto current_mode = this->_telemetry->flight_mode();
-      this->_logger.debug("Current flight mode before offboard: %d", static_cast<int>(current_mode));
-      
+      this->_logger.debug("Current flight mode before offboard: %d",
+                          static_cast<int>(current_mode));
+
       const auto offboard_result = this->_offboard->start();
       if (offboard_result != mavsdk::Offboard::Result::Success) {
         std::string error_msg = "Error starting offboard: ";
@@ -146,7 +147,7 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
         res.setMessage(error_msg);
         return;
       }
-      
+
       this->_logger.info("Offboard mode started successfully");
       return;
     }
@@ -174,7 +175,8 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
                           waypoint.getX(), waypoint.getY(), waypoint.getZ(),
                           waypoint.getR());
 
-      // Check if armed - allow waypoints for armed drones even if not in air yet
+      // Check if armed - allow waypoints for armed drones even if not in air
+      // yet
       if (!this->_telemetry->armed()) {
         this->_logger.error("Drone must be armed for waypoint commands");
         res.setCode(400);
@@ -182,12 +184,13 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
         return;
       }
 
-      // Set the position setpoint - offboard mode must be started separately by client
-      const auto set_res = this->_offboard->set_position_ned({
-          .north_m = waypoint.getX(),
-          .east_m = waypoint.getY(),
-          .down_m = waypoint.getZ(),
-          .yaw_deg = waypoint.getR()});
+      // Set the position setpoint - offboard mode must be started separately by
+      // client
+      const auto set_res =
+          this->_offboard->set_position_ned({.north_m = waypoint.getX(),
+                                             .east_m = waypoint.getY(),
+                                             .down_m = waypoint.getZ(),
+                                             .yaw_deg = waypoint.getR()});
       if (set_res != mavsdk::Offboard::Result::Success) {
         std::string error_msg = "set_position_ned failed: ";
         switch (set_res) {
@@ -198,7 +201,8 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
             error_msg += "Connection error";
             break;
           default:
-            error_msg += "Error code " + std::to_string(static_cast<int>(set_res));
+            error_msg +=
+                "Error code " + std::to_string(static_cast<int>(set_res));
             break;
         }
         this->_logger.error("%s", error_msg.c_str());
@@ -206,15 +210,17 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
         res.setMessage("Failed to set position setpoint");
         return;
       }
-      
-      this->_logger.debug("Waypoint setpoint set successfully - ready for offboard mode");
+
+      this->_logger.debug(
+          "Waypoint setpoint set successfully - ready for offboard mode");
       return;
     }
     case Command::GOTO_LOCATION: {
       this->_logger.debug("Entered Command::GOTO_LOCATION");
       auto gps_waypoint = command.content.getGotoLocation();
       this->_logger.debug("GPS WAYPOINT: lat=%f lon=%f alt=%f yaw=%f",
-                          gps_waypoint.getLatitude(), gps_waypoint.getLongitude(),
+                          gps_waypoint.getLatitude(),
+                          gps_waypoint.getLongitude(),
                           gps_waypoint.getAltitude(), gps_waypoint.getYaw());
 
       // Check if armed - goto_location requires armed drone
@@ -231,7 +237,7 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
           gps_waypoint.getLongitude(),  // longitude_deg
           gps_waypoint.getAltitude(),   // absolute_altitude_m
           gps_waypoint.getYaw());       // yaw_deg
-      
+
       if (goto_result != mavsdk::Action::Result::Success) {
         std::string error_msg = "goto_location failed: ";
         switch (goto_result) {
@@ -251,7 +257,8 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
             error_msg += "Timeout";
             break;
           default:
-            error_msg += "Error code " + std::to_string(static_cast<int>(goto_result));
+            error_msg +=
+                "Error code " + std::to_string(static_cast<int>(goto_result));
             break;
         }
         this->_logger.error("%s", error_msg.c_str());
@@ -259,7 +266,7 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
         res.setMessage("Failed to goto GPS location");
         return;
       }
-      
+
       this->_logger.info("GPS waypoint command sent successfully");
       return;
     }
@@ -267,9 +274,9 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
       this->_logger.debug("Entered Command::UPLOAD_MISSION");
       auto upload_cmd = command.content.getUploadMission();
       auto waypoints_list = upload_cmd.getWaypoints();
-      
+
       std::vector<mavsdk::Mission::MissionItem> mission_items;
-      
+
       for (auto waypoint : waypoints_list) {
         mavsdk::Mission::MissionItem item{};
         item.latitude_deg = waypoint.getLatitude();
@@ -281,34 +288,41 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
         item.gimbal_yaw_deg = waypoint.getGimbalYaw();
         item.loiter_time_s = waypoint.getLoiterTime();
         item.camera_photo_interval_s = waypoint.getCameraPhotoInterval();
-        
+
         // Convert camera action enum
         switch (waypoint.getCameraAction()) {
           case MissionItem::CameraAction::TAKE_PHOTO:
-            item.camera_action = mavsdk::Mission::MissionItem::CameraAction::TakePhoto;
+            item.camera_action =
+                mavsdk::Mission::MissionItem::CameraAction::TakePhoto;
             break;
           case MissionItem::CameraAction::START_PHOTO_INTERVAL:
-            item.camera_action = mavsdk::Mission::MissionItem::CameraAction::StartPhotoInterval;
+            item.camera_action =
+                mavsdk::Mission::MissionItem::CameraAction::StartPhotoInterval;
             break;
           case MissionItem::CameraAction::STOP_PHOTO_INTERVAL:
-            item.camera_action = mavsdk::Mission::MissionItem::CameraAction::StopPhotoInterval;
+            item.camera_action =
+                mavsdk::Mission::MissionItem::CameraAction::StopPhotoInterval;
             break;
           case MissionItem::CameraAction::START_VIDEO:
-            item.camera_action = mavsdk::Mission::MissionItem::CameraAction::StartVideo;
+            item.camera_action =
+                mavsdk::Mission::MissionItem::CameraAction::StartVideo;
             break;
           case MissionItem::CameraAction::STOP_VIDEO:
-            item.camera_action = mavsdk::Mission::MissionItem::CameraAction::StopVideo;
+            item.camera_action =
+                mavsdk::Mission::MissionItem::CameraAction::StopVideo;
             break;
           default:
-            item.camera_action = mavsdk::Mission::MissionItem::CameraAction::None;
+            item.camera_action =
+                mavsdk::Mission::MissionItem::CameraAction::None;
             break;
         }
-        
+
         mission_items.push_back(item);
       }
-      
-      this->_logger.info("Uploading mission with %zu waypoints", mission_items.size());
-      
+
+      this->_logger.info("Uploading mission with %zu waypoints",
+                         mission_items.size());
+
       // Create MissionPlan and upload
       mavsdk::Mission::MissionPlan mission_plan;
       mission_plan.mission_items = mission_items;
@@ -343,19 +357,19 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
         res.setMessage(error_msg);
         return;
       }
-      
+
       this->_logger.info("Mission uploaded successfully");
       return;
     }
     case Command::START_MISSION: {
       this->_logger.debug("Entered Command::START_MISSION");
-      
+
       if (!this->_telemetry->armed()) {
         res.setCode(400);
         res.setMessage("Cannot start mission: drone not armed");
         return;
       }
-      
+
       auto start_result = this->_mission->start_mission();
       if (start_result != mavsdk::Mission::Result::Success) {
         std::string error_msg = "Mission start failed: ";
@@ -378,13 +392,13 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
         res.setMessage(error_msg);
         return;
       }
-      
+
       this->_logger.info("Mission started successfully");
       return;
     }
     case Command::PAUSE_MISSION: {
       this->_logger.debug("Entered Command::PAUSE_MISSION");
-      
+
       auto pause_result = this->_mission->pause_mission();
       if (pause_result != mavsdk::Mission::Result::Success) {
         std::string error_msg = "Mission pause failed: ";
@@ -404,13 +418,13 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
         res.setMessage(error_msg);
         return;
       }
-      
+
       this->_logger.info("Mission paused successfully");
       return;
     }
     case Command::CLEAR_MISSION: {
       this->_logger.debug("Entered Command::CLEAR_MISSION");
-      
+
       auto clear_result = this->_mission->clear_mission();
       if (clear_result != mavsdk::Mission::Result::Success) {
         std::string error_msg = "Mission clear failed: ";
@@ -430,8 +444,24 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
         res.setMessage(error_msg);
         return;
       }
-      
+
       this->_logger.info("Mission cleared successfully");
+      return;
+    }
+    case Command::SET_ACTUATORS: {
+      auto actuators = command.content.getSetActuators();
+      mavsdk::Offboard::ActuatorControlGroup group;
+      for (const auto &value : actuators) {
+        group.controls.push_back(value);
+      }
+      mavsdk::Offboard::ActuatorControl ctl;
+      ctl.groups.push_back(group);
+      auto ctl_res = this->_offboard->set_actuator_control(ctl);
+      if (ctl_res != mavsdk::Offboard::Result::Success) {
+        this->_logger.error("Error sending actuators control");
+        res.setCode(500);
+        res.setMessage("Error sending actuators control");
+      }
       return;
     }
     default:
@@ -508,12 +538,17 @@ void Mavlink::run() {
         mavlink_msg_home_position_decode(&msg, &this->_mavlink_home_position);
         auto home_position_msg = this->_home_position_publisher->new_msg();
         home_position_msg.content.getPos().setX(this->_mavlink_home_position.x);
-        home_position_msg.content.getPos().setY(-this->_mavlink_home_position.y);
-        home_position_msg.content.getPos().setZ(-this->_mavlink_home_position.z);
+        home_position_msg.content.getPos().setY(
+            -this->_mavlink_home_position.y);
+        home_position_msg.content.getPos().setZ(
+            -this->_mavlink_home_position.z);
 
-        home_position_msg.content.getGps().setLatitude(this->_mavlink_home_position.latitude);
-        home_position_msg.content.getGps().setLongitude(this->_mavlink_home_position.longitude);
-        home_position_msg.content.getGps().setAltitude(this->_mavlink_home_position.altitude);
+        home_position_msg.content.getGps().setLatitude(
+            this->_mavlink_home_position.latitude);
+        home_position_msg.content.getGps().setLongitude(
+            this->_mavlink_home_position.longitude);
+        home_position_msg.content.getGps().setAltitude(
+            this->_mavlink_home_position.altitude);
         home_position_msg.publish();
       });
 

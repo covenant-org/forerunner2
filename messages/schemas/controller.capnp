@@ -32,6 +32,7 @@ struct Command{
     startMission @14 :Void;
     pauseMission @15 :Void;
     clearMission @16 :Void;
+    setActuators @17 :List(Float32);
   }
 }
 
