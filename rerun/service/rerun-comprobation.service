@@ -1,0 +1,9 @@
+[Unit]
+Description=Forerunner connectivity and registry check
+
+[Service]
+Type=oneshot
+Environment=COMPROBATION_BIN=/workspaces/forerunner2/build/rerun/rerun_comprobation
+ExecStart=/workspaces/forerunner2/build/rerun/rerun_comprobation
+
+## TODO: Ver manera de automatizar donde se encuentra el binario
