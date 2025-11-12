@@ -10,6 +10,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <mutex>
 #include <vertex.hpp>
 #include <zmq.hpp>
 #include <zmq_addon.hpp>
@@ -59,6 +60,8 @@ class Registry : public BaseVertex {
   void notify_waiters(std::string path, const Endpoint&);
   void notify_node_change(std::string path, const Endpoint&);
   void check_heartbeat();
+  void topics_action_cb(const IncomingMessage<TopicsListRequest>& request,
+                        TopicsListResponse::Builder& response);
 
  private:
   RegistryConfiguration _config;
@@ -68,6 +71,9 @@ class Registry : public BaseVertex {
   std::unordered_map<std::string, Endpoint> _topic_to_endpoint;
   std::map<std::string, std::vector<std::string>> _topic_to_waiters;
   Publisher<RegistryNotification> _pub_notifications;
+  std::shared_ptr<ActionServer<TopicsListRequest, TopicsListResponse>>
+      _topics_action;
+  std::mutex _topics_mutex;
   std::thread _heartbeat_thread;
   std::shared_ptr<Subscriber<RegistryNotification>> _sub_registry;
   std::thread _external_heartbeat_thread;
