@@ -15,6 +15,7 @@ namespace Rerun::Service {
 ConnectivityProbe::ConnectivityProbe(Core::ArgumentParser parser)
 		: Core::Vertex(parser), _online(false), _registry_running(false),
 			_watch_mode(this->get_argument<bool>("--watch")) {
+	// TODO: Hacer que revise en todas las interfaces, por si tiene distintas formas de acceso a internet
 	_host = "8.8.8.8";
 	_port = 53;
 	_timeout = std::chrono::milliseconds(1500);

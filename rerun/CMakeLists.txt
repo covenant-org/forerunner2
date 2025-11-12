@@ -17,4 +17,4 @@ add_executable(rerun_dynamic_reflection dynamic-reflection.cpp)
 
 target_link_libraries(rerun rerun_sdk core cppzmq capnp capnp_schemas kj ${PCL_LIBRARIES})
 target_link_libraries(rerun_comprobation core cppzmq capnp capnp_schemas kj)
-target_link_libraries(rerun_dynamic_reflection capnpc capnp kj)
+target_link_libraries(rerun_dynamic_reflection core cppzmq capnpc capnp capnp_schemas kj)

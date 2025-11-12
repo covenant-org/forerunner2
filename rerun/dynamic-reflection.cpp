@@ -1,68 +1,69 @@
 #include <capnp/dynamic.h>
-#include <capnp/message.h>
 #include <capnp/schema-parser.h>
 #include <capnp/schema.h>
 #include <capnp/serialize-packed.h>
 #include <kj/array.h>
-#include <kj/debug.h>
+#include <kj/io.h>
 #include <kj/string.h>
-#include <iostream>
+#include "dynamic-reflection.hpp"
+#include <functional>
+#include <sstream>
 #include <string>
-#include <unistd.h>
+#include <memory>
 
 using namespace capnp;
 
-void printValue(DynamicValue::Reader value, int indent = 0) {
+static constexpr const char* kSchemaRoot = "messages/schemas";
+
+static std::string printValue(DynamicValue::Reader value, int indent = 0) {
+    std::ostringstream out;
     std::string pad(indent, ' ');
     switch (value.getType()) {
         case DynamicValue::VOID:
-            std::cout << pad << "(void)";
+            out << pad << "(void)";
             break;
         case DynamicValue::BOOL:
-            std::cout << pad << (value.as<bool>() ? "true" : "false");
+            out << pad << (value.as<bool>() ? "true" : "false");
             break;
         case DynamicValue::INT:
-            std::cout << pad << value.as<int64_t>();
+            out << pad << value.as<int64_t>();
             break;
         case DynamicValue::UINT:
-            std::cout << pad << value.as<uint64_t>();
+            out << pad << value.as<uint64_t>();
             break;
         case DynamicValue::FLOAT:
-            std::cout << pad << value.as<double>();
+            out << pad << value.as<double>();
             break;
         case DynamicValue::TEXT:
-            std::cout << pad << "\"" << value.as<Text>().cStr() << "\"";
+            out << pad << "\"" << value.as<Text>().cStr() << "\"";
             break;
         case DynamicValue::STRUCT: {
             auto s = value.as<DynamicStruct>();
-            std::cout << pad << "{\n";
+            out << pad << "{\n";
             for (auto field : s.getSchema().getFields()) {
                 if (!s.has(field)) continue;
-                std::cout << pad << "  " << field.getProto().getName().cStr() << ": ";
-                printValue(s.get(field), indent + 4);
-                std::cout << "\n";
+                out << pad << "  " << field.getProto().getName().cStr() << ": "
+                    << printValue(s.get(field), indent + 4) << "\n";
             }
-            std::cout << pad << "}";
+            out << pad << "}";
             break;
         }
         case DynamicValue::LIST: {
             auto l = value.as<DynamicList>();
-            std::cout << pad << "[\n";
+            out << pad << "[\n";
             for (auto e : l) {
-                printValue(e, indent + 4);
-                std::cout << "\n";
+                out << printValue(e, indent + 4) << "\n";
             }
-            std::cout << pad << "]";
+            out << pad << "]";
             break;
         }
         default:
-            std::cout << pad << "(unsupported)";
+            out << pad << "(unsupported)";
     }
+    return out.str();
 }
 
-static StructSchema loadStructSchema(const char* schemaPath, const char* typeName) {
-    SchemaParser parser;
-
+static StructSchema loadStructSchema(SchemaParser& parser, const char* schemaPath, const char* typeName) {
     kj::ArrayPtr<const kj::StringPtr> importPath;
     auto fileSchema = parser.parseDiskFile(kj::StringPtr(schemaPath), kj::StringPtr(schemaPath),
                                            importPath);
@@ -84,22 +85,54 @@ static StructSchema loadStructSchema(const char* schemaPath, const char* typeNam
     return current.asStruct();
 }
 
-int main(int argc, char* argv[]) {
-    if (argc != 3) {
-        std::cerr << "Usage: rerun_dynamic_reflection <schema.capnp> <TypeName>\n";
-        return 1;
-    }
-
+DynamicReflection::DynamicReflection(Core::ArgumentParser args)
+    : Core::Vertex(args) {
+    auto schema_arg = this->_args.get_argument("--schema");
+    _schema_path = std::string(kSchemaRoot) + "/" + schema_arg;
+    _type_name = this->_args.get_argument("--type");
+    _topic = this->_args.get_argument("--topic");
     try {
-        auto schema = loadStructSchema(argv[1], argv[2]);
-        PackedFdMessageReader reader(STDIN_FILENO);
-        auto root = reader.getRoot<DynamicStruct>(schema);
-        printValue(root);
-        std::cout << std::endl;
+        _schema = loadStructSchema(_parser, _schema_path.c_str(), _type_name.c_str());
     } catch (const kj::Exception& ex) {
-        std::cerr << "Error: " << ex.getDescription().cStr() << "\n";
-        return 1;
+        this->_logger.error("No se pudo cargar el schema %s (%s): %s",
+                            _schema_path.c_str(), _type_name.c_str(),
+                            ex.getDescription().cStr());
+        throw;
     }
+    _topic_sub = this->create_subscriber<capnp::AnyPointer>(
+        _topic, std::bind(&DynamicReflection::message_cb, this, std::placeholders::_1));
+}
 
+void DynamicReflection::run() {
+    this->_logger.info(
+        "Escuchando el tópico '%s' y reflejando mensajes como %s",
+        _topic.c_str(), _type_name.c_str());
+    Core::Vertex::run();
+}
+
+void DynamicReflection::message_cb(const Core::IncomingMessage<capnp::AnyPointer>& msg) {
+    try {
+        auto bytes = kj::arrayPtr(
+            reinterpret_cast<const kj::byte*>(msg.buffer.data()), msg.buffer.size());
+        kj::ArrayInputStream stream(bytes);
+        ::capnp::PackedMessageReader reader(stream);
+        auto root = reader.getRoot<DynamicStruct>(_schema);
+        auto dump = printValue(root);
+        this->_logger.info("Mensaje recibido:\n%s", dump.c_str());
+    } catch (const kj::Exception& ex) {
+        this->_logger.error("Error reflejando mensaje: %s",
+                            ex.getDescription().cStr());
+    }
+}
+
+int main(int argc, char* argv[]) {
+    Core::BaseArgumentParser args(argc, argv);
+    args.add_argument("--schema").required().help("Ruta al archivo .capnp");
+    args.add_argument("--type").required().help("Nombre del struct a inspeccionar");
+    args.add_argument("--topic")
+        .default_value("telemetry")
+        .help("Tópico del que se leerán mensajes para reflejar");
+    DynamicReflection app(args);
+    app.run();
     return 0;
 }
