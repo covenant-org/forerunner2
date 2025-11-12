@@ -10,6 +10,7 @@
 #include <capnp_schemas/generics.capnp.h>
 #include <cmath>
 #include <eigen3/Eigen/src/Core/Matrix.h>
+#include <unistd.h>
 
 LowLevel::LowLevel(Core::ArgumentParser args) : Core::Vertex(args) {
   this->_odom_sub = this->create_subscriber<Odometry>(
@@ -114,12 +115,15 @@ void LowLevel::run() {
     return;
   }
   this->_logger.info("Armed");
+  sleep(1);
   auto first_actuator_ctl = this->_mavlink_client->new_msg();
-  auto ctl = first_actuator_ctl.content.initSetActuators(4);
-  ctl.set(0, 0);
-  ctl.set(1, 0);
-  ctl.set(2, 0);
-  ctl.set(3, 0);
+  auto ctl = first_actuator_ctl.content.initSetAttitude();
+  auto ctl_q = ctl.initQ(4);
+  ctl_q.set(0, 1);
+  ctl_q.set(1, 0);
+  ctl_q.set(2, 0);
+  ctl_q.set(3, 0);
+  ctl.setThrust(1);
   auto res_ctl = first_actuator_ctl.send();
   if (res_ctl.value().content.getCode() != 200) {
     this->_logger.error("Error sending first actuator control");

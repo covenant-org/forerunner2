@@ -106,11 +106,11 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
         return;
       }
 
-      if (!this->_telemetry->in_air()) {
-        res.setCode(400);
-        res.setMessage("Cannot start offboard: drone not in air");
-        return;
-      }
+      // if (!this->_telemetry->in_air()) {
+      //   res.setCode(400);
+      //   res.setMessage("Cannot start offboard: drone not in air");
+      //   return;
+      // }
 
       // Log current flight mode
       auto current_mode = this->_telemetry->flight_mode();
@@ -457,6 +457,23 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
       mavsdk::Offboard::ActuatorControl ctl;
       ctl.groups.push_back(group);
       auto ctl_res = this->_offboard->set_actuator_control(ctl);
+      if (ctl_res != mavsdk::Offboard::Result::Success) {
+        this->_logger.error("Error sending actuators control");
+        res.setCode(500);
+        res.setMessage("Error sending actuators control");
+      }
+      return;
+    }
+    case Command::SET_ATTITUDE: {
+      auto attitude = command.content.getSetAttitude();
+      mavsdk::Offboard::Attitude ctl;
+      auto q = attitude.getQ();
+      ctl.q[0] = q[0];
+      ctl.q[1] = q[1];
+      ctl.q[2] = q[2];
+      ctl.q[3] = q[3];
+      ctl.thrust_value = attitude.getThrust();
+      auto ctl_res = this->_offboard->set_attitude(ctl);
       if (ctl_res != mavsdk::Offboard::Result::Success) {
         this->_logger.error("Error sending actuators control");
         res.setCode(500);

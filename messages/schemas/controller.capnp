@@ -7,6 +7,11 @@ struct PointYaw{
   r   @3 :Float32;
 }
 
+struct Attitude{
+    q      @0 :List(Float32);
+    thrust @1 :Float32;
+}
+
 struct Command{
  union {
     waypoint  @0 :PointYaw;
@@ -33,8 +38,10 @@ struct Command{
     pauseMission @15 :Void;
     clearMission @16 :Void;
     setActuators @17 :List(Float32);
+    setAttitude  @18 :Attitude;
   }
 }
+
 
 struct UploadMission {
   waypoints @0 :List(MissionItem);
