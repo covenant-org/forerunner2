@@ -1052,4 +1052,6 @@ perf.data*
 
 # rerun-recording-stream test
 test-records/
+test-records-send/
+test-records-send-copy/
 *.rrd
