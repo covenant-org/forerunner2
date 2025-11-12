@@ -13,6 +13,16 @@ set(EXCLUDED_SUBDIRS
     "messages"
 )
 
+## Experimental
+find_package(capnp_schemas REQUIRED)
+if (TARGET capnp_schemas::capnp_schemas AND NOT TARGET capnp_schemas)
+    add_library(capnp_schemas INTERFACE IMPORTED)
+    set_target_properties(capnp_schemas PROPERTIES
+        INTERFACE_LINK_LIBRARIES capnp_schemas::capnp_schemas
+    )
+endif()
+## End Experimental
+
 if (EXISTS "/etc/nv_tegra_release")
   message(WARNING "Jetson Detected not compiling rerun")
   list(APPEND EXCLUDED_SUBDIRS "rerun")

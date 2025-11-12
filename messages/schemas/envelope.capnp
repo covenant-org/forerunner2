@@ -5,7 +5,7 @@
 
 struct Envelope {
   typeId @0 :UInt64;          # ID @0x... del struct real (opcional pero útil)
-  typeName @1 :Text;          # Nombre legible, ej. "std_msgs/Header"
+  typeName @1 :Text;          # Nombre legible, ej. "Header"
   topic @2 :Text;             # Tópico donde se publicó
   timestampUsec @3 :UInt64;   # Marca de tiempo (µs desde epoch, por ejemplo)
 
