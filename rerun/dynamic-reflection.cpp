@@ -94,7 +94,7 @@ DynamicReflection::DynamicReflection(Core::ArgumentParser args)
     try {
         _schema = loadStructSchema(_parser, _schema_path.c_str(), _type_name.c_str());
     } catch (const kj::Exception& ex) {
-        this->_logger.error("No se pudo cargar el schema %s (%s): %s",
+        this->_logger.error("Failed to load schema %s (%s): %s",
                             _schema_path.c_str(), _type_name.c_str(),
                             ex.getDescription().cStr());
         throw;
@@ -105,33 +105,39 @@ DynamicReflection::DynamicReflection(Core::ArgumentParser args)
 
 void DynamicReflection::run() {
     this->_logger.info(
-        "Escuchando el tópico '%s' y reflejando mensajes como %s",
+        "Listening to topic '%s' and reflecting messages as %s",
         _topic.c_str(), _type_name.c_str());
     Core::Vertex::run();
 }
 
 void DynamicReflection::message_cb(const Core::IncomingMessage<capnp::AnyPointer>& msg) {
     try {
-        auto bytes = kj::arrayPtr(
-            reinterpret_cast<const kj::byte*>(msg.buffer.data()), msg.buffer.size());
-        kj::ArrayInputStream stream(bytes);
-        ::capnp::PackedMessageReader reader(stream);
-        auto root = reader.getRoot<DynamicStruct>(_schema);
+        auto pointer = msg.content;
+        auto root = pointer.getAs<DynamicStruct>(_schema);
         auto dump = printValue(root);
-        this->_logger.info("Mensaje recibido:\n%s", dump.c_str());
+        if (msg.metadata.present) {
+            this->_logger.info(
+                "Message received (topic=%s typeId=%lu ts=%lu):\n%s",
+                msg.metadata.topic.c_str(),
+                static_cast<unsigned long>(msg.metadata.typeId),
+                static_cast<unsigned long>(msg.metadata.timestampUsec),
+                dump.c_str());
+        } else {
+            this->_logger.info("Message received:\n%s", dump.c_str());
+        }
     } catch (const kj::Exception& ex) {
-        this->_logger.error("Error reflejando mensaje: %s",
+        this->_logger.error("Error reflecting message: %s",
                             ex.getDescription().cStr());
     }
 }
 
 int main(int argc, char* argv[]) {
     Core::BaseArgumentParser args(argc, argv);
-    args.add_argument("--schema").required().help("Ruta al archivo .capnp");
-    args.add_argument("--type").required().help("Nombre del struct a inspeccionar");
+    args.add_argument("--schema").required().help("Path to the .capnp file");
+    args.add_argument("--type").required().help("Name of the struct to inspect");
     args.add_argument("--topic")
         .default_value("telemetry")
-        .help("Tópico del que se leerán mensajes para reflejar");
+        .help("Topic to read messages from for reflection");
     DynamicReflection app(args);
     app.run();
     return 0;
