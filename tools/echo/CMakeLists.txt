@@ -16,6 +16,7 @@ target_compile_options(echo PRIVATE ${ZMQ_CFLAGS_OTHER})
 
 target_link_libraries(echo PRIVATE
     core
+    capnpc
     ${ZMQ_LIBRARIES}
     Threads::Threads
 )
