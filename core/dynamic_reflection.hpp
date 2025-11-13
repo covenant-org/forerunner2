@@ -25,7 +25,8 @@ class DynamicReflection : public Core::Vertex {
     static Core::ArgumentParser make_default_args() {
         static char program_name[] = "dynamic-reflection";
         static char* argv[] = {program_name};
-        return Core::ArgumentParser(1, argv);
+        Core::BaseArgumentParser parser(1, argv);
+        return parser;
     }
 
     static std::string format_value(capnp::DynamicValue::Reader value,
@@ -151,11 +152,23 @@ inline void DynamicReflection::message_cb(
         auto root = pointer.getAs<capnp::DynamicStruct>(_schema);
         auto dump = format_value(root);
         if (msg.metadata.present) {
+            const auto& meta = msg.metadata;
+            const char* schema_path = meta.schemaPath.empty() ? "<none>" : meta.schemaPath.c_str();
+            const size_t schema_text_bytes = meta.schemaText.size();
             this->_logger.info(
-                "Message received (topic=%s typeId=%lu ts=%lu):\n%s",
-                msg.metadata.topic.c_str(),
-                static_cast<unsigned long>(msg.metadata.typeId),
-                static_cast<unsigned long>(msg.metadata.timestampUsec),
+                "Message received with metadata:\n"
+                "  topic=%s\n"
+                "  typeId=%lu\n"
+                "  typeName=%s\n"
+                "  timestampUsec=%lu\n"
+                "  schemaPath=%s\n"
+                "  schemaTextBytes=%zu\n%s",
+                meta.topic.c_str(),
+                static_cast<unsigned long>(meta.typeId),
+                meta.typeName.c_str(),
+                static_cast<unsigned long>(meta.timestampUsec),
+                schema_path,
+                schema_text_bytes,
                 dump.c_str());
         } else {
             this->_logger.info("Message received:\n%s", dump.c_str());

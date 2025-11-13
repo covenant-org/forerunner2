@@ -3,6 +3,7 @@
 
 #include <capnp/any.h>
 #include <capnp/message.h>
+#include <capnp/schema.h>
 #include <capnp/serialize-packed.h>
 #include <capnp/serialize.h>
 #include <capnp_schemas/envelope.capnp.h>
@@ -56,9 +57,38 @@ class OutgoingMessage {
             .count();
     envelope.setTimestampUsec(micros);
     envelope.setTypeId(T::_capnpPrivate::typeId);
-    // TODO: Mapear o sacar de alguna manera el nombre del schema
-    envelope.setSchemaPath("");
-    envelope.setTypeName(typeid(T).name());
+
+    capnp::Schema schema = capnp::Schema::from<T>();
+    auto proto = schema.getProto();
+    auto displayName = proto.getDisplayName();
+    std::string qualified_name;
+    if (displayName.size() > 0) {
+      qualified_name.assign(displayName.cStr(), displayName.size());
+    } else {
+      qualified_name = typeid(T).name();
+    }
+
+    std::string type_name = qualified_name;
+    auto name_sep = type_name.find_last_of(':');
+    if (name_sep == std::string::npos) {
+      name_sep = type_name.find_last_of('.');
+    }
+    if (name_sep != std::string::npos && name_sep + 1 < type_name.size()) {
+      type_name = type_name.substr(name_sep + 1);
+    }
+    envelope.setTypeName(type_name);
+
+    std::string schema_path;
+    auto colon_pos = qualified_name.find(':');
+    if (colon_pos != std::string::npos) {
+      schema_path = qualified_name.substr(0, colon_pos);
+    } else {
+      auto dot_pos = qualified_name.find('.');
+      if (dot_pos != std::string::npos) {
+        schema_path = qualified_name.substr(0, dot_pos) + ".capnp";
+      }
+    }
+    envelope.setSchemaPath(schema_path);
     envelope.setTopic(topic);
   }
   uint32_t publish() { return sender->publish(builder); }
