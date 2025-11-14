@@ -2,7 +2,8 @@
 
 ## Install
 ```bash
-curl https://dl.min.io/client/mc/release/linux-amd64/mc -o mc && chmod +x mc
+curl -fsSLo /tmp/mc https://dl.min.io/client/mc/release/linux-amd64/mc \
+	&& sudo install -m 0755 /tmp/mc /usr/local/bin/mc
 ```
 
 ## Alias to server

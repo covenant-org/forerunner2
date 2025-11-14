@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-## TODO: cambiar direcciones de ssh y carpetas a direcciones finales
+## TODO: Asegurar de establecer alias
+## TODO: Bash de instalacion de mc, ajuste de alias y creacion de servicio
 RELATIVE_DIR="rerun/test-records-send"
-REMOTE_USER="manuelo247"
-REMOTE_HOST="192.168.100.11"
-REMOTE_PATH="~/test"
+MC_ALIAS="local"
+MC_BUCKET="rerun"
+MC_DESTINATION="${MC_ALIAS}/${MC_BUCKET}"
+MC_BIN="${MC_BIN:-mc}"
 PROBE_BIN_OVERRIDE="${COMPROBATION_BIN:-}"
 
 SCRIPT_DIR=$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -35,6 +37,16 @@ fi
 
 if [[ ! -x "$PROBE_BIN" ]]; then
   echo "Connectivity probe not executable: $PROBE_BIN" >&2
+  exit 1
+fi
+
+if [[ -z "$MC_DESTINATION" ]]; then
+  echo "MC_DESTINATION must be set." >&2
+  exit 1
+fi
+
+if ! command -v "$MC_BIN" >/dev/null 2>&1; then
+  echo "Unable to locate mc binary: $MC_BIN" >&2
   exit 1
 fi
 
@@ -79,29 +91,8 @@ fi
 
 trap 'echo "Interrupt received, stopping."; exit 1' INT TERM
 
-remote_home=$(ssh "${REMOTE_USER}@${REMOTE_HOST}" 'printf %s "$HOME"') || {
-  echo "Failed to determine remote home directory." >&2
-  exit 1
-}
-
-resolve_remote_path() {
-  local path="$1"
-  if [[ "$path" == "~" ]]; then
-    printf '%s' "$remote_home"
-  elif [[ "$path" == ~/* ]]; then
-    printf '%s/%s' "$remote_home" "${path:2}"
-  else
-    printf '%s' "$path"
-  fi
-}
-
-escape_remote_path() {
-  printf "%s" "$1" | sed "s/'/'\\''/g"
-}
-
-remote_base=$(resolve_remote_path "$REMOTE_PATH")
-remote_base=${remote_base%/}
-[[ -z "$remote_base" ]] && remote_base="."
+remote_base=${MC_DESTINATION%/}
+[[ -z "$remote_base" ]] && remote_base="$MC_DESTINATION"
 
 abort_transfer=false
 
@@ -116,31 +107,25 @@ for file in "${files[@]}"; do
 
   rel_path=${file#"${SOURCE_DIR}/"}
   remote_target="$remote_base/$rel_path"
-  remote_dir=$(dirname "$remote_target")
 
-  remote_dir_escaped=$(escape_remote_path "$remote_dir")
-  remote_target_escaped=$(escape_remote_path "$remote_target")
+  echo "Transferring ${file} -> ${remote_target}"
+  "$MC_BIN" cp "$file" "$remote_target" &
+  mc_pid=$!
 
-  echo "Transferring ${file} -> ${REMOTE_USER}@${REMOTE_HOST}:${remote_target}"
-  ssh "${REMOTE_USER}@${REMOTE_HOST}" "mkdir -p '$remote_dir_escaped'" >/dev/null
-
-  scp "$file" "${REMOTE_USER}@${REMOTE_HOST}:'$remote_target_escaped'" &
-  scp_pid=$!
-
-  while kill -0 "$scp_pid" >/dev/null 2>&1; do
+  while kill -0 "$mc_pid" >/dev/null 2>&1; do
     if ! check_conditions quiet; then
       echo "Conditions changed during transfer of ${file}. Cancelling." >&2
-  kill "$scp_pid" >/dev/null 2>&1 || true
-  wait "$scp_pid" >/dev/null 2>&1 || true
-  ssh "${REMOTE_USER}@${REMOTE_HOST}" "rm -f '$remote_target_escaped'" >/dev/null 2>&1 || true
+      kill "$mc_pid" >/dev/null 2>&1 || true
+      wait "$mc_pid" >/dev/null 2>&1 || true
+      "$MC_BIN" rm --force "$remote_target" >/dev/null 2>&1 || true
       abort_transfer=true
       break 2
     fi
     sleep 1
   done
 
-  if ! wait "$scp_pid"; then
-    echo "scp failed for ${file}. Stopping." >&2
+  if ! wait "$mc_pid"; then
+    echo "mc cp failed for ${file}. Stopping." >&2
     abort_transfer=true
     break
   fi
