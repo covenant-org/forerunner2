@@ -21,13 +21,14 @@ LowLevel::LowLevel(Core::ArgumentParser args) : Core::Vertex(args) {
   _pos = Eigen::Vector3d(0, 0, 0);
   _linear_velocity = Eigen::Vector3d(0, 0, 0);
   _angular_velocity = Eigen::Vector3d(0, 0, 0);
-  _g = Eigen::Vector3d(0, 0, 0);
+  _g = Eigen::Vector3d(0, 0, -9.81);
+  _m = 0.3;
   _f = Eigen::Vector3d(0, 0, 0);
-  _kpt << 8, 0, 0, 0, 8, 0, 0, 0, 8;
-  _kdt << 1, 0, 0, 0, 1, 0, 0, 0, 1;
+  _kpt << 0.05, 0, 0, 0, 0.05, 0, 0, 0, 0.001;
+  _kdt << 0.0, 0, 0, 0, 0.0, 0, 0, 0, 0.04;
   _J << 0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1;
-  _kpr << 50, 0, 0, 0, 50, 0, 0, 0, 50;
-  _kdr << 1, 0, 0, 0, 1, 0, 0, 0, 1;
+  _kpr << 0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1;
+  _kdr << 0, 0, 0, 0, 0, 0, 0, 0, 0;
 }
 
 void LowLevel::_odom_cb(const Core::IncomingMessage<Odometry> &msg) {
@@ -35,9 +36,10 @@ void LowLevel::_odom_cb(const Core::IncomingMessage<Odometry> &msg) {
   auto odom_pos = msg.content.getPosition();
   auto velocity = msg.content.getVelocity();
   auto angular = msg.content.getAngular();
-  _q = Eigen::Quaterniond(odom_q.getW(), odom_q.getX(), -odom_q.getY(),
-                          -odom_q.getZ());
-  _pos = Eigen::Vector3d(odom_pos.getX(), -odom_q.getY(), -odom_pos.getZ());
+  _q = Eigen::Quaterniond(odom_q.getW(), odom_q.getX(), odom_q.getY(),
+                          odom_q.getZ());
+  _q.normalize();
+  _pos = Eigen::Vector3d(odom_pos.getX(), odom_q.getY(), odom_pos.getZ());
   _linear_velocity =
       Eigen::Vector3d(velocity.getX(), velocity.getY(), velocity.getZ());
   _angular_velocity =
@@ -101,7 +103,7 @@ Eigen::Vector3d LowLevel::get_torque_input(Eigen::Vector3d fu, double yaw) {
 }
 
 void LowLevel::run() {
-  Core::RateKeeper rk(100);
+  Core::RateKeeper rk(1000);
   auto command = this->_mavlink_client->new_msg();
   command.content.setArm();
   auto res = command.send();
@@ -117,13 +119,11 @@ void LowLevel::run() {
   this->_logger.info("Armed");
   sleep(1);
   auto first_actuator_ctl = this->_mavlink_client->new_msg();
-  auto ctl = first_actuator_ctl.content.initSetAttitude();
-  auto ctl_q = ctl.initQ(4);
-  ctl_q.set(0, 1);
-  ctl_q.set(1, 0);
-  ctl_q.set(2, 0);
-  ctl_q.set(3, 0);
-  ctl.setThrust(1);
+  auto ctl = first_actuator_ctl.content.initSetActuators(4);
+  ctl.set(0, 0);
+  ctl.set(1, 0);
+  ctl.set(2, 0);
+  ctl.set(3, 0);
   auto res_ctl = first_actuator_ctl.send();
   if (res_ctl.value().content.getCode() != 200) {
     this->_logger.error("Error sending first actuator control");
@@ -139,6 +139,35 @@ void LowLevel::run() {
     return;
   }
   while (true) {
+    auto ut = this->get_f_desired({0, 0, 7});
+    auto fth = ut.norm();
+    Eigen::Vector3d fu = ut / fth;
+    auto ur = this->get_torque_input(fu, 0);
+    Eigen::Vector3d tau = this->_J * ur;
+    auto actuator_ctl = this->_mavlink_client->new_msg();
+    auto ctl = actuator_ctl.content.initSetActuators(4);
+    this->_logger.info("fth: %f tx: %f ty: %f tz: %f", fth, tau[0], tau[1],
+                       tau[2]);
+    this->_logger.info("Error :%f",
+                       (this->_pos - Eigen::Vector3d(0, 0, 7)).norm());
+    ctl.set(0,
+            std::min(std::sqrt(std::max(
+                         (1.0 / 4.0) * (fth + tau[0] + tau[1] + tau[2]), 0.0)),
+                     1.0));
+    ctl.set(1,
+            std::min(std::sqrt(std::max(
+                         (1.0 / 4.0) * (fth - tau[0] - tau[1] + tau[2]), 0.0)),
+                     1.0));
+    ctl.set(2,
+            std::min(std::sqrt(std::max(
+                         (1.0 / 4.0) * (fth - tau[0] + tau[1] - tau[2]), 0.0)),
+                     1.0));
+    ctl.set(3,
+            std::min(std::sqrt(std::max(
+                         (1.0 / 4.0) * (fth + tau[0] - tau[1] - tau[2]), 0.0)),
+                     1.0));
+    actuator_ctl.send();
+    this->_logger.info("Command sent");
     rk.keep();
   }
 }

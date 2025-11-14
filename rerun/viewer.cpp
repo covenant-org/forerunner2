@@ -2,6 +2,7 @@
 #include "rerun/archetypes/arrows3d.hpp"
 #include "rerun/archetypes/asset3d.hpp"
 #include "rerun/archetypes/boxes3d.hpp"
+#include "rerun/archetypes/scalars.hpp"
 #include "rerun/components/fill_mode.hpp"
 #include "rerun/components/translation3d.hpp"
 #include "rerun/datatypes/quaternion.hpp"
@@ -181,9 +182,18 @@ void Viewer::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
   this->_rec->log("world/drone",
                   rerun::Transform3D::from_translation_rotation(
                       rerun::components::Translation3D{
-                          position.getX(), -position.getY(), -position.getZ()},
+                          position.getX(), position.getY(), position.getZ()},
                       rerun::Rotation3D(rerun::datatypes::Quaternion{
-                          q.getX(), -q.getY(), -q.getZ(), q.getW()})));
+                          q.getX(), q.getY(), q.getZ(), q.getW()})));
+  this->_rec->log(
+      "world/drone/velocity/x",
+      rerun::Scalars(static_cast<double>(content.getVelocity().getX())));
+  this->_rec->log(
+      "world/drone/velocity/y",
+      rerun::Scalars(static_cast<double>(content.getVelocity().getY())));
+  this->_rec->log(
+      "world/drone/velocity/z",
+      rerun::Scalars(static_cast<double>(content.getVelocity().getZ())));
 }
 
 void Viewer::goal_cb(const Core::IncomingMessage<Position> &msg) {
