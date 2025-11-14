@@ -11,6 +11,8 @@
 #include <capnp_schemas/zed.capnp.h>
 #include <capnp_schemas/geometry_msgs.capnp.h>
 #include <memory>
+#include <optional>
+#include <string>
 #include <pcl/compression/octree_pointcloud_compression.h>
 #include <pcl/impl/point_types.hpp>
 #include <pcl/point_cloud.h>
@@ -42,6 +44,9 @@ class Viewer : Core::Vertex {
       *_map_point_cloud_decoder;
   rerun::archetypes::Asset3D _drone_model;
   rerun::Quaternion _drone_quat;
+  std::string build_recording_path(
+      const std::string &user_input,
+      const std::optional<std::string> &recording_type = std::nullopt);
 
  public:
   void goal_cb(const Core::IncomingMessage<Position> &);

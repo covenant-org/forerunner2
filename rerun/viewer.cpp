@@ -12,16 +12,75 @@
 #include "viewer.hpp"
 #include <Eigen/src/Geometry/Quaternion.h>
 #include <capnp_schemas/zed.capnp.h>
+#include <chrono>
 #include <cmath>
 #include <cstring>
+#include <ctime>
 #include <exception>
+#include <filesystem>
+#include <iomanip>
+#include <optional>
 #include <pcl/impl/point_types.hpp>
 #include <pcl/point_cloud.h>
 #include <rerun.hpp>
 #include <rerun/recording_stream.hpp>
+#include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 #include <zlib.h>
+
+std::string Viewer::build_recording_path(
+    const std::string& user_input,
+    const std::optional<std::string>& recording_type) {
+  namespace fs = std::filesystem;
+
+  const auto root = Core::find_root();
+  const fs::path base_path = root.empty() ? fs::current_path() : fs::path(root);
+  fs::path recordings_dir = base_path / "rerun" / "recordings";
+
+  if (recording_type && !recording_type->empty()) {
+    fs::path type_dir = fs::path(*recording_type).filename();
+    recordings_dir /= type_dir;
+  }
+
+  std::error_code ec;
+  fs::create_directories(recordings_dir, ec);
+  if (ec) {
+    this->_logger.error("Failed to create recordings directory '%s': %s",
+                        recordings_dir.string().c_str(), ec.message().c_str());
+    throw std::runtime_error("Failed to create recordings directory");
+  }
+
+  fs::path user_path(user_input);
+  std::string base_name = user_path.stem().string();
+  if (base_name.empty()) {
+    base_name = user_path.filename().string();
+  }
+  if (base_name.empty()) {
+    base_name = "recording";
+  }
+
+  const auto now = std::chrono::system_clock::now();
+  std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+  std::tm tm_info{};
+#ifdef _WIN32
+  localtime_s(&tm_info, &now_time);
+#else
+  localtime_r(&now_time, &tm_info);
+#endif
+
+  std::ostringstream filename;
+  filename << base_name << '-' << std::setfill('0') << std::setw(2)
+           << tm_info.tm_mday << '-' << std::setw(2) << (tm_info.tm_mon + 1)
+           << '-' << (tm_info.tm_year + 1900) << '-' << std::setw(2)
+           << tm_info.tm_hour << '-' << std::setw(2) << tm_info.tm_min << '-'
+           << std::setw(2) << tm_info.tm_sec << ".rrd";
+
+  const fs::path final_path = recordings_dir / filename.str();
+  this->_logger.info("Saving rerun recording to %s", final_path.string().c_str());
+  return final_path.string();
+}
 
 Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
   this->_point_cloud_decoder =
@@ -30,14 +89,22 @@ Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
       new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>();
 
   this->_rec = std::make_shared<rerun::RecordingStream>("Forerunner v2");
-  if (auto save_file = args.present("--save-file")) {
-    auto error = this->_rec->save(*save_file);
+  const bool no_record = args.get_argument<bool>("--no-record");
+  const bool spawn_requested = args.get_argument<bool>("--spawn");
+  const auto recording_type = args.present("--type");
+
+  if (!no_record) {
+    const auto recording_id = args.get_argument<std::string>("--id");
+    auto final_path = this->build_recording_path(recording_id, recording_type);
+    auto error = this->_rec->save(final_path);
     if (error.is_err()) {
       this->_logger.error("Error while saving rerun streaming to file: %s",
                           error.description.c_str());
       throw error;
     }
-  } else if (auto url = args.present("--grpc")) {
+  }
+
+  if (auto url = args.present("--grpc")) {
     auto error = this->_rec->connect_grpc();
     if (error.is_err()) {
       this->_logger.error(
@@ -45,7 +112,7 @@ Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
           url->c_str(), error.description.c_str());
       throw error;
     }
-  } else {
+  } else if (spawn_requested || no_record) {
     this->_rec->spawn().exit_on_failure();
   }
 
@@ -577,10 +644,18 @@ int main(int argc, char** argv) {
       .implicit_value(false)
       .help("Enable decompression of map chunks")
       .flag();
+  args.add_argument("--id")
+    .default_value(std::string("record"))
+    .help("Identifier used to name the recording file");
+  args.add_argument("--type")
+    .help("Subdirectory under rerun/recordings to store the recording");
+  args.add_argument("--no-record")
+    .default_value(false)
+    .implicit_value(true)
+    .help("Disable recording output")
+    .flag();
   auto& group = args.add_mutually_exclusive_group();
   group.add_argument("--grpc").help("URL of remote viewer");
-  group.add_argument("--save-file")
-      .help("Path of file to save the recording to");
   group.add_argument("--spawn")
       .help("Start or stream to already opened local viewer")
       .flag();
