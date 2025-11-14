@@ -39,7 +39,6 @@ class DynamicReflection : public Core::Vertex {
     DynamicReflection(const std::string& topic,
                       std::optional<std::string> schema = std::nullopt,
                       std::optional<std::string> type = std::nullopt);
-    // TODO: Con el puro topico ya podria extraer los otros 2 (Schema y type)
 
     void run() override;
 

@@ -5,6 +5,7 @@ pkg_check_modules(ZMQ REQUIRED libzmq)
 find_package(Threads REQUIRED)
 
 add_executable(echo echo.cpp)
+add_executable(list list.cpp)
 
 target_include_directories(echo PRIVATE
     ${ZMQ_INCLUDE_DIRS}
@@ -20,3 +21,6 @@ target_link_libraries(echo PRIVATE
     ${ZMQ_LIBRARIES}
     Threads::Threads
 )
+
+target_link_libraries(list PRIVATE core)
+target_include_directories(list PRIVATE ${CMAKE_SOURCE_DIR})

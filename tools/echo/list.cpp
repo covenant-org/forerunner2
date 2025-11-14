@@ -56,7 +56,7 @@ class TopicsTool : public Core::Vertex {
 
 int main(int argc, char** argv) {
 	Core::BaseArgumentParser args(argc, argv);
-	args.add_argument("--topic").default_value("registry/topics/list");
+	args.add_argument("--topic").default_value("registry/topics");
 	args.add_argument("--include-internal")
 			.help("Include registry-internal topics in the output")
 			.default_value(false)
