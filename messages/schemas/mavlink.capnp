@@ -1,22 +1,14 @@
 @0xe49de075f1994b84;
 
-struct Position {
-  x @0 :Float32;
-  y @1 :Float32;
-  z @2 :Float32;
-}
+using Geometry = import "geometry_msgs.capnp";
+using Point = Geometry.Point;
+using Vector3 = Geometry.Vector3;
+using Quaternion = Geometry.Quaternion;
 
 struct GPS {
   latitude @0 :Float32;
   longitude @1 :Float32;
   altitude @2 :Float32;
-}
-
-struct Quartenion{
-  x @0 :Float32;
-  y @1 :Float32;
-  z @2 :Float32;
-  w @3 :Float32;
 }
 
 struct BatteryLevel {
@@ -30,17 +22,18 @@ struct Telemetry {
   armed   @3 :Bool;
 }
 
+# TODO: Restructurar mejor el mensaje Odometry y moverlo a nav_msgs.capnp
 struct Odometry {
-  position @0 :Position;
-  velocity @1 :Position;
-  angular  @2 :Position;
-  q        @3 :Quartenion;
+  position @0 :Point;
+  velocity @1 :Vector3;
+  angular  @2 :Vector3;
+  q        @3 :Quaternion;
   heading  @4 :Float32;
   gps      @5 :GPS;
 }
 
 struct HomePosition {
-  pos @0 :Position;
+  pos @0 :Point;
   gps @1 :GPS;
 }
 

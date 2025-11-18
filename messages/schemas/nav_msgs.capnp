@@ -6,7 +6,7 @@ using Header = StdMsgs.Header;
 using GeometryMsgs = import "geometry_msgs.capnp";
 using PoseStamped = GeometryMsgs.PoseStamped;
 
-# nav_msgs/Path
+# TODO: Considerar si los 'Header' siguen siendo necesarios 
 struct Path {
   header @0 :Header;
   poses  @1 :List(PoseStamped);
