@@ -25,7 +25,6 @@ struct Marker {
   scale     @7 :Vector3;    # size of the shape
 }
 
-# visualization_msgs/MarkerArray
 struct MarkerArray {
   markers @0 :List(Marker);
 }

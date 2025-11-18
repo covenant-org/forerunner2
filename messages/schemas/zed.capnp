@@ -1,12 +1,5 @@
 @0xf7d08bd9a8e2fe17;
 
-struct PointCloud { # TODO: Mover a sensor_msgs y reestructurar (Opcional)
-	width @0 :UInt16;
-	height @1 :UInt16;
-	data @2 :Data;
-	size @3 :UInt32;
-}
-
 struct PointCloudChunk {
 	index @0 :UInt16;
   cloud @1 :PointCloud;

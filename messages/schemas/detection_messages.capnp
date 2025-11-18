@@ -5,7 +5,7 @@ using Geometry = import "geometry_msgs.capnp";
 using Point = Geometry.Point;
 
 struct DetectionImage {
-  image @0 :Sensors.ImageData;        # Cropped image of the detection
+  image @0 :Sensors.Image;        # Cropped image of the detection
   coordinates @1 :Point;              # 3D coordinates (x, y, z)
   description @2 :Text;               # Description to validate with the LLM
   objectId @3 :UInt32;                # Unique ID for this detection

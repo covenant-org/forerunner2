@@ -1,8 +1,6 @@
 @0xf0c9bede8a1f3e61;
 
 
-# TODO: Estandarizar 'documentacion' de capnp a ingles
-
 struct Envelope {
   typeId @0 :UInt64;          # ID @0x... of the real struct (optional but useful)
   typeName @1 :Text;          # Capnp type name, e.g. "Header"

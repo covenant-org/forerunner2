@@ -22,16 +22,6 @@ struct Telemetry {
   armed   @3 :Bool;
 }
 
-# TODO: Restructurar mejor el mensaje Odometry y moverlo a nav_msgs.capnp
-struct Odometry {
-  position @0 :Point;
-  velocity @1 :Vector3;
-  angular  @2 :Vector3;
-  q        @3 :Quaternion;
-  heading  @4 :Float32;
-  gps      @5 :GPS;
-}
-
 struct HomePosition {
   pos @0 :Point;
   gps @1 :GPS;

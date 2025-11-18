@@ -10,11 +10,6 @@ struct Point {
   z @2 :Float64;
 }
 
-# TODO: Mover a otro archivo, aqui solo mensajes estandar de geometria
-struct Route {
-  path @0 :List(Point);
-}
-
 struct Vector3 {
   x @0 :Float64;
   y @1 :Float64;
@@ -50,7 +45,7 @@ struct Twist {
 }
 
 struct TwistWithCovariance {
-  Twist  @0 :Twist;
+  twist  @0 :Twist;
   covariance @1 :List(Float64);
 }
 
@@ -70,3 +65,5 @@ struct TransformStamped {
   header    @0 :Header;
   transform @1 :Transform;
 }
+
+
