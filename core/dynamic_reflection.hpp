@@ -36,6 +36,14 @@ class DynamicReflection : public Core::Vertex {
         std::vector<ReflectedField> fields;
     };
 
+    static std::string canonicalize_schema_path(const std::string& schema_path) {
+        constexpr const char* kPrefix = "messages/schemas/";
+        if (schema_path.rfind(kPrefix, 0) == 0) {
+            return schema_path;
+        }
+        return std::string(kPrefix) + schema_path;
+    }
+
     DynamicReflection(const std::string& topic,
                       std::optional<std::string> schema = std::nullopt,
                       std::optional<std::string> type = std::nullopt);
@@ -105,10 +113,7 @@ inline bool DynamicReflection::load_schema_from_path(
     const std::string& type_name,
     bool log_failure) {
     std::vector<std::string> candidates;
-    candidates.push_back(schema_path);
-    if (schema_path.rfind("messages/schemas/", 0) != 0) {
-        candidates.push_back("messages/schemas/" + schema_path);
-    }
+    candidates.push_back(canonicalize_schema_path(schema_path));
 
     for (size_t i = 0; i < candidates.size(); ++i) {
         const bool last_attempt = (i + 1 == candidates.size());
