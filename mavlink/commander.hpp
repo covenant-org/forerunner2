@@ -7,6 +7,7 @@
 #include "subscriber.hpp"
 #include "vertex.hpp"
 #include <capnp_schemas/mavlink.capnp.h>
+#include <capnp_schemas/nav_msgs.capnp.h>
 #include <capnp_schemas/controller.capnp.h>
 #include <capnp_schemas/generics.capnp.h>
 #include <iterator>

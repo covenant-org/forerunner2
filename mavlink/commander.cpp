@@ -20,14 +20,26 @@ Commander::Commander(Core::ArgumentParser parser) : Core::Vertex(parser) {
   // Subscribe to odometry to get current position
   this->_odometry_subscriber = this->create_subscriber<Odometry>("odometry",
       [this](const Core::IncomingMessage<Odometry>& msg) {
-        // Store the current odometry data
-        auto pos = msg.content.getPosition();
-        this->_current_x = pos.getX();
-        this->_current_y = pos.getY();
-        this->_current_z = pos.getZ();
-        this->_current_heading = msg.content.getHeading();
+        // Extract position from pose
+        auto pose_with_cov = msg.content.getPose();
+        auto pose = pose_with_cov.getPose();
+        auto position = pose.getPosition();
+        this->_current_x = position.getX();
+        this->_current_y = position.getY();
+        this->_current_z = position.getZ();
+
+        // Extract heading (yaw) from quaternion orientation
+        auto orientation = pose.getOrientation();
+        double qw = orientation.getW();
+        double qx = orientation.getX();
+        double qy = orientation.getY();
+        double qz = orientation.getZ();
+        // Yaw (heading) calculation from quaternion
+        double siny_cosp = 2.0 * (qw * qz + qx * qy);
+        double cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz);
+        this->_current_heading = static_cast<float>(std::atan2(siny_cosp, cosy_cosp));
+
         this->_has_odometry = true;
-        
         this->_logger.debug("Updated odometry: x=%f y=%f z=%f heading=%f", 
                             this->_current_x, this->_current_y, this->_current_z, this->_current_heading);
       });
@@ -124,10 +136,11 @@ void Commander::run() {
 
               auto cmd_req = this->_controller_client->new_msg();
               auto wp = cmd_req.content.initWaypoint();
-              wp.setX(static_cast<float>(x));
-              wp.setY(static_cast<float>(y));
-              wp.setZ(-static_cast<float>(z));
-              wp.setR(static_cast<float>(yaw));
+              auto pos = wp.initPosition();
+              pos.setX(static_cast<double>(x));
+              pos.setY(static_cast<double>(y));
+              pos.setZ(-static_cast<double>(z));
+              wp.setYaw(static_cast<float>(yaw));
 
               auto cmd_res = cmd_req.send();
               auto resp = cmd_res.value().content;
@@ -195,11 +208,11 @@ void Commander::run() {
         
         // Use current position from odometry if available
         if (this->_has_odometry) {
-          wp.setX(this->_current_x);
-          wp.setY(this->_current_y);
-          wp.setZ(this->_current_z);
-          wp.setR(this->_current_heading);
-          
+          auto pos = wp.initPosition();
+          pos.setX(static_cast<double>(this->_current_x));
+          pos.setY(static_cast<double>(this->_current_y));
+          pos.setZ(static_cast<double>(this->_current_z));
+          wp.setYaw(this->_current_heading);
           this->_logger.debug("Setting setpoint at current odometry position: x=%f y=%f z=%f heading=%f", 
                               this->_current_x, this->_current_y, this->_current_z, this->_current_heading);
         } else {
@@ -215,11 +228,11 @@ void Commander::run() {
             current_z = -3.0f;  // 3 meters up
           }
           
-          wp.setX(current_x);
-          wp.setY(current_y);
-          wp.setZ(current_z);
-          wp.setR(current_yaw);
-          
+          auto pos = wp.initPosition();
+          pos.setX(static_cast<double>(current_x));
+          pos.setY(static_cast<double>(current_y));
+          pos.setZ(static_cast<double>(current_z));
+          wp.setYaw(current_yaw);
           this->_logger.debug("Setting setpoint at fallback position: x=%f y=%f z=%f yaw=%f", 
                               current_x, current_y, current_z, current_yaw);
         }
