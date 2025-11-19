@@ -59,6 +59,8 @@ class Viewer : Core::Vertex {
   void planned_path_cb(const Core::IncomingMessage<Path> &);
   void local_planned_path_cb(const Core::IncomingMessage<Path> &);
   void person_reco_path_cb(const Core::IncomingMessage<Point> &);
+
+  std::shared_ptr<rerun::RecordingStream> get_recording_stream() const { return _rec; }
   void detection_image_cb(const Core::IncomingMessage<DetectionImage> &);
   void zed_image_cb(const Core::IncomingMessage<Image> &);
 //   void route_path_cb(const Core::IncomingMessage<Route> &);

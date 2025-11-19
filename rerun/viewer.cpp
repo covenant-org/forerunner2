@@ -1,4 +1,5 @@
 #include "message.hpp"
+#include "render.hpp"
 #include "rerun/archetypes/arrows3d.hpp"
 #include "rerun/archetypes/asset3d.hpp"
 #include "rerun/archetypes/boxes3d.hpp"
@@ -657,6 +658,11 @@ int main(int argc, char** argv) {
     .implicit_value(true)
     .help("Disable recording output")
     .flag();
+  args.add_argument("--no-render")
+      .default_value(false)
+      .implicit_value(true)
+      .help("Disable point subscriber")
+      .flag();
   auto& group = args.add_mutually_exclusive_group();
   group.add_argument("--grpc").help("URL of remote viewer");
   group.add_argument("--spawn")
@@ -664,6 +670,10 @@ int main(int argc, char** argv) {
       .flag();
 
   auto demo = Viewer(args);
+  // Instancia PointSubscriber y le pasa el mismo _rec usando el getter
+  if (!args.get_argument<bool>("--no-render")) {
+    auto point_subscriber = std::make_unique<RegistryExample::Renderer>(args, demo.get_recording_stream());
+  }
   demo.run();
   return 0;
 }
