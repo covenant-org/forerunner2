@@ -429,6 +429,7 @@ class PointSubscriber : public Core::Vertex {
       return;
     }
 
+    // TODO: Add white/black list
     auto request = topics_client_->new_msg();
     request.content.setIncludeInternal(false);
     auto response = request.send();
