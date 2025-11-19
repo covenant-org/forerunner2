@@ -116,13 +116,15 @@ Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
     this->_rec->spawn().exit_on_failure();
   }
 
-  this->_odom_sub = this->create_subscriber<Odometry>(
-      "odometry", std::bind(&Viewer::odom_cb, this, std::placeholders::_1));
-  if (!args.get_argument<bool>("--no-cloud-sub")) {
-    this->_sub = this->create_subscriber<PointCloud>(
-        "point_cloud",
-        std::bind(&Viewer::point_cloud_cb, this, std::placeholders::_1));
-  }
+  // TODO: Corregir odometria
+  // this->_odom_sub = this->create_subscriber<Odometry>(
+  //     "odometry", std::bind(&Viewer::odom_cb, this, std::placeholders::_1));
+  // if (!args.get_argument<bool>("--no-cloud-sub")) {
+  //   this->_sub = this->create_subscriber<PointCloud>(
+  //       "point_cloud",
+  //       std::bind(&Viewer::point_cloud_cb, this, std::placeholders::_1));
+  // }
+  
   if (!args.get_argument<bool>("--no-map-sub")) {
     this->_map_sub = this->create_subscriber<PointCloud>(
         "map", std::bind(&Viewer::map_cloud_cb, this, std::placeholders::_1));
@@ -131,7 +133,7 @@ Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
         std::bind(&Viewer::map_cloud_chunk_cb, this, std::placeholders::_1));
   }
   if (!args.get_argument<bool>("--no-goal-sub")) {
-    this->_goal_sub = this->create_subscriber<Position>(
+    this->_goal_sub = this->create_subscriber<Point>(
         "goal", std::bind(&Viewer::goal_cb, this, std::placeholders::_1));
   }
   if (!args.get_argument<bool>("--no-octree-sub")) {
@@ -149,7 +151,7 @@ Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
   this->_person_reco_path_sub = this->create_subscriber<Point>(
       "path_point",
       std::bind(&Viewer::person_reco_path_cb, this, std::placeholders::_1));
-  this->_zed_image_sub = this->create_subscriber<ImageData>(
+  this->_zed_image_sub = this->create_subscriber<Image>(
       "zed_image",
       std::bind(&Viewer::zed_image_cb, this, std::placeholders::_1));
   this->_detection_images_sub = this->create_subscriber<DetectionImage>(
@@ -251,17 +253,18 @@ void Viewer::planned_path_cb(const Core::IncomingMessage<Path>& msg) {
   this->render_path(msg, "path/points", "path/arrows");
 }
 
-void Viewer::odom_cb(const Core::IncomingMessage<Odometry>& msg) {
-  auto content = msg.content;
-  auto q = msg.content.getQ();
-  auto position = content.getPosition();
-  this->_rec->log("world/drone",
-                  rerun::Transform3D::from_translation_rotation(
-                      rerun::components::Translation3D{
-                          position.getX(), -position.getY(), -position.getZ()},
-                      rerun::Rotation3D(rerun::datatypes::Quaternion{
-                          q.getX(), -q.getY(), -q.getZ(), q.getW()})));
-}
+// TODO: Corregir odometria
+// void Viewer::odom_cb(const Core::IncomingMessage<Odometry>& msg) {
+//   auto content = msg.content;
+//   auto q = msg.content.getQ();
+//   auto position = content.getPosition();
+//   this->_rec->log("world/drone",
+//                   rerun::Transform3D::from_translation_rotation(
+//                       rerun::components::Translation3D{
+//                           position.getX(), -position.getY(), -position.getZ()},
+//                       rerun::Rotation3D(rerun::datatypes::Quaternion{
+//                           q.getX(), -q.getY(), -q.getZ(), q.getW()})));
+// }
 
 void Viewer::person_reco_path_cb(const Core::IncomingMessage<Point>& msg) {
   auto content = msg.content;
@@ -328,7 +331,7 @@ void Viewer::detection_image_cb(
                      std::to_string(image_data.getHeight())));
 }
 
-void Viewer::zed_image_cb(const Core::IncomingMessage<ImageData>& msg) {
+void Viewer::zed_image_cb(const Core::IncomingMessage<Image>& msg) {
   const auto image = msg.content;
   const auto encoded = image.getData();
 
@@ -351,7 +354,7 @@ void Viewer::zed_image_cb(const Core::IncomingMessage<ImageData>& msg) {
                      std::to_string(image.getHeight())));
 }
 
-void Viewer::goal_cb(const Core::IncomingMessage<Position>& msg) {
+void Viewer::goal_cb(const Core::IncomingMessage<Point>& msg) {
   auto content = msg.content;
   this->_rec->log("goal/position",
                   rerun::Boxes3D::from_centers_and_sizes(

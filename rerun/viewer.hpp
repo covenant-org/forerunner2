@@ -27,17 +27,17 @@ class Viewer : Core::Vertex {
   std::shared_ptr<Core::Subscriber<PointCloud>> _sub;
   std::shared_ptr<Core::Subscriber<PointCloud>> _map_sub;
   std::shared_ptr<Core::Subscriber<PointCloudChunk>> _map_chunk_sub;
-  std::shared_ptr<Core::Subscriber<Position>> _goal_sub;
+  std::shared_ptr<Core::Subscriber<Point>> _goal_sub;
   std::shared_ptr<Core::Subscriber<StereoMic>> _mic_sub;
-  std::shared_ptr<Core::Subscriber<Odometry>> _odom_sub;
+//   std::shared_ptr<Core::Subscriber<Odometry>> _odom_sub;
   std::shared_ptr<Core::Subscriber<MarkerArray>> _octree_sub;
   std::shared_ptr<Core::Subscriber<MarkerArray>> _octree_layers_sub;
   std::shared_ptr<Core::Subscriber<Path>> _planned_path_sub;
   std::shared_ptr<Core::Subscriber<Path>> _local_planned_path_sub;
   std::shared_ptr<Core::Subscriber<Point>> _person_reco_path_sub;
   std::shared_ptr<Core::Subscriber<DetectionImage>> _detection_images_sub;
-  std::shared_ptr<Core::Subscriber<ImageData>> _zed_image_sub;
-  std::shared_ptr<Core::Subscriber<Route>> _route_path;
+  std::shared_ptr<Core::Subscriber<Image>> _zed_image_sub;
+//   std::shared_ptr<Core::Subscriber<Route>> _route_path;
   std::shared_ptr<rerun::RecordingStream> _rec;
   pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA> *_point_cloud_decoder;
   pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>
@@ -49,19 +49,19 @@ class Viewer : Core::Vertex {
       const std::optional<std::string> &recording_type = std::nullopt);
 
  public:
-  void goal_cb(const Core::IncomingMessage<Position> &);
+  void goal_cb(const Core::IncomingMessage<Point> &);
   void point_cloud_cb(const Core::IncomingMessage<PointCloud> &);
   void map_cloud_cb(const Core::IncomingMessage<PointCloud> &);
   void mic_cb(const Core::IncomingMessage<StereoMic> &);
-  void odom_cb(const Core::IncomingMessage<Odometry> &);
+//   void odom_cb(const Core::IncomingMessage<Odometry> &);
   void octree_cb(const Core::IncomingMessage<MarkerArray> &);
   void octree_layers_cb(const Core::IncomingMessage<MarkerArray> &);
   void planned_path_cb(const Core::IncomingMessage<Path> &);
   void local_planned_path_cb(const Core::IncomingMessage<Path> &);
   void person_reco_path_cb(const Core::IncomingMessage<Point> &);
   void detection_image_cb(const Core::IncomingMessage<DetectionImage> &);
-  void zed_image_cb(const Core::IncomingMessage<ImageData> &);
-  void route_path_cb(const Core::IncomingMessage<Route> &);
+  void zed_image_cb(const Core::IncomingMessage<Image> &);
+//   void route_path_cb(const Core::IncomingMessage<Route> &);
   void render_path(const Core::IncomingMessage<Path> &, const std::string &,
                    const std::string &);
   void log_map(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud,
