@@ -76,3 +76,11 @@ struct Goal{
     latlon    @2 :PointYaw;
   }
 }
+
+struct ControlMetrics{
+    qe      @0 :List(Float32);
+    qd      @1 :List(Float32);
+    thrust  @2 :List(Float32);
+    pwm     @3 :List(Float32);
+    fu      @4 :List(Float32);
+  }

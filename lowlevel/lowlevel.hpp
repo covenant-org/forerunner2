@@ -2,6 +2,7 @@
 #include "argument_parser.hpp"
 #include "capnp_schemas/mavlink.capnp.h"
 #include "message.hpp"
+#include "publisher.hpp"
 #include "subscriber.hpp"
 #include "vertex.hpp"
 #include <Eigen/Dense>
@@ -14,8 +15,12 @@
 class LowLevel : public Core::Vertex {
  private:
   std::shared_ptr<Core::Subscriber<Odometry>> _odom_sub;
-  std::shared_ptr<Core::ActionClient<Command, GenericResponse>> _mavlink_client;
+  std::shared_ptr<Core::Publisher<Position>> _goal_pub;
+  std::shared_ptr<Core::Publisher<ControlMetrics>> _metrics_pub;
   Eigen::Quaterniond _q;
+  Eigen::Quaterniond _qd;
+  Eigen::Quaterniond _qe;
+  std::shared_ptr<Core::ActionClient<Command, GenericResponse>> _mavlink_client;
   Eigen::Vector3d _pos;
   Eigen::Vector3d _linear_velocity;
   Eigen::Vector3d _angular_velocity;

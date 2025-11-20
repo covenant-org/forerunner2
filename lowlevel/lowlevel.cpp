@@ -15,6 +15,9 @@
 LowLevel::LowLevel(Core::ArgumentParser args) : Core::Vertex(args) {
   this->_odom_sub = this->create_subscriber<Odometry>(
       "odometry", std::bind(&LowLevel::_odom_cb, this, std::placeholders::_1));
+  this->_metrics_pub =
+      this->create_publisher<ControlMetrics>("controller/metrics");
+  this->_goal_pub = this->create_publisher<Position>("goal");
   this->_mavlink_client =
       this->create_action_client<Command, GenericResponse>("controller");
   _q = Eigen::Quaterniond(1, 0, 0, 0);
@@ -22,10 +25,10 @@ LowLevel::LowLevel(Core::ArgumentParser args) : Core::Vertex(args) {
   _linear_velocity = Eigen::Vector3d(0, 0, 0);
   _angular_velocity = Eigen::Vector3d(0, 0, 0);
   _g = Eigen::Vector3d(0, 0, -9.81);
-  _m = 0.3;
+  _m = 2;
   _f = Eigen::Vector3d(0, 0, 0);
-  _kpt << 0.05, 0, 0, 0, 0.05, 0, 0, 0, 0.001;
-  _kdt << 0.0, 0, 0, 0, 0.0, 0, 0, 0, 0.04;
+  _kpt << 2, 0, 0, 0, 2, 0, 0, 0, 3;
+  _kdt << 0.5, 0, 0, 0, 0.5, 0, 0, 0, 2;
   _J << 0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1;
   _kpr << 0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1;
   _kdr << 0, 0, 0, 0, 0, 0, 0, 0, 0;
@@ -85,21 +88,25 @@ Eigen::Vector3d LowLevel::get_torque_input(Eigen::Vector3d fu, double yaw) {
     imaginary = (cross / cross.norm()) * std::sqrt((1 - dot) / 2);
   }
   auto real = std::sqrt((1 + dot) / 2);
-  auto qd =
-      Eigen::Quaterniond(real, imaginary.x(), imaginary.y(), imaginary.z());
-  auto qe = qz * qd.conjugate() * this->_q;
+  _qd =
+      Eigen::Quaterniond(real, -imaginary.x(), -imaginary.y(), -imaginary.z());
+  auto qe = qz.conjugate() * _qd * this->_q;
   qe.normalize();
   auto theta = 2 * std::acos(qe.w());
   Eigen::Vector3d qrv =
       (theta / std::sin(theta / 2)) * Eigen::Vector3d(qe.x(), qe.y(), qe.z());
   if (qrv.norm() > M_PI) {
-    qd = qd * Eigen::UniformScaling<double>(-1);
-    qe = qz * qd.conjugate() * this->_q;
+    _qd = _qd * Eigen::UniformScaling<double>(-1);
+    qe = qz.conjugate() * _qd * this->_q;
     qe.normalize();
   }
 
   return -2 * _kpr * quaternion_ln(qe) - _kdr * this->_angular_velocity +
          this->_angular_velocity.cross(this->_J * this->_angular_velocity);
+}
+
+float sqrt_n_trim(float input) {
+  return std::min(std::sqrt(std::max(input, 0.0f)), 1.0f);
 }
 
 void LowLevel::run() {
@@ -138,8 +145,15 @@ void LowLevel::run() {
                         res_offboard.value().content.getMessage().cStr());
     return;
   }
+  float actuators[4];
   while (true) {
-    auto ut = this->get_f_desired({0, 0, 7});
+    Eigen::Vector3d pd{0, 0, 7};
+    auto goal_msg = this->_goal_pub->new_msg();
+    goal_msg.content.setX(pd.x());
+    goal_msg.content.setY(pd.y());
+    goal_msg.content.setZ(-pd.z());
+    goal_msg.publish();
+    auto ut = this->get_f_desired(pd);
     auto fth = ut.norm();
     Eigen::Vector3d fu = ut / fth;
     auto ur = this->get_torque_input(fu, 0);
@@ -148,26 +162,47 @@ void LowLevel::run() {
     auto ctl = actuator_ctl.content.initSetActuators(4);
     this->_logger.info("fth: %f tx: %f ty: %f tz: %f", fth, tau[0], tau[1],
                        tau[2]);
-    this->_logger.info("Error :%f",
-                       (this->_pos - Eigen::Vector3d(0, 0, 7)).norm());
-    ctl.set(0,
-            std::min(std::sqrt(std::max(
-                         (1.0 / 4.0) * (fth + tau[0] + tau[1] + tau[2]), 0.0)),
-                     1.0));
-    ctl.set(1,
-            std::min(std::sqrt(std::max(
-                         (1.0 / 4.0) * (fth - tau[0] - tau[1] + tau[2]), 0.0)),
-                     1.0));
-    ctl.set(2,
-            std::min(std::sqrt(std::max(
-                         (1.0 / 4.0) * (fth - tau[0] + tau[1] - tau[2]), 0.0)),
-                     1.0));
-    ctl.set(3,
-            std::min(std::sqrt(std::max(
-                         (1.0 / 4.0) * (fth + tau[0] - tau[1] - tau[2]), 0.0)),
-                     1.0));
+    this->_logger.info("Error :%f", (this->_pos - pd).norm());
+    float factor = 1.0 / 4.0;
+    actuators[0] =
+        sqrt_n_trim(factor * (fth / 10 + tau[0] + tau[1] + tau[2] / 10));
+    actuators[1] =
+        sqrt_n_trim(factor * (fth / 10 - tau[0] - tau[1] + tau[2] / 10));
+    actuators[2] =
+        sqrt_n_trim(factor * (fth / 10 - tau[0] + tau[1] - tau[2] / 10));
+    actuators[3] =
+        sqrt_n_trim(factor * (fth / 10 + tau[0] - tau[1] - tau[2] / 10));
+    ctl.set(0, actuators[0]);
+    ctl.set(1, actuators[1]);
+    ctl.set(2, actuators[2]);
+    ctl.set(3, actuators[3]);
     actuator_ctl.send();
     this->_logger.info("Command sent");
+    auto msg = this->_metrics_pub->new_msg();
+    auto qd_msg = msg.content.initQd(4);
+    qd_msg.set(0, _qd.w());
+    qd_msg.set(1, _qd.x());
+    qd_msg.set(2, _qd.y());
+    qd_msg.set(3, _qd.z());
+    auto qe_msg = msg.content.initQe(4);
+    qe_msg.set(0, _qe.w());
+    qe_msg.set(1, _qe.x());
+    qe_msg.set(2, _qe.y());
+    qe_msg.set(3, _qe.z());
+    auto pwm_msg = msg.content.initPwm(4);
+    pwm_msg.set(0, actuators[0]);
+    pwm_msg.set(1, actuators[1]);
+    pwm_msg.set(2, actuators[2]);
+    pwm_msg.set(3, actuators[3]);
+    auto thrust_msg = msg.content.initThrust(3);
+    thrust_msg.set(0, tau[0]);
+    thrust_msg.set(1, tau[1]);
+    auto fu_msg = msg.content.initFu(3);
+    thrust_msg.set(2, tau[2]);
+    fu_msg.set(0, fu[0]);
+    fu_msg.set(1, fu[1]);
+    fu_msg.set(2, fu[2]);
+    msg.publish();
     rk.keep();
   }
 }

@@ -10,6 +10,7 @@
 #include "utils.hpp"
 #include "viewer.hpp"
 #include <Eigen/src/Geometry/Quaternion.h>
+#include <capnp_schemas/controller.capnp.h>
 #include <capnp_schemas/geometry_msgs.capnp.h>
 #include <capnp_schemas/zed.capnp.h>
 #include <cmath>
@@ -63,10 +64,11 @@ Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
         "map_chunk",
         std::bind(&Viewer::map_cloud_chunk_cb, this, std::placeholders::_1));
   }
-  if (!args.get_argument<bool>("--no-goal-sub")) {
-    this->_goal_sub = this->create_subscriber<Position>(
-        "goal", std::bind(&Viewer::goal_cb, this, std::placeholders::_1));
-  }
+  this->_goal_sub = this->create_subscriber<Position>(
+      "goal", std::bind(&Viewer::goal_cb, this, std::placeholders::_1));
+  this->_ctl_metrics_sub = this->create_subscriber<ControlMetrics>(
+      "controller/metrics",
+      std::bind(&::Viewer::controller_metrics_cb, this, std::placeholders::_1));
   if (!args.get_argument<bool>("--no-octree-sub")) {
     this->_octree_sub = this->create_subscriber<MarkerArray>(
         "octree", std::bind(&Viewer::octree_cb, this, std::placeholders::_1));
@@ -78,6 +80,35 @@ Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
     this->_planned_path_sub = this->create_subscriber<Path>(
         "planned_path",
         std::bind(&Viewer::planned_path_cb, this, std::placeholders::_1));
+  }
+}
+
+void Viewer::controller_metrics_cb(
+    const Core::IncomingMessage<ControlMetrics> &msg) {
+  auto qd = msg.content.getQd();
+  auto qe = msg.content.getQe();
+  auto pwm = msg.content.getPwm();
+  this->_rec->log(
+      "/world/controller/qd",
+      rerun::Boxes3D::from_centers_and_half_sizes({{0, 0, 0}}, {{1, 1, 1}})
+          .with_quaternions(
+              {rerun::Quaternion::from_wxyz(qd[0], qd[1], qd[2], qd[3])}));
+  this->_rec->log(
+      "/world/controller/qe",
+      rerun::Boxes3D::from_centers_and_half_sizes({{0, 0, 0}}, {{1, 1, 1}})
+          .with_quaternions(
+              {rerun::Quaternion::from_wxyz(qe[0], qe[1], qe[2], qe[3])}));
+
+  uint8_t i = 0;
+  for (auto esc : pwm) {
+    this->_rec->log("/world/controller/pwm/" + std::to_string(i++),
+                    rerun::Scalars(static_cast<double>(esc)));
+  }
+  i = 0;
+  auto thrust = msg.content.getThrust();
+  for (auto t : thrust) {
+    this->_rec->log("/world/controller/thrust/" + std::to_string(i++),
+                    rerun::Scalars(static_cast<double>(t)));
   }
 }
 

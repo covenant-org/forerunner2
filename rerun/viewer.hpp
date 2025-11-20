@@ -3,6 +3,7 @@
 #include "rerun/archetypes/asset3d.hpp"
 #include "subscriber.hpp"
 #include "vertex.hpp"
+#include <capnp_schemas/controller.capnp.h>
 #include <capnp_schemas/mavlink.capnp.h>
 #include <capnp_schemas/nav_msgs.capnp.h>
 #include <capnp_schemas/sensors.capnp.h>
@@ -25,6 +26,7 @@ class Viewer : Core::Vertex {
   std::shared_ptr<Core::Subscriber<PointCloudChunk>> _map_chunk_sub;
   std::shared_ptr<Core::Subscriber<Position>> _goal_sub;
   std::shared_ptr<Core::Subscriber<StereoMic>> _mic_sub;
+  std::shared_ptr<Core::Subscriber<ControlMetrics>> _ctl_metrics_sub;
   std::shared_ptr<Core::Subscriber<Odometry>> _odom_sub;
   std::shared_ptr<Core::Subscriber<MarkerArray>> _octree_sub;
   std::shared_ptr<Core::Subscriber<MarkerArray>> _octree_layers_sub;
@@ -52,6 +54,7 @@ class Viewer : Core::Vertex {
   void log_map(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud,
                std::string index);
   void map_cloud_chunk_cb(const Core::IncomingMessage<PointCloudChunk> &msg);
+  void controller_metrics_cb(const Core::IncomingMessage<ControlMetrics> &);
   rerun::Color distance_to_color(float distance);
   Viewer(Core::ArgumentParser);
   void run();
