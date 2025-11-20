@@ -32,72 +32,6 @@ def get_minio_client():
     client = Minio(endpoint=endpoint, access_key=access_key, secret_key=secret_key, secure=secure)
     return client, bucket, prefix
 
-def list_test_records(records_dir: Union[str, Path, None] = None,
-                      include_hidden: bool = False,
-                      extensions: Optional[List[str]] = None) -> List[str]:
-    if os.getenv("MINIO_ACCESS_KEY") and os.getenv("MINIO_SECRET_KEY"):
-        return _list_records_from_minio(
-            bucket=DEFAULT_MINIO_BUCKET,
-            prefix=os.getenv("MINIO_PREFIX", DEFAULT_MINIO_PREFIX),
-            include_hidden=include_hidden,
-            extensions=extensions,
-        )
-
-    return _list_records_from_local(records_dir, include_hidden, extensions)
-
-
-def _list_records_from_local(records_dir: Union[str, Path, None],
-                             include_hidden: bool,
-                             extensions: Optional[List[str]]) -> List[str]:
-    if records_dir is None:
-        base = Path(__file__).resolve().parent / "test-records"
-    else:
-        base = Path(records_dir)
-
-    try:
-        if not base.exists() or not base.is_dir():
-            return []
-    except Exception:
-        return []
-
-    normalized_exts = None
-    if extensions:
-        normalized_exts = [e.lower() if e.startswith('.') else f'.{e.lower()}' for e in extensions]
-
-    names = []
-
-    # Files in the root of test-records
-    for p in base.iterdir():
-        if p.is_file():
-            name = p.name
-            if not include_hidden and name.startswith('.'):
-                continue
-            if normalized_exts is not None:
-                low = name.lower()
-                if not any(low.endswith(ext) for ext in normalized_exts):
-                    continue
-            names.append(name)
-
-        # If a directory is found, include its files (one level)
-        elif p.is_dir():
-            subdir = p
-            for q in subdir.iterdir():
-                if not q.is_file():
-                    continue
-                subname = q.name
-                if not include_hidden and subname.startswith('.'):
-                    continue
-                if normalized_exts is not None:
-                    low = subname.lower()
-                    if not any(low.endswith(ext) for ext in normalized_exts):
-                        continue
-                # Format folder/filename.ext
-                names.append(f"{subdir.name}/{subname}")
-
-    names.sort()
-    return names
-
-
 def _parse_bool_env(value: Optional[str], default: bool) -> bool:
     if value is None:
         return default
@@ -150,8 +84,12 @@ def _list_records_from_minio(bucket: str,
     results.sort()
     return results
 
-def _build_gui_for_records(records):
+def _build_gui_for_records():
     def show_download_progress(client, bucket, object_name, local_path, fname):
+        if local_path.exists():
+            messagebox.showinfo("Already downloaded", f"File already exists at: {local_path}")
+            return
+
         progress_win = tk.Toplevel()
         progress_win.title("Downloading...")
         progress_label = tk.Label(progress_win, text=f"Downloading: {fname}")
@@ -193,7 +131,6 @@ def _build_gui_for_records(records):
             messagebox.showerror("Download error", f"Could not download: {e}")
 
     def on_click(fname):
-        client, bucket, prefix = get_minio_client()
         if client is not None:
             object_name = f"{prefix}/{fname}" if prefix else fname
             object_name = object_name.lstrip("/")
@@ -214,7 +151,13 @@ def _build_gui_for_records(records):
             full = vals[0]
             on_click(full)
     
-    
+    client, bucket, prefix = get_minio_client()
+    records = _list_records_from_minio(
+        bucket=bucket,
+        prefix=prefix,
+        include_hidden=False,
+        extensions=None,
+    )
     root = tk.Tk()
     root.title("Test-records")
     root.geometry("480x400")
@@ -222,10 +165,6 @@ def _build_gui_for_records(records):
     frm = tk.Frame(root)
     frm.pack(fill=tk.BOTH, expand=True)
     tree_frame = tk.Frame(frm)
-
-    # Use a frame directly for the tree so it fills the window area
-    # (previous implementation used a canvas+frame which limited the
-    # treeview width/height inside the canvas window).
 
     # Group by folder ('' = root)
     groups = {}
@@ -236,9 +175,6 @@ def _build_gui_for_records(records):
         else:
             groups.setdefault("", []).append(name)
 
-    # Build a tree view with ttk.Treeview: root files as items
-    # at the root level and folders as nodes containing their files.
-    # tree_frame is already a child of frm; just pack it so it expands
     tree_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
 
     tree = ttk.Treeview(tree_frame)
@@ -266,14 +202,10 @@ def _build_gui_for_records(records):
             full = f"{folder}/{fname}"
             tree.insert(node, 'end', text=fname, values=(full,))
 
-
-
     tree.bind('<Double-1>', _on_double_click)
 
     root.mainloop()
 
 
 if __name__ == "__main__":
-    files = list_test_records()
-    # Call the GUI (assumed always available)
-    _build_gui_for_records(files)
+    _build_gui_for_records()
