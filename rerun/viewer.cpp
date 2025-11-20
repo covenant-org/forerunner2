@@ -116,15 +116,6 @@ Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
   } else if (spawn_requested || no_record) {
     this->_rec->spawn().exit_on_failure();
   }
-
-  // TODO: Corregir odometria
-  // this->_odom_sub = this->create_subscriber<Odometry>(
-  //     "odometry", std::bind(&Viewer::odom_cb, this, std::placeholders::_1));
-  // if (!args.get_argument<bool>("--no-cloud-sub")) {
-  //   this->_sub = this->create_subscriber<PointCloud>(
-  //       "point_cloud",
-  //       std::bind(&Viewer::point_cloud_cb, this, std::placeholders::_1));
-  // }
   
   if (!args.get_argument<bool>("--no-map-sub")) {
     this->_map_sub = this->create_subscriber<PointCloud>(
@@ -253,19 +244,6 @@ void Viewer::planned_path_cb(const Core::IncomingMessage<Path>& msg) {
   this->_logger.info("planned_path_cb was called");
   this->render_path(msg, "path/points", "path/arrows");
 }
-
-// TODO: Corregir odometria
-// void Viewer::odom_cb(const Core::IncomingMessage<Odometry>& msg) {
-//   auto content = msg.content;
-//   auto q = msg.content.getQ();
-//   auto position = content.getPosition();
-//   this->_rec->log("world/drone",
-//                   rerun::Transform3D::from_translation_rotation(
-//                       rerun::components::Translation3D{
-//                           position.getX(), -position.getY(), -position.getZ()},
-//                       rerun::Rotation3D(rerun::datatypes::Quaternion{
-//                           q.getX(), -q.getY(), -q.getZ(), q.getW()})));
-// }
 
 void Viewer::person_reco_path_cb(const Core::IncomingMessage<Point>& msg) {
   auto content = msg.content;
@@ -492,8 +470,8 @@ void Viewer::point_cloud_cb(const Core::IncomingMessage<PointCloud>& msg) {
                                  std::to_string(height)));
 }
 
-void Viewer::log_map(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud,
-                     std::string index = "") {
+void Viewer::log_map(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud, 
+                     std::string index = "") { // TODO: Pending to test in render
   auto width = cloud->width;
   auto height = cloud->height;
   size_t num_points = cloud->points.size();
@@ -574,7 +552,7 @@ void Viewer::map_cloud_chunk_cb(
   this->log_map(cloud, index);
 }
 
-void Viewer::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
+void Viewer::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) { // TODO: Pending to test in render
   auto data_reader = msg.content.getData();
   auto width = msg.content.getWidth();
   auto height = msg.content.getHeight();

@@ -158,19 +158,102 @@ inline void render_generic(const Core::EnvelopeMetadata& metadata,
 // =====================
 // Point functions
 // =====================
+template<typename T>
 inline void render_point(const Core::EnvelopeMetadata& metadata,
-                  ::capnp::AnyPointer::Reader payload,
-                  RenderContext& context) {
+                        typename T::Reader reader,
+                        RenderContext& context) {
   (void)metadata;
-  auto reader = payload.getAs<::Point>();
-
   const float x = static_cast<float>(reader.getX());
   const float y = static_cast<float>(reader.getY());
   const float z = static_cast<float>(reader.getZ());
-
   std::vector<rerun::Position3D> positions = {{x, y, z}};
-  context.stream().log(context.make_child_path("point"),
-                       rerun::Points3D(positions).with_radii({0.05F}));
+  context.stream().log(context.make_child_path("point"), rerun::Points3D(positions).with_radii({0.05F}));
+}
+
+inline void render_point(const Core::EnvelopeMetadata& metadata,
+                        ::capnp::AnyPointer::Reader payload,
+                        RenderContext& context,
+                        const capnp::StructSchema& schema) {
+  if (payload.isStruct()) {
+    try {
+      auto reader = payload.getAs<::Point>();
+      render_point<::Point>(metadata, reader, context);
+      return;
+    } catch (...) {
+      // Si falla, intenta reflexión
+    }
+  }
+  // Fallback: reflexión genérica
+  auto dynamic_reader = payload.getAs<::capnp::DynamicStruct>(schema);
+  auto reflected = DynamicReflection::reflect(dynamic_reader);
+  log_reflected_fields(reflected, context, "point");
+}
+
+// =====================
+// PointStamped functions
+// =====================
+inline void render_point_stamped(const Core::EnvelopeMetadata& metadata,
+                                ::capnp::AnyPointer::Reader payload,
+                                RenderContext& context) {
+  (void)metadata;
+  auto reader = payload.getAs<::PointStamped>();
+  // Loguear header
+  {
+    auto header = reader.getHeader();
+    context.stream().log(context.make_child_path("point_stamped/header/seq"), rerun::Scalars(static_cast<double>(header.getSeq())));
+    context.stream().log(context.make_child_path("point_stamped/header/stampSec"), rerun::Scalars(static_cast<double>(header.getStampSec())));
+    context.stream().log(context.make_child_path("point_stamped/header/stampNsec"), rerun::Scalars(static_cast<double>(header.getStampNsec())));
+    context.stream().log(context.make_child_path("point_stamped/header/frameId"), rerun::TextLog(to_std_string(header.getFrameId())));
+  }
+  // Reutilizar render_point para el campo point
+  {
+    RenderContext subcontext(context.stream(), context.make_child_path("point_stamped/point"), context.logger());
+    render_point<::Point>(metadata, reader.getPoint(), subcontext);
+  }
+}
+
+// =====================
+// Vector3 functions
+// =====================
+inline void render_geom_vector3(const Core::EnvelopeMetadata& metadata,
+                               ::capnp::AnyPointer::Reader payload,
+                               RenderContext& context) {
+  (void)metadata;
+  auto reader = payload.getAs<::Vector3>();
+  context.stream().log(context.make_child_path("vector3/x"), rerun::Scalars(reader.getX()));
+  context.stream().log(context.make_child_path("vector3/y"), rerun::Scalars(reader.getY()));
+  context.stream().log(context.make_child_path("vector3/z"), rerun::Scalars(reader.getZ()));
+}
+
+// =====================
+// Header functions
+// =====================
+inline void render_header(const Core::EnvelopeMetadata& metadata,
+                         ::capnp::AnyPointer::Reader payload,
+                         RenderContext& context) {
+  (void)metadata;
+  auto reader = payload.getAs<::Header>();
+  context.stream().log(context.make_child_path("header/seq"), rerun::Scalars(static_cast<double>(reader.getSeq())));
+  context.stream().log(context.make_child_path("header/stampSec"), rerun::Scalars(static_cast<double>(reader.getStampSec())));
+  context.stream().log(context.make_child_path("header/stampNsec"), rerun::Scalars(static_cast<double>(reader.getStampNsec())));
+  context.stream().log(context.make_child_path("header/frameId"), rerun::TextLog(to_std_string(reader.getFrameId())));
+}
+
+// =====================
+// ColorRGBA functions
+// =====================
+inline void render_color_rgba(const Core::EnvelopeMetadata& metadata,
+                             ::capnp::AnyPointer::Reader payload,
+                             RenderContext& context) {
+  (void)metadata;
+  auto reader = payload.getAs<::ColorRGBA>();
+  std::ostringstream color_str;
+  color_str << "rgba(" << reader.getR() << ", " << reader.getG() << ", " << reader.getB() << ", " << reader.getA() << ")";
+  context.stream().log(context.make_child_path("color/value"), rerun::TextLog(color_str.str()));
+  context.stream().log(context.make_child_path("color/r"), rerun::Scalars(static_cast<double>(reader.getR())));
+  context.stream().log(context.make_child_path("color/g"), rerun::Scalars(static_cast<double>(reader.getG())));
+  context.stream().log(context.make_child_path("color/b"), rerun::Scalars(static_cast<double>(reader.getB())));
+  context.stream().log(context.make_child_path("color/a"), rerun::Scalars(static_cast<double>(reader.getA())));
 }
 
 // =====================
@@ -291,11 +374,126 @@ inline void render_odometry(const Core::EnvelopeMetadata& metadata,
   );
 }
 
+// =====================
+// PointCloud functions
+// =====================
+inline void log_map(rerun::RecordingStream& rec,
+           Core::Logger* logger,
+           pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud,
+           std::string index = "") {
+  auto width = cloud->width;
+  auto height = cloud->height;
+  size_t num_points = cloud->points.size();
+  if (logger)
+    logger->debug("Received chunk with %zu points", num_points);
+  if (num_points == 0) return;
+
+  std::vector<rerun::Position3D> positions;
+  std::vector<rerun::Color> colors;
+
+  positions.reserve(num_points);
+  colors.reserve(num_points);
+
+  for (size_t i = 0; i < num_points; ++i) {
+    auto point = cloud->points[i];
+    float x = point.x;
+    float y = point.y;
+    float z = point.z;
+    positions.emplace_back(x, y, z);
+    colors.emplace_back(rerun::Color(point.r, point.g, point.b));
+  }
+
+  if (index.size() > 0) {
+    index += "/";
+  }
+  // Log to Rerun
+  rec.log("world/map/" + index,
+    rerun::Points3D(positions).with_colors(colors));
+
+  // Log statistics
+  rec.log("stats/map/" + index + "point_count",
+    rerun::Scalars(static_cast<double>(positions.size())));
+  rec.log("stats/map/" + index + "total_received",
+    rerun::Scalars(static_cast<double>(num_points)));
+  rec.log("stats/map/" + index + "image_dimensions",
+    rerun::TextLog("Dimensions: " + std::to_string(width) + "x" + std::to_string(height)));
+}
+
+inline void render_pointcloud(const Core::EnvelopeMetadata& metadata,
+                            ::capnp::AnyPointer::Reader payload,
+                            RenderContext& context) {
+  (void)metadata;
+  auto reader = payload.getAs<::PointCloud>();
+  auto data_reader = reader.getData();
+  auto width = reader.getWidth();
+  auto height = reader.getHeight();
+
+  pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
+      new pcl::PointCloud<pcl::PointXYZRGBA>(width, height));
+
+  std::stringstream buffer(
+      std::string((char *)data_reader.begin(), data_reader.size()));
+
+  static pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA> decoder;
+  try {
+    decoder.decodePointCloud(buffer, cloud);
+  } catch (const std::exception &e) {
+    if (context.logger())
+      context.logger()->warn("Error while decoding cloudpoint: %s", e.what());
+      context.stream().log(context.make_child_path("pointcloud/error"), rerun::TextLog(e.what()));
+    return;
+  }
+
+  // Usar la función utilitaria para loguear igual que Viewer::log_map
+  log_map(context.stream(), context.logger(), cloud);
+}
+
+// =====================
+// std_msgs registrations
+// =====================
+// ===== Header renderer registration =====
+[[maybe_unused]] const bool header_registered =
+  RendererRegistry::register_renderer("std_msgs.Header", &render_header);
+[[maybe_unused]] const bool header_short_registered =
+  RendererRegistry::register_renderer("Header", &render_header);
+
+// ===== ColorRGBA renderer registration =====
+[[maybe_unused]] const bool color_rgba_registered =
+  RendererRegistry::register_renderer("std_msgs.ColorRGBA", &render_color_rgba);
+[[maybe_unused]] const bool color_rgba_short_registered =
+  RendererRegistry::register_renderer("ColorRGBA", &render_color_rgba);
+
+// =====================
+// geometry_msgs registrations
+// =====================
+// ===== Vector3 renderer registration =====
+[[maybe_unused]] const bool geom_vector3_registered =
+  RendererRegistry::register_renderer("geometry_msgs.Vector3", &render_geom_vector3);
+[[maybe_unused]] const bool geom_vector3_short_registered =
+  RendererRegistry::register_renderer("Vector3", &render_geom_vector3);
+
 // ===== Point renderers registration =====
-[[maybe_unused]] const bool point_registered =
-  RendererRegistry::register_renderer("geometry_msgs.Point", &render_point);
-[[maybe_unused]] const bool point_short_registered =
-  RendererRegistry::register_renderer("Point", &render_point);
+// Wrapper para registro que maneja ambos casos
+[[maybe_unused]] const bool point_registered = RendererRegistry::register_renderer(
+  "geometry_msgs.Point",
+  [](const Core::EnvelopeMetadata& metadata, ::capnp::AnyPointer::Reader payload, RenderContext& context) {
+    // Obtener schema desde caché si es necesario
+    static capnp::StructSchema schema = capnp::Schema::from<::Point>().asStruct();
+    render_point(metadata, payload, context, schema);
+  });
+[[maybe_unused]] const bool point_short_registered = RendererRegistry::register_renderer(
+  "Point",
+  [](const Core::EnvelopeMetadata& metadata, ::capnp::AnyPointer::Reader payload, RenderContext& context) {
+    static capnp::StructSchema schema = capnp::Schema::from<::Point>().asStruct();
+    render_point(metadata, payload, context, schema);
+  });
+
+// ===== PointStamped renderers registration =====
+[[maybe_unused]] const bool point_stamped_registered =
+  RendererRegistry::register_renderer("geometry_msgs.PointStamped", &render_point_stamped);
+[[maybe_unused]] const bool point_stamped_short_registered =
+  RendererRegistry::register_renderer("PointStamped", &render_point_stamped);
+
 
 // ===== Marker renderers registration =====
 [[maybe_unused]] const bool marker_registered = RendererRegistry::register_renderer(
@@ -314,6 +512,12 @@ inline void render_odometry(const Core::EnvelopeMetadata& metadata,
   RendererRegistry::register_renderer("nav_msgs.Odometry", &render_odometry);
 [[maybe_unused]] const bool odometry_short_registered =
   RendererRegistry::register_renderer("Odometry", &render_odometry);
+
+// ===== PointCloud renderer registration =====
+[[maybe_unused]] const bool pointcloud_registered =
+  RendererRegistry::register_renderer("zed.PointCloud", &render_pointcloud);
+[[maybe_unused]] const bool pointcloud_short_registered =
+  RendererRegistry::register_renderer("PointCloud", &render_pointcloud);
 }  // namespace
 
 inline void dispatch_message(const Core::EnvelopeMetadata& metadata,
