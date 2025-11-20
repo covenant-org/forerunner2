@@ -77,6 +77,20 @@ using RendererFn = std::function<void(const Core::EnvelopeMetadata&,
 
 class RendererRegistry {
  public:
+  template<typename RenderFunc>
+  static RendererFn make_renderer(RenderFunc func) {
+    return [func](const Core::EnvelopeMetadata& metadata, ::capnp::AnyPointer::Reader payload, RenderContext& context) {
+      func(metadata, payload, context);
+    };
+  }
+  // Sobrecarga para aceptar funciones render_*
+  template<typename RenderFunc>
+  static bool register_renderer(const std::string& type_name, RenderFunc func) {
+    auto& table = instance();
+    RendererFn wrapper = RendererRegistry::make_renderer(func);
+    return table.map.emplace(type_name, std::move(wrapper)).second;
+  }
+  // Versión original para RendererFn directo
   static bool register_renderer(const std::string& type_name, RendererFn fn) {
     auto& table = instance();
     return table.map.emplace(type_name, std::move(fn)).second;
@@ -101,7 +115,7 @@ class RendererRegistry {
 };
 
 namespace {
-// =====================
+
 // Generic and reflection functions
 // =====================
 inline void log_reflected_fields(
@@ -158,35 +172,25 @@ inline void render_generic(const Core::EnvelopeMetadata& metadata,
 // =====================
 // Point functions
 // =====================
-template<typename T>
-inline void render_point(const Core::EnvelopeMetadata& metadata,
-                        typename T::Reader reader,
-                        RenderContext& context) {
-  (void)metadata;
+template<typename T, typename ReaderT>
+void render_point(const Core::EnvelopeMetadata& metadata,
+                         ReaderT reader_or_any,
+                         RenderContext& context) {
+  typename T::Reader reader;
+  if constexpr (std::is_same_v<ReaderT, ::capnp::AnyPointer::Reader>) {
+    if (reader_or_any.isStruct()) {
+      reader = reader_or_any.template getAs<T>();
+    } 
+  } else {
+    reader = reader_or_any;
+  }
+  // Ahora puedes usar reader normalmente
   const float x = static_cast<float>(reader.getX());
   const float y = static_cast<float>(reader.getY());
   const float z = static_cast<float>(reader.getZ());
   std::vector<rerun::Position3D> positions = {{x, y, z}};
-  context.stream().log(context.make_child_path("point"), rerun::Points3D(positions).with_radii({0.05F}));
-}
-
-inline void render_point(const Core::EnvelopeMetadata& metadata,
-                        ::capnp::AnyPointer::Reader payload,
-                        RenderContext& context,
-                        const capnp::StructSchema& schema) {
-  if (payload.isStruct()) {
-    try {
-      auto reader = payload.getAs<::Point>();
-      render_point<::Point>(metadata, reader, context);
-      return;
-    } catch (...) {
-      // Si falla, intenta reflexión
-    }
-  }
-  // Fallback: reflexión genérica
-  auto dynamic_reader = payload.getAs<::capnp::DynamicStruct>(schema);
-  auto reflected = DynamicReflection::reflect(dynamic_reader);
-  log_reflected_fields(reflected, context, "point");
+  context.stream().log(context.make_child_path("point"), 
+                       rerun::Points3D(positions).with_radii({0.05F}));
 }
 
 // =====================
@@ -208,7 +212,7 @@ inline void render_point_stamped(const Core::EnvelopeMetadata& metadata,
   // Reutilizar render_point para el campo point
   {
     RenderContext subcontext(context.stream(), context.make_child_path("point_stamped/point"), context.logger());
-    render_point<::Point>(metadata, reader.getPoint(), subcontext);
+    render_point<::Point, ::Point::Reader>(metadata, reader.getPoint(), subcontext);
   }
 }
 
@@ -448,74 +452,45 @@ inline void render_pointcloud(const Core::EnvelopeMetadata& metadata,
   log_map(context.stream(), context.logger(), cloud);
 }
 
+
+// =================================
+// Template para renders reusables
+// =================================
+// [[maybe_unused]] const bool point_short_registered = RendererRegistry::register_renderer(
+//   "Point",
+//   render_point<::Point, ::capnp::AnyPointer::Reader>);
+// ======================================
+// Template para renders de un solo uso
+// =================================
+// [[maybe_unused]] const bool header_short_registered =
+//   RendererRegistry::register_renderer("Point", &render_point);
+
 // =====================
 // std_msgs registrations
 // =====================
 // ===== Header renderer registration =====
-[[maybe_unused]] const bool header_registered =
-  RendererRegistry::register_renderer("std_msgs.Header", &render_header);
 [[maybe_unused]] const bool header_short_registered =
   RendererRegistry::register_renderer("Header", &render_header);
-
-// ===== ColorRGBA renderer registration =====
-[[maybe_unused]] const bool color_rgba_registered =
-  RendererRegistry::register_renderer("std_msgs.ColorRGBA", &render_color_rgba);
 [[maybe_unused]] const bool color_rgba_short_registered =
   RendererRegistry::register_renderer("ColorRGBA", &render_color_rgba);
-
 // =====================
 // geometry_msgs registrations
 // =====================
-// ===== Vector3 renderer registration =====
-[[maybe_unused]] const bool geom_vector3_registered =
-  RendererRegistry::register_renderer("geometry_msgs.Vector3", &render_geom_vector3);
 [[maybe_unused]] const bool geom_vector3_short_registered =
   RendererRegistry::register_renderer("Vector3", &render_geom_vector3);
-
-// ===== Point renderers registration =====
-// Wrapper para registro que maneja ambos casos
-[[maybe_unused]] const bool point_registered = RendererRegistry::register_renderer(
-  "geometry_msgs.Point",
-  [](const Core::EnvelopeMetadata& metadata, ::capnp::AnyPointer::Reader payload, RenderContext& context) {
-    // Obtener schema desde caché si es necesario
-    static capnp::StructSchema schema = capnp::Schema::from<::Point>().asStruct();
-    render_point(metadata, payload, context, schema);
-  });
 [[maybe_unused]] const bool point_short_registered = RendererRegistry::register_renderer(
   "Point",
-  [](const Core::EnvelopeMetadata& metadata, ::capnp::AnyPointer::Reader payload, RenderContext& context) {
-    static capnp::StructSchema schema = capnp::Schema::from<::Point>().asStruct();
-    render_point(metadata, payload, context, schema);
-  });
-
-// ===== PointStamped renderers registration =====
-[[maybe_unused]] const bool point_stamped_registered =
-  RendererRegistry::register_renderer("geometry_msgs.PointStamped", &render_point_stamped);
+  render_point<::Point, ::capnp::AnyPointer::Reader>);
 [[maybe_unused]] const bool point_stamped_short_registered =
   RendererRegistry::register_renderer("PointStamped", &render_point_stamped);
-
-
-// ===== Marker renderers registration =====
-[[maybe_unused]] const bool marker_registered = RendererRegistry::register_renderer(
-  "visualization_msgs.Marker", &render_marker);
 [[maybe_unused]] const bool marker_short_registered =
   RendererRegistry::register_renderer("Marker", &render_marker);
-
-// ===== MarkerArray renderers registration =====
-[[maybe_unused]] const bool marker_array_registered = RendererRegistry::register_renderer(
-  "visualization_msgs.MarkerArray", &render_marker_array);
 [[maybe_unused]] const bool marker_array_short_registered =
   RendererRegistry::register_renderer("MarkerArray", &render_marker_array);
-
-// ===== Odometry renderers registration =====
-[[maybe_unused]] const bool odometry_registered =
-  RendererRegistry::register_renderer("nav_msgs.Odometry", &render_odometry);
 [[maybe_unused]] const bool odometry_short_registered =
   RendererRegistry::register_renderer("Odometry", &render_odometry);
 
 // ===== PointCloud renderer registration =====
-[[maybe_unused]] const bool pointcloud_registered =
-  RendererRegistry::register_renderer("zed.PointCloud", &render_pointcloud);
 [[maybe_unused]] const bool pointcloud_short_registered =
   RendererRegistry::register_renderer("PointCloud", &render_pointcloud);
 }  // namespace
