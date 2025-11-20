@@ -1,5 +1,6 @@
-## TODO: Instalar python, tkinter(python3-tk con apt), pip3 y rerun-sdk en docker
+## TODO: Instalar python, tkinter(python3-tk con apt), pip3 en docker
 import os
+import subprocess
 from pathlib import Path
 from typing import List, Optional, Union
 
@@ -20,7 +21,7 @@ DEFAULT_MINIO_ENDPOINT = "127.0.0.1:9000"
 DEFAULT_MINIO_SECURE = False
 
 def get_minio_client():
-    """Devuelve una tupla (client, bucket, prefix) si Minio está configurado, o (None, None, None) si no."""
+    """Returns a tuple (client, bucket, prefix) if Minio is configured, or (None, None, None) if not."""
     if Minio is None or not (os.getenv("MINIO_ACCESS_KEY") and os.getenv("MINIO_SECRET_KEY")):
         return None, None, None
     endpoint = os.getenv("MINIO_ENDPOINT", DEFAULT_MINIO_ENDPOINT)
@@ -48,12 +49,12 @@ def _list_records_from_minio(bucket: str,
                              include_hidden: bool,
                              extensions: Optional[List[str]]) -> List[str]:
     if Minio is None:
-        print("minio SDK is not installed.")
+        print("Minio SDK is not installed.")
         return []
 
     client, _, _ = get_minio_client()
     if client is None:
-        print("Minio no está configurado correctamente.")
+        print("Minio is not properly configured.")
         return []
 
     normalized_exts = None
@@ -86,9 +87,7 @@ def _list_records_from_minio(bucket: str,
 
 def _build_gui_for_records():
     def show_download_progress(client, bucket, object_name, local_path, fname):
-        if local_path.exists():
-            messagebox.showinfo("Already downloaded", f"File already exists at: {local_path}")
-            return
+        if local_path.exists(): return
 
         progress_win = tk.Toplevel()
         progress_win.title("Downloading...")
@@ -125,7 +124,6 @@ def _build_gui_for_records():
             progress_bar['value'] = 100
             progress_win.update()
             progress_win.destroy()
-            messagebox.showinfo("Download complete", f"File saved at: {local_path}")
         except Exception as e:
             progress_win.destroy()
             messagebox.showerror("Download error", f"Could not download: {e}")
@@ -138,6 +136,8 @@ def _build_gui_for_records():
             local_path = base_dir / fname
             local_path.parent.mkdir(parents=True, exist_ok=True)
             show_download_progress(client, bucket, object_name, local_path, fname)
+            
+            subprocess.Popen(["rerun", str(local_path)])
         else:
             messagebox.showinfo("File selected", fname)
 
