@@ -13,8 +13,6 @@ find_package(PCL 1.15 REQUIRED)
 
 add_executable(rerun viewer.cpp)
 add_executable(rerun_comprobation service/comprobation.cpp)
-add_executable(render_example render.cpp)
 
 target_link_libraries(rerun rerun_sdk core cppzmq capnpc capnp capnp_schemas kj ${PCL_LIBRARIES})
-target_link_libraries(rerun_comprobation core cppzmq capnpc capnp capnp_schemas kj)
-target_link_libraries(render_example rerun_sdk core cppzmq capnpc capnp capnp_schemas kj)
+target_link_libraries(rerun_comprobation core cppzmq capnpc capnp capnp_schemas kj ${PCL_LIBRARIES})

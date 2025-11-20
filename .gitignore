@@ -1049,9 +1049,4 @@ perf.data*
 .devcontainer/.devpod-internal
 
 *.svo2
-
-# rerun-recording-stream test
-test-records/
-test-records-send/
-test-records-send-copy/
 *.rrd
