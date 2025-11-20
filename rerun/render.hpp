@@ -134,6 +134,15 @@ inline void render_generic(const Core::EnvelopeMetadata& metadata,
                     ::capnp::AnyPointer::Reader payload,
                     RenderContext& context,
                     ::capnp::StructSchema schema) {
+  // Desplegar metadata
+  std::ostringstream meta;
+  meta << "Metadata: ";
+  meta << "topic='" << metadata.topic << "', ";
+  meta << "typeName='" << metadata.typeName << "', ";
+  meta << "schemaPath='" << metadata.schemaPath << "', ";
+  meta << "timestampUsec=" << metadata.timestampUsec;
+  context.stream().log(context.make_child_path("generic/metadata"), rerun::TextLog(meta.str()));
+
   auto dynamic_reader = payload.getAs<::capnp::DynamicStruct>(schema);
   auto reflected = DynamicReflection::reflect(dynamic_reader);
 
@@ -295,6 +304,8 @@ inline void render_odometry(const Core::EnvelopeMetadata& metadata,
   "visualization_msgs.MarkerArray", &render_marker_array);
 [[maybe_unused]] const bool marker_array_short_registered =
   RendererRegistry::register_renderer("MarkerArray", &render_marker_array);
+
+// ===== Odometry renderers registration =====
 [[maybe_unused]] const bool odometry_registered =
   RendererRegistry::register_renderer("nav_msgs.Odometry", &render_odometry);
 [[maybe_unused]] const bool odometry_short_registered =
@@ -410,27 +421,25 @@ class SchemaCache {
 
 }  // namespace
 
-class Renderer : public Core::Vertex {
+class Renderer {
 public:
   Renderer(Core::ArgumentParser args,
            std::shared_ptr<rerun::RecordingStream> shared_stream,
            Viewer* viewer)
-      : Core::Vertex(args),
-        stream_(shared_stream),
+      : stream_(shared_stream),
         viewer_(viewer),
         shutting_down_(false),
         ignored_prefixes_({"registry/"}) {
     // TODO: Arreglar problema de args
     // Solo iniciar spawn si no está el flag --no-record
-    // std::cout << "Renderer started" << std::endl;
     bool no_record = false;
     try {
-      no_record = args.get_argument<bool>("--no-record");
+      no_record = viewer_->public_get_argument<bool>("--no-record");
     } catch (...) {}
     if (!no_record) {
       stream_->spawn().exit_on_failure();
     }
-    topics_client_ = this->create_action_client<TopicsListRequest, TopicsListResponse>(
+    topics_client_ = viewer_->public_create_action_client<TopicsListRequest, TopicsListResponse>(
         "registry/topics");
     refresh_topics();
     refresh_thread_ = std::thread(&Renderer::topic_refresh_loop, this);
@@ -456,7 +465,7 @@ private:
       try {
         refresh_topics();
       } catch (const std::exception& ex) {
-        _logger.warn("Topic refresh failed: %s", ex.what());
+        viewer_->get_logger()->warn("Topic refresh failed: %s", ex.what());
       }
       std::this_thread::sleep_for(std::chrono::seconds(5));
     }
@@ -472,7 +481,7 @@ private:
     request.content.setIncludeInternal(false);
     auto response = request.send();
     if (!response.has_value()) {
-      _logger.debug("Topics action returned no response");
+      viewer_->get_logger()->debug("Topics action returned no response");
       return;
     }
 
@@ -509,7 +518,7 @@ private:
       if (entry.second) {
         entry.second->stop();
       }
-      _logger.info("Unsubscribed from topic %s", entry.first.c_str());
+      viewer_->get_logger()->info("Unsubscribed from topic %s", entry.first.c_str());
     }
   }
 
@@ -521,18 +530,18 @@ private:
       }
     }
 
-    auto subscriber = this->create_subscriber<::capnp::AnyPointer>(
+    auto subscriber = viewer_->public_create_subscriber<::capnp::AnyPointer>(
         topic_name,
         [this, topic_name](const Core::IncomingMessage<::capnp::AnyPointer>& msg) {
           handle_any_message(topic_name, msg);
         });
-    subscriber->set_loglevel(_logger.get_level());
+    subscriber->set_loglevel(viewer_->get_logger()->get_level());
 
     {
       std::lock_guard<std::mutex> lock(subscribers_mutex_);
       topic_subscribers_.emplace(topic_name, subscriber);
     }
-    _logger.info("Subscribed to topic %s", topic_name.c_str());
+    viewer_->get_logger()->info("Subscribed to topic %s", topic_name.c_str());
   }
 
   bool should_ignore_topic(const std::string& topic_name) const {
@@ -548,22 +557,19 @@ private:
       const std::string& default_topic,
       const Core::IncomingMessage<::capnp::AnyPointer>& msg) {
     const capnp::StructSchema& struct_schema = schema_cache_.resolve(
-        msg.metadata.schemaPath, msg.metadata.typeName, _logger);
+      msg.metadata.schemaPath, msg.metadata.typeName, *viewer_->get_logger());
 
     std::string base_path =
-        msg.metadata.topic.empty() ? default_topic : msg.metadata.topic;
+      msg.metadata.topic.empty() ? default_topic : msg.metadata.topic;
     RerunRenderers::RenderContext context(*stream_, std::move(base_path),
-                        &_logger);
+              viewer_->get_logger());
     RerunRenderers::dispatch_message(msg.metadata, msg.getRawPayload(),
-                                     context, struct_schema);
+                     context, struct_schema);
   }
 
   std::shared_ptr<rerun::RecordingStream> stream_;
-  std::shared_ptr<Core::ActionClient<TopicsListRequest, TopicsListResponse>>
-      topics_client_;
-  std::unordered_map<std::string,
-                     std::shared_ptr<Core::Subscriber<::capnp::AnyPointer>>>
-      topic_subscribers_;
+  std::shared_ptr<Core::ActionClient<TopicsListRequest, TopicsListResponse>> topics_client_;
+  std::unordered_map<std::string, std::shared_ptr<Core::Subscriber<::capnp::AnyPointer>>> topic_subscribers_;
   std::mutex subscribers_mutex_;
   SchemaCache schema_cache_;
   std::thread refresh_thread_;

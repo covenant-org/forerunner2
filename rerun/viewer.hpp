@@ -22,7 +22,7 @@
 #include <rerun.hpp>
 #include <rerun/recording_stream.hpp>
 
-class Viewer : Core::Vertex {
+class Viewer : public Core::Vertex {
  private:
   Core::Logger _logger;
  private:
@@ -51,10 +51,23 @@ class Viewer : Core::Vertex {
       const std::optional<std::string> &recording_type = std::nullopt);
 
  public:
-  Core::Logger* get_logger();
-  std::shared_ptr<Core::Subscriber<::capnp::AnyPointer>> public_create_subscriber(
-    const std::string& topic,
-    std::function<void(const Core::IncomingMessage<::capnp::AnyPointer>&)> cb);
+  Core::Logger* get_logger() { return &_logger; }
+
+  template <typename T = bool>
+  T public_get_argument(std::string_view arg_name) const {
+    return this->get_argument<T>(arg_name);
+  }
+
+  template <typename T, typename K>
+  std::shared_ptr<Core::ActionClient<T, K>> public_create_action_client(const std::string& topic) {
+    return this->create_action_client<T, K>(topic);
+  }
+
+  template <typename T>
+  std::shared_ptr<Core::Subscriber<T>> public_create_subscriber(const std::string& topic,
+    std::function<void(const Core::IncomingMessage<T>&)> cb) {
+    return this->create_subscriber<T>(topic, cb);
+  }
   void goal_cb(const Core::IncomingMessage<Point> &);
   void point_cloud_cb(const Core::IncomingMessage<PointCloud> &);
   void map_cloud_cb(const Core::IncomingMessage<PointCloud> &);

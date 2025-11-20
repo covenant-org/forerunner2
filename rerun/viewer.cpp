@@ -160,17 +160,6 @@ Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
       std::bind(&Viewer::detection_image_cb, this, std::placeholders::_1));
 }
 
-// Implementación de los métodos públicos para Renderer
-Core::Logger* Viewer::get_logger() {
-  return &_logger;
-}
-
-std::shared_ptr<Core::Subscriber<::capnp::AnyPointer>> Viewer::public_create_subscriber(
-    const std::string& topic,
-    std::function<void(const Core::IncomingMessage<::capnp::AnyPointer>&)> cb) {
-  return this->create_subscriber<::capnp::AnyPointer>(topic, cb);
-}
-
 rerun::Color Viewer::distance_to_color(float distance) {
   // Create a color gradient based on distance
   // Blue (close) -> Green -> Yellow -> Red (far)
