@@ -1,5 +1,4 @@
 ## TODO: Instalar python, tkinter(python3-tk con apt), pip3 y rerun-sdk en docker
-
 import os
 from pathlib import Path
 from typing import List, Optional, Union
@@ -20,6 +19,18 @@ DEFAULT_MINIO_PREFIX = ""
 DEFAULT_MINIO_ENDPOINT = "127.0.0.1:9000"
 DEFAULT_MINIO_SECURE = False
 
+def get_minio_client():
+    """Devuelve una tupla (client, bucket, prefix) si Minio está configurado, o (None, None, None) si no."""
+    if Minio is None or not (os.getenv("MINIO_ACCESS_KEY") and os.getenv("MINIO_SECRET_KEY")):
+        return None, None, None
+    endpoint = os.getenv("MINIO_ENDPOINT", DEFAULT_MINIO_ENDPOINT)
+    access_key = os.getenv("MINIO_ACCESS_KEY")
+    secret_key = os.getenv("MINIO_SECRET_KEY")
+    secure = _parse_bool_env(os.getenv("MINIO_USE_HTTPS"), DEFAULT_MINIO_SECURE)
+    bucket = os.getenv("MINIO_BUCKET", DEFAULT_MINIO_BUCKET)
+    prefix = os.getenv("MINIO_PREFIX", DEFAULT_MINIO_PREFIX)
+    client = Minio(endpoint=endpoint, access_key=access_key, secret_key=secret_key, secure=secure)
+    return client, bucket, prefix
 
 def list_test_records(records_dir: Union[str, Path, None] = None,
                       include_hidden: bool = False,
@@ -106,16 +117,10 @@ def _list_records_from_minio(bucket: str,
         print("minio SDK is not installed.")
         return []
 
-    endpoint = os.getenv("MINIO_ENDPOINT", DEFAULT_MINIO_ENDPOINT)
-    access_key = os.getenv("MINIO_ACCESS_KEY")
-    secret_key = os.getenv("MINIO_SECRET_KEY")
-    if not access_key or not secret_key:
-        print("MINIO_ACCESS_KEY and MINIO_SECRET_KEY must be set to list records from MinIO.")
+    client, _, _ = get_minio_client()
+    if client is None:
+        print("Minio no está configurado correctamente.")
         return []
-
-    secure = _parse_bool_env(os.getenv("MINIO_USE_HTTPS"), DEFAULT_MINIO_SECURE)
-
-    client = Minio(endpoint=endpoint, access_key=access_key, secret_key=secret_key, secure=secure)
 
     normalized_exts = None
     if extensions:
@@ -146,10 +151,58 @@ def _list_records_from_minio(bucket: str,
     return results
 
 def _build_gui_for_records(records):
+    def show_download_progress(client, bucket, object_name, local_path, fname):
+        progress_win = tk.Toplevel()
+        progress_win.title("Downloading...")
+        progress_label = tk.Label(progress_win, text=f"Downloading: {fname}")
+        progress_label.pack(padx=10, pady=10)
+        progress_bar = ttk.Progressbar(progress_win, orient="horizontal", length=300, mode="determinate")
+        progress_bar.pack(padx=10, pady=10)
+        progress_bar['value'] = 0
+        progress_win.update()
+
+        try:
+            stat = client.stat_object(bucket, object_name)
+            total_size = stat.size
+        except Exception as e:
+            progress_win.destroy()
+            messagebox.showerror("Download error", f"Could not get file size: {e}")
+            return
+
+        try:
+            response = client.get_object(bucket, object_name)
+            with open(local_path, "wb") as f:
+                downloaded = 0
+                chunk_size = 1024 * 1024  # 1MB
+                while True:
+                    data = response.read(chunk_size)
+                    if not data:
+                        break
+                    f.write(data)
+                    downloaded += len(data)
+                    percent = (downloaded / total_size) * 100 if total_size else 0
+                    progress_bar['value'] = percent
+                    progress_win.update()
+            response.close()
+            progress_bar['value'] = 100
+            progress_win.update()
+            progress_win.destroy()
+            messagebox.showinfo("Download complete", f"File saved at: {local_path}")
+        except Exception as e:
+            progress_win.destroy()
+            messagebox.showerror("Download error", f"Could not download: {e}")
+
     def on_click(fname):
-        ## TODO: Ejecutar rerun en servidor con ese archivo
-        ## TODO: Ejecutar rerun cliente conectado a ip de servidor
-        messagebox.showinfo("Archivo seleccionado", fname)
+        client, bucket, prefix = get_minio_client()
+        if client is not None:
+            object_name = f"{prefix}/{fname}" if prefix else fname
+            object_name = object_name.lstrip("/")
+            base_dir = Path("/tmp/rerun-recordings")
+            local_path = base_dir / fname
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            show_download_progress(client, bucket, object_name, local_path, fname)
+        else:
+            messagebox.showinfo("File selected", fname)
 
     def _on_double_click(event):
         # Action: double-click on an item calls on_click with the full path
@@ -190,7 +243,7 @@ def _build_gui_for_records(records):
 
     tree = ttk.Treeview(tree_frame)
     # Make the primary column expand to fill the available width
-    tree.heading('#0', text='Archivos', anchor='w')
+    tree.heading('#0', text='Files', anchor='w')
     tree.column('#0', anchor='w', stretch=True)
 
     # Scrollbar for the treeview
