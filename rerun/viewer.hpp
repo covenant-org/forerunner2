@@ -1,3 +1,6 @@
+#ifndef VIEWER_HPP
+#define VIEWER_HPP
+
 #include "argument_parser.hpp"
 #include "message.hpp"
 #include "rerun/archetypes/asset3d.hpp"
@@ -19,10 +22,9 @@
 #include <rerun.hpp>
 #include <rerun/recording_stream.hpp>
 
-#ifndef DEMO_HPP
-#define DEMO_HPP
-
 class Viewer : Core::Vertex {
+ private:
+  Core::Logger _logger;
  private:
   std::shared_ptr<Core::Subscriber<PointCloud>> _sub;
   std::shared_ptr<Core::Subscriber<PointCloud>> _map_sub;
@@ -49,6 +51,10 @@ class Viewer : Core::Vertex {
       const std::optional<std::string> &recording_type = std::nullopt);
 
  public:
+  Core::Logger* get_logger();
+  std::shared_ptr<Core::Subscriber<::capnp::AnyPointer>> public_create_subscriber(
+    const std::string& topic,
+    std::function<void(const Core::IncomingMessage<::capnp::AnyPointer>&)> cb);
   void goal_cb(const Core::IncomingMessage<Point> &);
   void point_cloud_cb(const Core::IncomingMessage<PointCloud> &);
   void map_cloud_cb(const Core::IncomingMessage<PointCloud> &);
@@ -71,7 +77,7 @@ class Viewer : Core::Vertex {
   void map_cloud_chunk_cb(const Core::IncomingMessage<PointCloudChunk> &msg);
   rerun::Color distance_to_color(float distance);
   Viewer(Core::ArgumentParser);
-  void run();
+  void run() override;
 };
 
-#endif  // DEMO_HPP
+#endif  // VIEWER_HPP

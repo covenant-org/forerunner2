@@ -1,3 +1,4 @@
+#include "viewer.hpp"
 #include "message.hpp"
 #include "render.hpp"
 #include "rerun/archetypes/arrows3d.hpp"
@@ -10,7 +11,6 @@
 #include "rerun/datatypes/quaternion.hpp"
 #include "rerun/rotation3d.hpp"
 #include "utils.hpp"
-#include "viewer.hpp"
 #include <Eigen/src/Geometry/Quaternion.h>
 #include <capnp_schemas/zed.capnp.h>
 #include <chrono>
@@ -158,6 +158,17 @@ Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
   this->_detection_images_sub = this->create_subscriber<DetectionImage>(
       "detection_images",
       std::bind(&Viewer::detection_image_cb, this, std::placeholders::_1));
+}
+
+// Implementación de los métodos públicos para Renderer
+Core::Logger* Viewer::get_logger() {
+  return &_logger;
+}
+
+std::shared_ptr<Core::Subscriber<::capnp::AnyPointer>> Viewer::public_create_subscriber(
+    const std::string& topic,
+    std::function<void(const Core::IncomingMessage<::capnp::AnyPointer>&)> cb) {
+  return this->create_subscriber<::capnp::AnyPointer>(topic, cb);
 }
 
 rerun::Color Viewer::distance_to_color(float distance) {
@@ -668,12 +679,11 @@ int main(int argc, char** argv) {
   group.add_argument("--spawn")
       .help("Start or stream to already opened local viewer")
       .flag();
-
-  auto demo = Viewer(args);
-  // Instancia PointSubscriber y le pasa el mismo _rec usando el getter
+  auto viewer = Viewer(args);
+  std::unique_ptr<RegistryExample::Renderer> renderer;
   if (!args.get_argument<bool>("--no-render")) {
-    auto point_subscriber = std::make_unique<RegistryExample::Renderer>(args, demo.get_recording_stream());
+    renderer = std::make_unique<RegistryExample::Renderer>(args, viewer.get_recording_stream(), &viewer);
   }
-  demo.run();
+  viewer.run();
   return 0;
 }

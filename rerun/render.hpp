@@ -1,4 +1,3 @@
-// Header-only: toda la funcionalidad de render.cpp ahora está aquí
 #ifndef RERUN_RENDER_REGISTRY_HPP
 #define RERUN_RENDER_REGISTRY_HPP
 
@@ -11,6 +10,7 @@
 #include "../core/message.hpp"
 #include "../core/dynamic_reflection.hpp"
 #include "../core/vertex.hpp"
+#include "viewer.hpp" // Forward declaration para Viewer
 
 #include <capnp_schemas/geometry_msgs.capnp.h>
 #include <capnp_schemas/mavlink.capnp.h>
@@ -261,7 +261,7 @@ inline void render_odometry(const Core::EnvelopeMetadata& metadata,
                        rerun::Points3D(positions).with_radii({0.1F}));
 
   // Visualiza la pose como transformación (con ejes invertidos)
-  context.stream().log(context.make_child_path("world/drone"),
+  context.stream().log("world/drone",
     rerun::Transform3D::from_translation_rotation(
       rerun::components::Translation3D(std::array<float, 3>{
         static_cast<float>(position.getX()),
@@ -413,13 +413,16 @@ class SchemaCache {
 class Renderer : public Core::Vertex {
 public:
   Renderer(Core::ArgumentParser args,
-                 std::shared_ptr<rerun::RecordingStream> shared_stream)
+           std::shared_ptr<rerun::RecordingStream> shared_stream,
+           Viewer* viewer)
       : Core::Vertex(args),
         stream_(shared_stream),
+        viewer_(viewer),
         shutting_down_(false),
         ignored_prefixes_({"registry/"}) {
     // TODO: Arreglar problema de args
     // Solo iniciar spawn si no está el flag --no-record
+    // std::cout << "Renderer started" << std::endl;
     bool no_record = false;
     try {
       no_record = args.get_argument<bool>("--no-record");
@@ -446,7 +449,8 @@ public:
     }
   }
 
- private:
+private:
+  Viewer* viewer_;
   void topic_refresh_loop() {
     while (!shutting_down_.load()) {
       try {
