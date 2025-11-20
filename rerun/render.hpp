@@ -1,3 +1,4 @@
+#define ANY_READER ::capnp::AnyPointer::Reader
 #ifndef RERUN_RENDER_REGISTRY_HPP
 #define RERUN_RENDER_REGISTRY_HPP
 
@@ -41,6 +42,19 @@ class Logger;
 }
 
 namespace RerunRenderers {
+// Utilidad para obtener el reader correcto desde AnyPointer o Reader directo
+template<typename T, typename ReaderT>
+typename T::Reader resolve_reader(ReaderT reader_or_any) {
+  if constexpr (std::is_same_v<ReaderT, ANY_READER>) {
+    if (reader_or_any.isStruct()) {
+      return reader_or_any.template getAs<T>();
+    }
+    // Si no es struct, retorna default constructed (puedes ajustar si quieres lanzar excepción)
+    return typename T::Reader();
+  } else {
+    return reader_or_any;
+  }
+}
 
 class RenderContext {
  public:
@@ -170,21 +184,28 @@ inline void render_generic(const Core::EnvelopeMetadata& metadata,
 }
 
 // =====================
+// Header functions
+// =====================
+template<typename T, typename ReaderT>
+void render_header(const Core::EnvelopeMetadata& metadata,
+                  ReaderT reader_or_any,
+                  RenderContext& context) {
+  auto reader = resolve_reader<T>(reader_or_any);
+  context.stream().log(context.make_child_path("header/seq"), rerun::Scalars(static_cast<double>(reader.getSeq())));
+  context.stream().log(context.make_child_path("header/stampSec"), rerun::Scalars(static_cast<double>(reader.getStampSec())));
+  context.stream().log(context.make_child_path("header/stampNsec"), rerun::Scalars(static_cast<double>(reader.getStampNsec())));
+  context.stream().log(context.make_child_path("header/frameId"), rerun::TextLog(to_std_string(reader.getFrameId())));
+}
+
+// =====================
 // Point functions
 // =====================
 template<typename T, typename ReaderT>
 void render_point(const Core::EnvelopeMetadata& metadata,
                          ReaderT reader_or_any,
                          RenderContext& context) {
-  typename T::Reader reader;
-  if constexpr (std::is_same_v<ReaderT, ::capnp::AnyPointer::Reader>) {
-    if (reader_or_any.isStruct()) {
-      reader = reader_or_any.template getAs<T>();
-    } 
-  } else {
-    reader = reader_or_any;
-  }
-  // Ahora puedes usar reader normalmente
+  auto reader = resolve_reader<T>(reader_or_any);
+  
   const float x = static_cast<float>(reader.getX());
   const float y = static_cast<float>(reader.getY());
   const float z = static_cast<float>(reader.getZ());
@@ -193,25 +214,18 @@ void render_point(const Core::EnvelopeMetadata& metadata,
                        rerun::Points3D(positions).with_radii({0.05F}));
 }
 
-// =====================
-// PointStamped functions
-// =====================
+// Ejemplo de render que reutiliza otros
 inline void render_point_stamped(const Core::EnvelopeMetadata& metadata,
                                 ::capnp::AnyPointer::Reader payload,
                                 RenderContext& context) {
   (void)metadata;
   auto reader = payload.getAs<::PointStamped>();
-  // Loguear header
   {
-    auto header = reader.getHeader();
-    context.stream().log(context.make_child_path("point_stamped/header/seq"), rerun::Scalars(static_cast<double>(header.getSeq())));
-    context.stream().log(context.make_child_path("point_stamped/header/stampSec"), rerun::Scalars(static_cast<double>(header.getStampSec())));
-    context.stream().log(context.make_child_path("point_stamped/header/stampNsec"), rerun::Scalars(static_cast<double>(header.getStampNsec())));
-    context.stream().log(context.make_child_path("point_stamped/header/frameId"), rerun::TextLog(to_std_string(header.getFrameId())));
+    RenderContext subcontext(context.stream(), context.make_child_path("point_stamped"), context.logger());
+    render_header<::Header, ::Header::Reader>(metadata, reader.getHeader(), subcontext);
   }
-  // Reutilizar render_point para el campo point
   {
-    RenderContext subcontext(context.stream(), context.make_child_path("point_stamped/point"), context.logger());
+    RenderContext subcontext(context.stream(), context.make_child_path("point_stamped"), context.logger());
     render_point<::Point, ::Point::Reader>(metadata, reader.getPoint(), subcontext);
   }
 }
@@ -219,38 +233,24 @@ inline void render_point_stamped(const Core::EnvelopeMetadata& metadata,
 // =====================
 // Vector3 functions
 // =====================
-inline void render_geom_vector3(const Core::EnvelopeMetadata& metadata,
-                               ::capnp::AnyPointer::Reader payload,
-                               RenderContext& context) {
-  (void)metadata;
-  auto reader = payload.getAs<::Vector3>();
+template<typename T, typename ReaderT>
+void render_geom_vector3(const Core::EnvelopeMetadata& metadata,
+                        ReaderT reader_or_any,
+                        RenderContext& context) {
+  auto reader = resolve_reader<T>(reader_or_any);
   context.stream().log(context.make_child_path("vector3/x"), rerun::Scalars(reader.getX()));
   context.stream().log(context.make_child_path("vector3/y"), rerun::Scalars(reader.getY()));
   context.stream().log(context.make_child_path("vector3/z"), rerun::Scalars(reader.getZ()));
 }
 
 // =====================
-// Header functions
-// =====================
-inline void render_header(const Core::EnvelopeMetadata& metadata,
-                         ::capnp::AnyPointer::Reader payload,
-                         RenderContext& context) {
-  (void)metadata;
-  auto reader = payload.getAs<::Header>();
-  context.stream().log(context.make_child_path("header/seq"), rerun::Scalars(static_cast<double>(reader.getSeq())));
-  context.stream().log(context.make_child_path("header/stampSec"), rerun::Scalars(static_cast<double>(reader.getStampSec())));
-  context.stream().log(context.make_child_path("header/stampNsec"), rerun::Scalars(static_cast<double>(reader.getStampNsec())));
-  context.stream().log(context.make_child_path("header/frameId"), rerun::TextLog(to_std_string(reader.getFrameId())));
-}
-
-// =====================
 // ColorRGBA functions
 // =====================
-inline void render_color_rgba(const Core::EnvelopeMetadata& metadata,
-                             ::capnp::AnyPointer::Reader payload,
-                             RenderContext& context) {
-  (void)metadata;
-  auto reader = payload.getAs<::ColorRGBA>();
+template<typename T, typename ReaderT>
+void render_color_rgba(const Core::EnvelopeMetadata& metadata,
+                      ReaderT reader_or_any,
+                      RenderContext& context) {
+  auto reader = resolve_reader<T>(reader_or_any);
   std::ostringstream color_str;
   color_str << "rgba(" << reader.getR() << ", " << reader.getG() << ", " << reader.getB() << ", " << reader.getA() << ")";
   context.stream().log(context.make_child_path("color/value"), rerun::TextLog(color_str.str()));
@@ -258,6 +258,128 @@ inline void render_color_rgba(const Core::EnvelopeMetadata& metadata,
   context.stream().log(context.make_child_path("color/g"), rerun::Scalars(static_cast<double>(reader.getG())));
   context.stream().log(context.make_child_path("color/b"), rerun::Scalars(static_cast<double>(reader.getB())));
   context.stream().log(context.make_child_path("color/a"), rerun::Scalars(static_cast<double>(reader.getA())));
+}
+
+// =====================
+// Quaternion functions
+// =====================
+template<typename T, typename ReaderT>
+void render_quaternion(const Core::EnvelopeMetadata& metadata, ReaderT reader_or_any, RenderContext& context) {
+  auto reader = resolve_reader<T>(reader_or_any);
+  const std::string parent_path = "quaternion";
+  context.stream().log(context.make_child_path(parent_path + "/x"), rerun::Scalars(reader.getX()));
+  context.stream().log(context.make_child_path(parent_path + "/y"), rerun::Scalars(reader.getY()));
+  context.stream().log(context.make_child_path(parent_path + "/z"), rerun::Scalars(reader.getZ()));
+  context.stream().log(context.make_child_path(parent_path + "/w"), rerun::Scalars(reader.getW()));
+}
+
+// =====================
+// Pose functions
+// =====================
+template<typename T, typename ReaderT>
+void render_pose(const Core::EnvelopeMetadata& metadata, ReaderT reader_or_any, RenderContext& context) {
+  auto reader = resolve_reader<T>(reader_or_any);
+  const std::string parent_path = "pose";
+  {
+    RenderContext subcontext(context.stream(), context.make_child_path(parent_path + "/position"), context.logger());
+    render_point<::Point, ::Point::Reader>(metadata, reader.getPosition(), subcontext);
+  }
+  {
+    RenderContext subcontext(context.stream(), context.make_child_path(parent_path + "/orientation"), context.logger());
+    render_quaternion<::Quaternion, ::Quaternion::Reader>(metadata, reader.getOrientation(), subcontext);
+  }
+}
+
+inline void render_pose_stamped(const Core::EnvelopeMetadata& metadata, ANY_READER payload, RenderContext& context) {
+  auto reader = payload.getAs<::PoseStamped>();
+  const std::string parent_path = "pose_stamped";
+  {
+    RenderContext subcontext(context.stream(), context.make_child_path(parent_path + "/header"), context.logger());
+    render_header<::Header, ::Header::Reader>(metadata, reader.getHeader(), subcontext);
+  }
+  {
+    RenderContext subcontext(context.stream(), context.make_child_path(parent_path + "/pose"), context.logger());
+    render_pose<::Pose, ::Pose::Reader>(metadata, reader.getPose(), subcontext);
+  }
+}
+
+template<typename T, typename ReaderT>
+void render_pose_with_covariance(const Core::EnvelopeMetadata& metadata, ReaderT reader_or_any, RenderContext& context) {
+  auto reader = resolve_reader<T>(reader_or_any);
+  const std::string parent_path = "pose_with_covariance";
+  {
+    RenderContext subcontext(context.stream(), context.make_child_path(parent_path + "/pose"), context.logger());
+    render_pose<::Pose, ::Pose::Reader>(metadata, reader.getPose(), subcontext);
+  }
+  {
+    auto cov = reader.getCovariance();
+    std::vector<double> values(cov.size());
+    for (size_t i = 0; i < cov.size(); ++i) values[i] = cov[i];
+    context.stream().log(context.make_child_path(parent_path + "/covariance"), rerun::Scalars(values));
+  }
+}
+
+// =====================
+// Twist functions
+// =====================
+template<typename T, typename ReaderT>
+void render_twist(const Core::EnvelopeMetadata& metadata, ReaderT reader_or_any, RenderContext& context) {
+  auto reader = resolve_reader<T>(reader_or_any);
+  const std::string parent_path = "twist";
+  {
+    RenderContext subcontext(context.stream(), context.make_child_path(parent_path + "/linear"), context.logger());
+    render_geom_vector3<::Vector3, ::Vector3::Reader>(metadata, reader.getLinear(), subcontext);
+  }
+  {
+    RenderContext subcontext(context.stream(), context.make_child_path(parent_path + "/angular"), context.logger());
+    render_geom_vector3<::Vector3, ::Vector3::Reader>(metadata, reader.getAngular(), subcontext);
+  }
+}
+
+template<typename T, typename ReaderT>
+void render_twist_with_covariance(const Core::EnvelopeMetadata& metadata, ReaderT reader_or_any, RenderContext& context) {
+  auto reader = resolve_reader<T>(reader_or_any);
+  const std::string parent_path = "twist_with_covariance";
+  {
+    RenderContext subcontext(context.stream(), context.make_child_path(parent_path + "/twist"), context.logger());
+    render_twist<::Twist, ::Twist::Reader>(metadata, reader.getTwist(), subcontext);
+  }
+  {
+    auto cov = reader.getCovariance();
+    std::vector<double> values(cov.size());
+    for (size_t i = 0; i < cov.size(); ++i) values[i] = cov[i];
+    context.stream().log(context.make_child_path(parent_path + "/covariance"), rerun::Scalars(values));
+  }
+}
+
+// =====================
+// Transform functions
+// =====================
+template<typename T, typename ReaderT>
+void render_transform(const Core::EnvelopeMetadata& metadata, ReaderT reader_or_any, RenderContext& context) {
+  auto reader = resolve_reader<T>(reader_or_any);
+  const std::string parent_path = "transform";
+  {
+    RenderContext subcontext(context.stream(), context.make_child_path(parent_path + "/translation"), context.logger());
+    render_geom_vector3<::Vector3, ::Vector3::Reader>(metadata, reader.getTranslation(), subcontext);
+  }
+  {
+    RenderContext subcontext(context.stream(), context.make_child_path(parent_path + "/rotation"), context.logger());
+    render_quaternion<::Quaternion, ::Quaternion::Reader>(metadata, reader.getRotation(), subcontext);
+  }
+}
+
+inline void render_transform_stamped(const Core::EnvelopeMetadata& metadata, ANY_READER payload, RenderContext& context) {
+  auto reader = payload.getAs<::TransformStamped>();
+  const std::string parent_path = "transform_stamped";
+  {
+    RenderContext subcontext(context.stream(), context.make_child_path(parent_path + "/header"), context.logger());
+    render_header<::Header, ::Header::Reader>(metadata, reader.getHeader(), subcontext);
+  }
+  {
+    RenderContext subcontext(context.stream(), context.make_child_path(parent_path + "/transform"), context.logger());
+    render_transform<::Transform, ::Transform::Reader>(metadata, reader.getTransform(), subcontext);
+  }
 }
 
 // =====================
@@ -307,26 +429,25 @@ inline void log_marker_details(const ::Marker::Reader& marker,
                        rerun::TextLog(info.str()));
 }
 
-inline void render_marker(const Core::EnvelopeMetadata& metadata,
-                   ::capnp::AnyPointer::Reader payload,
-                   RenderContext& context) {
-  (void)metadata;
-  auto marker = payload.getAs<::Marker>();
-
+template<typename T, typename ReaderT>
+void render_marker(const Core::EnvelopeMetadata& metadata,
+                  ReaderT reader_or_any,
+                  RenderContext& context) {
+  auto marker = resolve_reader<T>(reader_or_any);
   const std::string marker_ns = to_std_string(marker.getNs());
   std::string segment = "markers/" +
                         (marker_ns.empty() ? std::string("default")
                                            : marker_ns) +
                         "_" + std::to_string(marker.getId());
-
   log_marker_details(marker, context, segment);
 }
 
-inline void render_marker_array(const Core::EnvelopeMetadata& metadata,
-                         ::capnp::AnyPointer::Reader payload,
-                         RenderContext& context) {
-  (void)metadata;
-  auto markers = payload.getAs<::MarkerArray>().getMarkers();
+template<typename T, typename ReaderT>
+void render_marker_array(const Core::EnvelopeMetadata& metadata,
+                        ReaderT reader_or_any,
+                        RenderContext& context) {
+  auto array_reader = resolve_reader<T>(reader_or_any);
+  auto markers = array_reader.getMarkers();
   uint32_t index = 0;
   for (const auto marker : markers) {
     std::string segment = "markers/array_" + std::to_string(index);
@@ -452,46 +573,72 @@ inline void render_pointcloud(const Core::EnvelopeMetadata& metadata,
   log_map(context.stream(), context.logger(), cloud);
 }
 
-
 // =================================
 // Template para renders reusables
 // =================================
-// [[maybe_unused]] const bool point_short_registered = RendererRegistry::register_renderer(
-//   "Point",
-//   render_point<::Point, ::capnp::AnyPointer::Reader>);
+// [[maybe_unused]] const bool point_registered = 
+//  RendererRegistry::register_renderer("Point",
+//                                      &render_point<::Point, ANY_READER>);
 // ======================================
 // Template para renders de un solo uso
 // =================================
-// [[maybe_unused]] const bool header_short_registered =
-//   RendererRegistry::register_renderer("Point", &render_point);
+// [[maybe_unused]] const bool odometry_registered =
+//   RendererRegistry::register_renderer("Odometry", &render_odometry);
 
 // =====================
 // std_msgs registrations
 // =====================
-// ===== Header renderer registration =====
-[[maybe_unused]] const bool header_short_registered =
-  RendererRegistry::register_renderer("Header", &render_header);
-[[maybe_unused]] const bool color_rgba_short_registered =
-  RendererRegistry::register_renderer("ColorRGBA", &render_color_rgba);
+[[maybe_unused]] const bool header_registered =
+  RendererRegistry::register_renderer("Header", 
+                                      &render_header<::Header, ANY_READER>);
+[[maybe_unused]] const bool color_rgba_registered =
+  RendererRegistry::register_renderer("ColorRGBA", 
+                                      &render_color_rgba<::ColorRGBA, ANY_READER>);
 // =====================
 // geometry_msgs registrations
 // =====================
-[[maybe_unused]] const bool geom_vector3_short_registered =
-  RendererRegistry::register_renderer("Vector3", &render_geom_vector3);
-[[maybe_unused]] const bool point_short_registered = RendererRegistry::register_renderer(
-  "Point",
-  render_point<::Point, ::capnp::AnyPointer::Reader>);
-[[maybe_unused]] const bool point_stamped_short_registered =
+[[maybe_unused]] const bool vector3_registered =
+  RendererRegistry::register_renderer("Vector3", 
+                                      &render_geom_vector3<::Vector3, ANY_READER>);
+[[maybe_unused]] const bool point_registered = 
+RendererRegistry::register_renderer("Point",
+                                    &render_point<::Point, ANY_READER>);
+[[maybe_unused]] const bool point_stamped_registered =
   RendererRegistry::register_renderer("PointStamped", &render_point_stamped);
-[[maybe_unused]] const bool marker_short_registered =
-  RendererRegistry::register_renderer("Marker", &render_marker);
-[[maybe_unused]] const bool marker_array_short_registered =
-  RendererRegistry::register_renderer("MarkerArray", &render_marker_array);
-[[maybe_unused]] const bool odometry_short_registered =
-  RendererRegistry::register_renderer("Odometry", &render_odometry);
+[[maybe_unused]] const bool quaternion_registered =
+  RendererRegistry::register_renderer("Quaternion", 
+                                      &render_quaternion<::Quaternion, ANY_READER>);
+[[maybe_unused]] const bool pose_registered =
+  RendererRegistry::register_renderer("Pose", 
+                                      &render_pose<::Pose, ANY_READER>);
+[[maybe_unused]] const bool pose_with_cov_registered =
+  RendererRegistry::register_renderer("PoseWithCovariance", 
+                                      &render_pose_with_covariance<::PoseWithCovariance, ANY_READER>);
+[[maybe_unused]] const bool twist_registered =
+  RendererRegistry::register_renderer("Twist", 
+                                      &render_twist<::Twist, ANY_READER>);
+[[maybe_unused]] const bool twist_with_cov_registered =
+  RendererRegistry::register_renderer("TwistWithCovariance", 
+                                      &render_twist_with_covariance<::TwistWithCovariance, ANY_READER>);
+[[maybe_unused]] const bool pose_stamped_registered =
+  RendererRegistry::register_renderer("PoseStamped", &render_pose_stamped);
+[[maybe_unused]] const bool transform_registered =
+  RendererRegistry::register_renderer("Transform", 
+                                      &render_transform<::Transform, ANY_READER>);
+[[maybe_unused]] const bool transform_stamped_registered =
+  RendererRegistry::register_renderer("TransformStamped", &render_transform_stamped);
 
-// ===== PointCloud renderer registration =====
-[[maybe_unused]] const bool pointcloud_short_registered =
+
+
+[[maybe_unused]] const bool marker_registered =
+  RendererRegistry::register_renderer("Marker", 
+                                      &render_marker<::Marker, ANY_READER>);
+[[maybe_unused]] const bool marker_array_registered =
+  RendererRegistry::register_renderer("MarkerArray", 
+                                      &render_marker_array<::MarkerArray, ANY_READER>);
+[[maybe_unused]] const bool odometry_registered =
+  RendererRegistry::register_renderer("Odometry", &render_odometry);
+[[maybe_unused]] const bool pointcloud_registered =
   RendererRegistry::register_renderer("PointCloud", &render_pointcloud);
 }  // namespace
 
