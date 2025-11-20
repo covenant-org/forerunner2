@@ -359,8 +359,10 @@ void Viewer::goal_cb(const Core::IncomingMessage<Point>& msg) {
   auto content = msg.content;
   this->_rec->log("goal/position",
                   rerun::Boxes3D::from_centers_and_sizes(
-                      {{content.getX(), content.getY(), -content.getZ()}},
-                      {{0.3, 0.3, 0.3}}));
+                      {{static_cast<float>(content.getX()), 
+                        static_cast<float>(content.getY()), 
+                        static_cast<float>(-content.getZ())}},
+                      {{0.3f, 0.3f, 0.3f}}));
   this->_rec->log("goal/coords_x",
                   rerun::Scalars(static_cast<double>(content.getX())));
   this->_rec->log("goal/coords_y",
@@ -671,7 +673,7 @@ int main(int argc, char** argv) {
   auto viewer = Viewer(args);
   std::unique_ptr<RegistryExample::Renderer> renderer;
   if (!args.get_argument<bool>("--no-render")) {
-    renderer = std::make_unique<RegistryExample::Renderer>(args, viewer.get_recording_stream(), &viewer);
+    renderer = std::make_unique<RegistryExample::Renderer>(viewer.get_recording_stream(), &viewer);
   }
   viewer.run();
   return 0;

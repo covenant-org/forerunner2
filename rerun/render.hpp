@@ -130,18 +130,18 @@ inline std::string to_std_string(::capnp::Text::Reader reader) {
   return std::string(reader.cStr(), reader.size());
 }
 
+inline void fill_metadata(const Core::EnvelopeMetadata& metadata, RenderContext& context) {
+  context.stream().log(context.make_child_path("generic/metadata/topic"), rerun::TextLog(metadata.topic));
+  context.stream().log(context.make_child_path("generic/metadata/typeName"), rerun::TextLog(metadata.typeName));
+  context.stream().log(context.make_child_path("generic/metadata/schemaPath"), rerun::TextLog(metadata.schemaPath));
+  context.stream().log(context.make_child_path("generic/metadata/timestampUsec"), rerun::TextLog(std::to_string(metadata.timestampUsec)));
+}
+
 inline void render_generic(const Core::EnvelopeMetadata& metadata,
                     ::capnp::AnyPointer::Reader payload,
                     RenderContext& context,
                     ::capnp::StructSchema schema) {
-  // Desplegar metadata
-  std::ostringstream meta;
-  meta << "Metadata: ";
-  meta << "topic='" << metadata.topic << "', ";
-  meta << "typeName='" << metadata.typeName << "', ";
-  meta << "schemaPath='" << metadata.schemaPath << "', ";
-  meta << "timestampUsec=" << metadata.timestampUsec;
-  context.stream().log(context.make_child_path("generic/metadata"), rerun::TextLog(meta.str()));
+  fill_metadata(metadata, context);
 
   auto dynamic_reader = payload.getAs<::capnp::DynamicStruct>(schema);
   auto reflected = DynamicReflection::reflect(dynamic_reader);
@@ -161,6 +161,7 @@ inline void render_generic(const Core::EnvelopeMetadata& metadata,
 inline void render_point(const Core::EnvelopeMetadata& metadata,
                   ::capnp::AnyPointer::Reader payload,
                   RenderContext& context) {
+  (void)metadata;
   auto reader = payload.getAs<::Point>();
 
   const float x = static_cast<float>(reader.getX());
@@ -222,6 +223,7 @@ inline void log_marker_details(const ::Marker::Reader& marker,
 inline void render_marker(const Core::EnvelopeMetadata& metadata,
                    ::capnp::AnyPointer::Reader payload,
                    RenderContext& context) {
+  (void)metadata;
   auto marker = payload.getAs<::Marker>();
 
   const std::string marker_ns = to_std_string(marker.getNs());
@@ -236,6 +238,7 @@ inline void render_marker(const Core::EnvelopeMetadata& metadata,
 inline void render_marker_array(const Core::EnvelopeMetadata& metadata,
                          ::capnp::AnyPointer::Reader payload,
                          RenderContext& context) {
+  (void)metadata;
   auto markers = payload.getAs<::MarkerArray>().getMarkers();
   uint32_t index = 0;
   for (const auto marker : markers) {
@@ -255,6 +258,7 @@ inline void render_marker_array(const Core::EnvelopeMetadata& metadata,
 inline void render_odometry(const Core::EnvelopeMetadata& metadata,
                      ::capnp::AnyPointer::Reader payload,
                      RenderContext& context) {
+  (void)metadata;
   auto odom = payload.getAs<::Odometry>();
   const auto pose = odom.getPose().getPose();
   const auto position = pose.getPosition();
@@ -423,14 +427,12 @@ class SchemaCache {
 
 class Renderer {
 public:
-  Renderer(Core::ArgumentParser args,
-           std::shared_ptr<rerun::RecordingStream> shared_stream,
+  Renderer(std::shared_ptr<rerun::RecordingStream> shared_stream,
            Viewer* viewer)
-      : stream_(shared_stream),
-        viewer_(viewer),
+      : viewer_(viewer),
+        stream_(shared_stream),
         shutting_down_(false),
         ignored_prefixes_({"registry/"}) {
-    // TODO: Arreglar problema de args
     // Solo iniciar spawn si no está el flag --no-record
     bool no_record = false;
     try {
