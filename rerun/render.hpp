@@ -665,17 +665,24 @@ RendererRegistry::register_renderer("Point",
 [[maybe_unused]] const bool transform_stamped_registered =
   RendererRegistry::register_renderer("TransformStamped", &render_transform_stamped);
 
-
+// =====================
+// nav_msgs registrations
+// =====================
 [[maybe_unused]] const bool nav_path_registered =
   RendererRegistry::register_renderer("Path", &render_nav_path);
+[[maybe_unused]] const bool odometry_registered =
+  RendererRegistry::register_renderer("Odometry", &render_odometry);
+
+// =====================
+// nav_msgs registrations
+// =====================
 [[maybe_unused]] const bool marker_registered =
   RendererRegistry::register_renderer("Marker", 
                                       &render_marker<::Marker, ANY_READER>);
 [[maybe_unused]] const bool marker_array_registered =
   RendererRegistry::register_renderer("MarkerArray", 
                                       &render_marker_array<::MarkerArray, ANY_READER>);
-[[maybe_unused]] const bool odometry_registered =
-  RendererRegistry::register_renderer("Odometry", &render_odometry);
+
 [[maybe_unused]] const bool pointcloud_registered =
   RendererRegistry::register_renderer("PointCloud", &render_pointcloud);
 }  // namespace
