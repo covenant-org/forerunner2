@@ -11,6 +11,7 @@
 #include <capnp_schemas/generics.capnp.h>
 #include <eigen3/Eigen/src/Core/Matrix.h>
 #include <memory>
+#include <mutex>
 
 class LowLevel : public Core::Vertex {
  private:
@@ -37,6 +38,7 @@ class LowLevel : public Core::Vertex {
   Eigen::Quaterniond get_q_error(Eigen::Quaterniond);
   Eigen::Vector3d get_f_desired(Eigen::Vector3d);
   Eigen::Vector3d get_torque_input(Eigen::Vector3d fu, double yaw);
+  std::mutex _odom_mutex;
 
  public:
   explicit LowLevel(Core::ArgumentParser);

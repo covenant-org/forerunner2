@@ -10,6 +10,7 @@
 #include <capnp_schemas/generics.capnp.h>
 #include <cmath>
 #include <eigen3/Eigen/src/Core/Matrix.h>
+#include <mutex>
 #include <unistd.h>
 
 LowLevel::LowLevel(Core::ArgumentParser args) : Core::Vertex(args) {
@@ -27,14 +28,15 @@ LowLevel::LowLevel(Core::ArgumentParser args) : Core::Vertex(args) {
   _g = Eigen::Vector3d(0, 0, -9.81);
   _m = 2;
   _f = Eigen::Vector3d(0, 0, 0);
-  _kpt << 2, 0, 0, 0, 2, 0, 0, 0, 3;
-  _kdt << 0.5, 0, 0, 0, 0.5, 0, 0, 0, 2;
-  _J << 0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1;
-  _kpr << 0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1;
+  _kpt << 1, 0, 0, 0, 1, 0, 0, 0, 1.5;
+  _kdt << 0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.8;
+  _kpr << 0.8, 0, 0, 0, 0.8, 0, 0, 0, 0.8;
   _kdr << 0, 0, 0, 0, 0, 0, 0, 0, 0;
+  _J << 0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1;
 }
 
 void LowLevel::_odom_cb(const Core::IncomingMessage<Odometry> &msg) {
+  const std::lock_guard<std::mutex> lock(_odom_mutex);
   auto odom_q = msg.content.getQ();
   auto odom_pos = msg.content.getPosition();
   auto velocity = msg.content.getVelocity();
@@ -70,7 +72,8 @@ Eigen::Vector3d LowLevel::get_f_desired(Eigen::Vector3d pd) {
 Eigen::Vector3d quaternion_ln(const Eigen::Quaterniond q) {
   Eigen::Quaterniond quart(q);
   quart.normalize();
-  auto norm = quart.norm();
+  Eigen::Vector3d r(q.x(), q.y(), q.z());
+  auto norm = r.norm();
   if (norm == 0) {
     return Eigen::Vector3d(0, 0, 0);
   }
@@ -88,20 +91,21 @@ Eigen::Vector3d LowLevel::get_torque_input(Eigen::Vector3d fu, double yaw) {
     imaginary = (cross / cross.norm()) * std::sqrt((1 - dot) / 2);
   }
   auto real = std::sqrt((1 + dot) / 2);
+  //  _qd = Eigen::Quaterniond(std::cos(M_PI_4), std::sin(M_PI_4), 0, 0);
   _qd =
       Eigen::Quaterniond(real, -imaginary.x(), -imaginary.y(), -imaginary.z());
-  auto qe = qz.conjugate() * _qd * this->_q;
-  qe.normalize();
-  auto theta = 2 * std::acos(qe.w());
-  Eigen::Vector3d qrv =
-      (theta / std::sin(theta / 2)) * Eigen::Vector3d(qe.x(), qe.y(), qe.z());
+  _qe = qz.conjugate() * _qd * this->_q;
+  _qe.normalize();
+  auto theta = 2 * std::acos(_qe.w());
+  Eigen::Vector3d qrv = (theta / std::sin(theta / 2)) *
+                        Eigen::Vector3d(_qe.x(), _qe.y(), _qe.z());
   if (qrv.norm() > M_PI) {
-    _qd = _qd * Eigen::UniformScaling<double>(-1);
-    qe = qz.conjugate() * _qd * this->_q;
-    qe.normalize();
+    _qd = Eigen::Quaterniond(-_qd.w(), -_qd.x(), -_qd.y(), -_qd.z());
+    _qe = qz.conjugate() * _qd * this->_q;
+    _qe.normalize();
   }
 
-  return -2 * _kpr * quaternion_ln(qe) - _kdr * this->_angular_velocity +
+  return -2 * _kpr * quaternion_ln(_qe) - _kdr * this->_angular_velocity +
          this->_angular_velocity.cross(this->_J * this->_angular_velocity);
 }
 
@@ -110,7 +114,7 @@ float sqrt_n_trim(float input) {
 }
 
 void LowLevel::run() {
-  Core::RateKeeper rk(1000);
+  Core::RateKeeper rk(10000);
   auto command = this->_mavlink_client->new_msg();
   command.content.setArm();
   auto res = command.send();
@@ -153,25 +157,32 @@ void LowLevel::run() {
     goal_msg.content.setY(pd.y());
     goal_msg.content.setZ(-pd.z());
     goal_msg.publish();
-    auto ut = this->get_f_desired(pd);
-    auto fth = ut.norm();
-    Eigen::Vector3d fu = ut / fth;
-    auto ur = this->get_torque_input(fu, 0);
-    Eigen::Vector3d tau = this->_J * ur;
+    double error, fth = 0;
+    Eigen::Vector3d ut, tau, fu;
+    {
+      const std::lock_guard<std::mutex> lock(_odom_mutex);
+      ut = this->get_f_desired(pd);
+      fth = ut.norm();
+      fu = ut / fth;
+      auto ur = this->get_torque_input(fu, 0);
+      tau = this->_J * ur;
+      error = (this->_pos - pd).norm();
+    }
     auto actuator_ctl = this->_mavlink_client->new_msg();
     auto ctl = actuator_ctl.content.initSetActuators(4);
     this->_logger.info("fth: %f tx: %f ty: %f tz: %f", fth, tau[0], tau[1],
                        tau[2]);
-    this->_logger.info("Error :%f", (this->_pos - pd).norm());
+    this->_logger.info("Error :%f", error);
     float factor = 1.0 / 4.0;
-    actuators[0] =
-        sqrt_n_trim(factor * (fth / 10 + tau[0] + tau[1] + tau[2] / 10));
-    actuators[1] =
-        sqrt_n_trim(factor * (fth / 10 - tau[0] - tau[1] + tau[2] / 10));
-    actuators[2] =
-        sqrt_n_trim(factor * (fth / 10 - tau[0] + tau[1] - tau[2] / 10));
-    actuators[3] =
-        sqrt_n_trim(factor * (fth / 10 + tau[0] - tau[1] - tau[2] / 10));
+    float real_pwm[4];
+    real_pwm[0] = factor * (fth / 10 + tau[0] / 2 + tau[1] / 2 + tau[2] / 1);
+    real_pwm[1] = factor * (fth / 10 - tau[0] / 2 - tau[1] / 2 + tau[2] / 1);
+    real_pwm[2] = factor * (fth / 10 - tau[0] / 2 + tau[1] / 2 - tau[2] / 1);
+    real_pwm[3] = factor * (fth / 10 + tau[0] / 2 - tau[1] / 2 - tau[2] / 1);
+    actuators[0] = sqrt_n_trim(real_pwm[0]);
+    actuators[1] = sqrt_n_trim(real_pwm[1]);
+    actuators[2] = sqrt_n_trim(real_pwm[2]);
+    actuators[3] = sqrt_n_trim(real_pwm[3]);
     ctl.set(0, actuators[0]);
     ctl.set(1, actuators[1]);
     ctl.set(2, actuators[2]);
@@ -202,6 +213,7 @@ void LowLevel::run() {
     fu_msg.set(0, fu[0]);
     fu_msg.set(1, fu[1]);
     fu_msg.set(2, fu[2]);
+    msg.content.setError(error);
     msg.publish();
     rk.keep();
   }

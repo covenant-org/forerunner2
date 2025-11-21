@@ -110,6 +110,15 @@ void Viewer::controller_metrics_cb(
     this->_rec->log("/world/controller/thrust/" + std::to_string(i++),
                     rerun::Scalars(static_cast<double>(t)));
   }
+  i = 0;
+  auto fu = msg.content.getFu();
+  for (auto u : fu) {
+    this->_rec->log("/world/controller/fu/" + std::to_string(i++),
+                    rerun::Scalars(static_cast<double>(u)));
+  }
+  auto error = msg.content.getError();
+  this->_rec->log("/world/controller/position_error",
+                  rerun::Scalars(static_cast<double>(error)));
 }
 
 rerun::Color Viewer::distance_to_color(float distance) {
