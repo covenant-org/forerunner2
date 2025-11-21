@@ -3,6 +3,8 @@
 #include <Eigen/Dense>
 #include <capnp_schemas/mavlink.capnp.h>
 #include <capnp_schemas/zed.capnp.h>
+#include <capnp_schemas/nav_msgs.capnp.h>
+#include <capnp_schemas/sensors.capnp.h>
 #include <pcl/compression/octree_pointcloud_compression.h>
 #include <pcl/impl/point_types.hpp>
 #include <pcl/octree/octree_pointcloud.h>
