@@ -129,7 +129,7 @@ class RendererRegistry {
 };
 
 namespace {
-
+// =====================
 // Generic and reflection functions
 // =====================
 inline void log_reflected_fields(
@@ -412,21 +412,20 @@ inline void log_marker_details(const ::Marker::Reader& marker,
   const float px = static_cast<float>(position.getX());
   const float py = static_cast<float>(position.getY());
   const float pz = static_cast<float>(position.getZ());
+  const auto color = marker.getColor();
 
   const float radius = compute_marker_radius(marker);
   std::vector<rerun::Position3D> positions = {{px, py, pz}};
   context.stream().log(context.make_child_path(base_segment + "/position"),
-                       rerun::Points3D(positions).with_radii({radius}));
-
-  const auto color = marker.getColor();
-  std::ostringstream info;
-  info << "shape=" << marker_type_label(marker.getShape())
-       << ", lifetime=" << marker.getLifetime()
-       << ", color rgba=(" << color.getR() << ',' << color.getG() << ','
-       << color.getB() << ',' << color.getA() << ')';
-
-  context.stream().log(context.make_child_path(base_segment + "/info"),
-                       rerun::TextLog(info.str()));
+                       rerun::Points3D(positions)
+                       .with_radii({radius})
+                       .with_colors(rerun::components::Color(
+                         static_cast<uint8_t>(color.getR() * 255),
+                         static_cast<uint8_t>(color.getG() * 255),
+                         static_cast<uint8_t>(color.getB() * 255),
+                         static_cast<uint8_t>(color.getA() * 255)
+                       )));
+  // TODO: Darle un uso a "lifetime" o quitarlo
 }
 
 template<typename T, typename ReaderT>
@@ -457,6 +456,44 @@ void render_marker_array(const Core::EnvelopeMetadata& metadata,
   if (index == 0) {
     context.stream().log(context.make_child_path("markers"),
                          rerun::TextLog("(empty marker array)"));
+  }
+}
+
+// =====================
+// Path functions
+// =====================
+inline void render_nav_path(const Core::EnvelopeMetadata& metadata,
+                            ::capnp::AnyPointer::Reader payload,
+                            RenderContext& context) {
+  auto reader = payload.getAs<::Path>();
+  // Render header
+  {
+    RenderContext subcontext(context.stream(), context.make_child_path("path"), context.logger());
+    render_header<::Header, ::Header::Reader>(metadata, reader.getHeader(), subcontext);
+  }
+  // Render poses as a line connecting the points
+  auto poses = reader.getPoses();
+  std::vector<rerun::Position3D> points;
+  for (auto pose : poses) {
+    auto pos = pose.getPose().getPosition();
+    points.emplace_back(pos.getX(), pos.getY(), -pos.getZ());
+  }
+    if (points.size() >= 2) {
+      // Usar la API C++: strips, color verde, radio
+      std::vector<rerun::components::LineStrip3D> strips;
+      strips.emplace_back(points);
+      std::vector<rerun::components::Color> colors = { rerun::components::Color(0, 255, 0) };
+      std::vector<rerun::components::Radius> radii = { rerun::components::Radius(0.02f) };
+      context.stream().log(
+        context.make_child_path("path/line"),
+        rerun::LineStrips3D(strips)
+          .with_colors(colors)
+          .with_radii(radii)
+      );
+    } else if (points.size() == 1) {
+    context.stream().log(context.make_child_path("path/line"), rerun::Points3D(points).with_radii({0.04f}));
+  } else {
+    context.stream().log(context.make_child_path("path/line"), rerun::TextLog("(empty path: no points)"));
   }
 }
 
@@ -629,7 +666,8 @@ RendererRegistry::register_renderer("Point",
   RendererRegistry::register_renderer("TransformStamped", &render_transform_stamped);
 
 
-
+[[maybe_unused]] const bool nav_path_registered =
+  RendererRegistry::register_renderer("Path", &render_nav_path);
 [[maybe_unused]] const bool marker_registered =
   RendererRegistry::register_renderer("Marker", 
                                       &render_marker<::Marker, ANY_READER>);
