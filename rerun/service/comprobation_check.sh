@@ -3,12 +3,11 @@ set -euo pipefail
 
 ## TODO: Asegurar de establecer alias
 ## TODO: Bash de instalacion de mc, ajuste de alias y creacion de servicio
-RELATIVE_DIR="rerun/test-records-send"
-MC_ALIAS="local"
+RELATIVE_DIR="rerun/recordings"
+MC_ALIAS="covenant_server"
 MC_BUCKET="rerun"
+
 MC_DESTINATION="${MC_ALIAS}/${MC_BUCKET}"
-MC_BIN="${MC_BIN:-mc}"
-PROBE_BIN_OVERRIDE="${COMPROBATION_BIN:-}"
 
 SCRIPT_DIR=$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ROOT_DIR=""
@@ -22,11 +21,7 @@ while [[ "$current" != "/" ]]; do
   current=$(dirname "$current")
 done
 
-if [[ -z "$ROOT_DIR" ]]; then
-  echo "Unable to locate .root marker file." >&2
-  exit 1
-fi
-
+PROBE_BIN_OVERRIDE="${COMPROBATION_BIN:-}"
 SOURCE_DIR="${ROOT_DIR}/${RELATIVE_DIR}"
 PROBE_BIN="${PROBE_BIN_OVERRIDE:-${ROOT_DIR}/build/rerun/rerun_comprobation}"
 
@@ -45,8 +40,8 @@ if [[ -z "$MC_DESTINATION" ]]; then
   exit 1
 fi
 
-if ! command -v "$MC_BIN" >/dev/null 2>&1; then
-  echo "Unable to locate mc binary: $MC_BIN" >&2
+if ! command -v mc >/dev/null 2>&1; then
+  echo "Unable to locate mc binary: mc" >&2
   exit 1
 fi
 
@@ -109,7 +104,7 @@ for file in "${files[@]}"; do
   remote_target="$remote_base/$rel_path"
 
   echo "Transferring ${file} -> ${remote_target}"
-  "$MC_BIN" cp "$file" "$remote_target" &
+  mc cp "$file" "$remote_target" &
   mc_pid=$!
 
   while kill -0 "$mc_pid" >/dev/null 2>&1; do
@@ -117,7 +112,7 @@ for file in "${files[@]}"; do
       echo "Conditions changed during transfer of ${file}. Cancelling." >&2
       kill "$mc_pid" >/dev/null 2>&1 || true
       wait "$mc_pid" >/dev/null 2>&1 || true
-      "$MC_BIN" rm --force "$remote_target" >/dev/null 2>&1 || true
+      mc rm --force "$remote_target" >/dev/null 2>&1 || true
       abort_transfer=true
       break 2
     fi
