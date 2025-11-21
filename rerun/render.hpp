@@ -753,22 +753,21 @@ class SchemaCache {
 
 class Renderer {
 public:
-  Renderer(std::shared_ptr<rerun::RecordingStream> shared_stream,
-           Viewer* viewer)
+  Renderer(Viewer* viewer)
       : viewer_(viewer),
-        stream_(shared_stream),
+        stream_(viewer_->get_recording_stream()),
         shutting_down_(false),
         ignored_prefixes_({"registry/"}) {
-    // Solo iniciar spawn si no está el flag --no-record
-    bool no_record = false;
-    try {
-      no_record = viewer_->public_get_argument<bool>("--no-record");
-    } catch (...) {}
-    if (!no_record) {
-      stream_->spawn().exit_on_failure();
-    }
     topics_client_ = viewer_->public_create_action_client<TopicsListRequest, TopicsListResponse>(
         "registry/topics");
+    std::string whitelist_arg = viewer_->get_argument<std::string>("--whitelist");
+    std::string blacklist_arg = viewer_->get_argument<std::string>("--blacklist");
+    if (!whitelist_arg.empty()) {
+      set_topic_whitelist(whitelist_arg);
+    }
+    if (!blacklist_arg.empty()) {
+      set_topic_blacklist(blacklist_arg);
+    }
     refresh_topics();
     refresh_thread_ = std::thread(&Renderer::topic_refresh_loop, this);
   }
@@ -785,9 +784,29 @@ public:
       }
     }
   }
+  // Methods to configure whitelist and blacklist from string
+  void set_topic_whitelist(const std::string& whitelist_str) {
+    topic_whitelist_.clear();
+    std::istringstream ss(whitelist_str);
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+      if (!item.empty()) topic_whitelist_.insert(item);
+    }
+  }
+  void set_topic_blacklist(const std::string& blacklist_str) {
+    topic_blacklist_.clear();
+    std::istringstream ss(blacklist_str);
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+      if (!item.empty()) topic_blacklist_.insert(item);
+    }
+  }
 
 private:
   Viewer* viewer_;
+  std::unordered_set<std::string> topic_whitelist_;
+  std::unordered_set<std::string> topic_blacklist_;
+
   void topic_refresh_loop() {
     while (!shutting_down_.load()) {
       try {
@@ -804,7 +823,6 @@ private:
       return;
     }
 
-    // TODO: Add white/black list
     auto request = topics_client_->new_msg();
     request.content.setIncludeInternal(false);
     auto response = request.send();
@@ -821,6 +839,13 @@ private:
       const auto name_reader = topic_entry.getName();
       std::string topic_name(name_reader.cStr(), name_reader.size());
       if (should_ignore_topic(topic_name)) {
+        continue;
+      }
+      // TODO: Filtrar por "TypeName"
+      if (topic_blacklist_.count(topic_name) > 0) {
+        continue;
+      }
+      if (!topic_whitelist_.empty() && topic_whitelist_.count(topic_name) == 0) {
         continue;
       }
       active_topics.insert(topic_name);
@@ -884,13 +909,11 @@ private:
   void handle_any_message(
       const std::string& default_topic,
       const Core::IncomingMessage<::capnp::AnyPointer>& msg) {
+    const std::string& topic_name = msg.metadata.topic.empty() ? default_topic : msg.metadata.topic;
     const capnp::StructSchema& struct_schema = schema_cache_.resolve(
       msg.metadata.schemaPath, msg.metadata.typeName, *viewer_->get_logger());
 
-    std::string base_path =
-      msg.metadata.topic.empty() ? default_topic : msg.metadata.topic;
-    RerunRenderers::RenderContext context(*stream_, std::move(base_path),
-              viewer_->get_logger());
+    RerunRenderers::RenderContext context(*stream_, topic_name, viewer_->get_logger());
     RerunRenderers::dispatch_message(msg.metadata, msg.getRawPayload(),
                      context, struct_schema);
   }

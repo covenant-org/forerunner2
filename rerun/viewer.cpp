@@ -648,10 +648,18 @@ int main(int argc, char** argv) {
   group.add_argument("--spawn")
       .help("Start or stream to already opened local viewer")
       .flag();
+  auto& filter_list = args.add_mutually_exclusive_group();
+  filter_list.add_argument("--whitelist")
+    .help("Whitelist of topics, comma-separated")
+    .default_value("");
+  filter_list.add_argument("--blacklist")
+    .help("Blacklist of topics, comma-separated")
+    .default_value("");
+
   auto viewer = Viewer(args);
   std::unique_ptr<RegistryExample::Renderer> renderer;
   if (!args.get_argument<bool>("--no-render")) {
-    renderer = std::make_unique<RegistryExample::Renderer>(viewer.get_recording_stream(), &viewer);
+    renderer = std::make_unique<RegistryExample::Renderer>(&viewer);
   }
   viewer.run();
   return 0;
