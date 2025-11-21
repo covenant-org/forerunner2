@@ -18,6 +18,7 @@
 #include <capnp_schemas/registry.capnp.h>
 #include <capnp_schemas/visualization_msgs.capnp.h>
 #include <capnp_schemas/nav_msgs.capnp.h>
+#include <capnp_schemas/controller.capnp.h>
 
 #include <kj/filesystem.h>
 
@@ -456,6 +457,81 @@ void render_marker_array(const Core::EnvelopeMetadata& metadata,
   if (index == 0) {
     context.stream().log(context.make_child_path("markers"),
                          rerun::TextLog("(empty marker array)"));
+  }
+}
+
+inline void render_octree_layers_marker_array(const Core::EnvelopeMetadata& metadata,
+                                             ::capnp::AnyPointer::Reader payload,
+                                             RerunRenderers::RenderContext& context) {
+  auto reader = payload.getAs<::MarkerArray>();
+  std::vector<rerun::components::PoseTranslation3D> centers;
+  std::vector<rerun::HalfSize3D> sizes;
+  std::vector<rerun::Color> colors;
+
+  auto markers = reader.getMarkers();
+  for (auto marker : markers) {
+    auto position = marker.getPose().getPosition();
+    auto color = marker.getColor();
+    auto scale = marker.getScale();
+
+    centers.emplace_back(position.getX(), position.getY(), position.getZ());
+    sizes.emplace_back(scale.getX() / 2, scale.getY() / 2, scale.getZ() / 2);
+    colors.emplace_back(color.getR() * 255, color.getG() * 255,
+                        color.getB() * 255, color.getA() * 255);
+  }
+  context.stream().log(context.make_child_path("octree_layers/markers"),
+    rerun::Boxes3D::from_centers_and_half_sizes(centers, sizes)
+      .with_quaternions({rerun::Quaternion::IDENTITY})
+      .with_fill_mode(rerun::components::FillMode::Solid)
+      .with_colors(colors));
+  // Log statistics
+  // this->_rec->log("stats/octree_layers_count",
+  //                 rerun::Scalars(static_cast<double>(markers.size())));
+  context.stream().log(context.make_child_path("stats/octree_layers_dimensions"),
+    rerun::TextLog("Octree markers: " + std::to_string(markers.size())));
+}
+
+inline void render_octree_marker_array(const Core::EnvelopeMetadata& metadata,
+                                      ::capnp::AnyPointer::Reader payload,
+                                      RenderContext& context) {
+  auto reader = payload.getAs<::MarkerArray>();
+  std::vector<rerun::components::PoseTranslation3D> centers;
+  std::vector<rerun::HalfSize3D> sizes;
+  std::vector<rerun::Color> colors;
+  auto markers = reader.getMarkers();
+  for (auto marker : markers) {
+    auto position = marker.getPose().getPosition();
+    auto color = marker.getColor();
+    auto scale = marker.getScale();
+
+    centers.emplace_back(position.getX(), position.getY(), position.getZ());
+    sizes.emplace_back(scale.getX() / 2, scale.getY() / 2, scale.getZ() / 2);
+    colors.emplace_back(color.getR() * 255, color.getG() * 255,
+                        color.getB() * 255, color.getA() * 255);
+  }
+  context.stream().log(context.make_child_path("octree/markers"),
+    rerun::Boxes3D::from_centers_and_half_sizes(centers, sizes)
+      .with_quaternions({rerun::Quaternion::IDENTITY})
+      .with_fill_mode(rerun::components::FillMode::Solid)
+      .with_colors(colors));
+  // Estadísticas
+  context.stream().log(context.make_child_path("stats/octree_count"),
+    rerun::Scalars(static_cast<double>(markers.size())));
+  context.stream().log(context.make_child_path("stats/octree_dimensions"),
+    rerun::TextLog("Octree markers: " + std::to_string(markers.size())));
+}
+
+// Template for the same type with different implementations
+template<typename T, typename ReaderT>
+void render_marker_array_dispatch(const Core::EnvelopeMetadata& metadata,
+                                  ReaderT reader_or_any,
+                                  RenderContext& context) {
+  if (metadata.topic.find("octree") != std::string::npos) {
+    render_octree_marker_array(metadata, reader_or_any, context);
+  } else if (metadata.topic.find("octree_layers") != std::string::npos){
+    render_octree_layers_marker_array(metadata, reader_or_any, context);
+  } else
+    render_marker_array<T, ReaderT>(metadata, reader_or_any, context);
   }
 }
 
