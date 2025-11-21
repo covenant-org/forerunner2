@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-## TODO: Asegurar de establecer alias
-## TODO: Bash de instalacion de mc, ajuste de alias y creacion de servicio
 RELATIVE_DIR="rerun/recordings"
 MC_ALIAS="covenant_server"
 MC_BUCKET="rerun"
