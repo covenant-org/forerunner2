@@ -11,6 +11,9 @@ set(EXCLUDED_SUBDIRS
     "vendor"
     "core"
     "messages"
+
+    # TODO: Arreglar errores por cambio de mensajes
+    "people-search"
 )
 
 ## Experimental

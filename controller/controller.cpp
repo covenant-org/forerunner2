@@ -26,7 +26,7 @@ Controller::Controller(Core::ArgumentParser parser) : Core::Vertex(parser) {
   this->_telemetry_sub = this->create_subscriber<Telemetry>(
       "telemetry",
       std::bind(&Controller::telemetry_cb, this, std::placeholders::_1));
-  this->_goal_sub = this->create_subscriber<Position>(
+  this->_goal_sub = this->create_subscriber<Point>(
       "goal", std::bind(&Controller::goal_cb, this, std::placeholders::_1));
   this->_controller_client =
       this->create_action_client<Command, GenericResponse>("controller");
@@ -53,7 +53,7 @@ Controller::Controller(Core::ArgumentParser parser) : Core::Vertex(parser) {
   this->debauncer = 0;
 }
 
-void Controller::goal_cb(const Core::IncomingMessage<Position> &msg) {
+void Controller::goal_cb(const Core::IncomingMessage<Point> &msg) {
   auto pos = msg.content;
   this->_goal_target = Eigen::Vector3f(pos.getX(), pos.getY(), pos.getZ());
   this->_logger.info("world goal target x: %f, y: %f, z: %f", pos.getX(),
@@ -62,25 +62,31 @@ void Controller::goal_cb(const Core::IncomingMessage<Position> &msg) {
 }
 
 void Controller::odometry_cb(const Core::IncomingMessage<Odometry> &msg) {
-  auto o = msg.content;
-  auto q = msg.content.getQ();
-  auto pos = msg.content.getPosition();
-  _heading = msg.content.getHeading();
-  _quat = Eigen::Quaternionf(q.getW(), q.getX(), q.getY(), q.getZ());
-  _position = Eigen::Vector3f(pos.getX(), pos.getY(), pos.getZ());
+  // Extract position from pose
+  auto odom = msg.content;
+  auto pose_with_cov = odom.getPose();
+  auto pose = pose_with_cov.getPose();
+  auto position = pose.getPosition();
+  _position = Eigen::Vector3f(position.getX(), position.getY(), position.getZ());
   this->_local_pose = _position;
-  // this->_logger.debug("local_pose x: %f, y: %f, z: %f",
-  // this->_local_pose.x(),
-  //                     this->_local_pose.y(), this->_local_pose.z());
 
-  this->current_position = Eigen::Vector3f(
-      o.getPosition().getX(), o.getPosition().getY(), o.getPosition().getZ());
+  // Extract heading (yaw) from quaternion orientation
+  auto orientation = pose.getOrientation();
+  double qw = orientation.getW();
+  double qx = orientation.getX();
+  double qy = orientation.getY();
+  double qz = orientation.getZ();
+  _quat = Eigen::Quaternionf(qw, qx, qy, qz);
+  double siny_cosp = 2.0 * (qw * qz + qx * qy);
+  double cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz);
+  _heading = static_cast<float>(std::atan2(siny_cosp, cosy_cosp));
+
+  this->current_position = _position;
 
   if (!this->waiting_reponse && this->recived_path &&
     this->index < static_cast<int>(this->_path.getPoses().size())) {
-    Eigen::Vector3d current_position(pos.getX(), pos.getY(), pos.getZ());
-    Eigen::Quaterniond current_orientation(q.getW(), q.getX(), q.getY(),
-                                           q.getZ());
+    Eigen::Vector3d current_position(position.getX(), position.getY(), position.getZ());
+    Eigen::Quaterniond current_orientation(qw, qx, qy, qz);
 
     double dist = std::sqrt((_position - this->temp_goal).squaredNorm());
     double tolerance = this->get_argument<double>("--goal-tolerance");
@@ -133,9 +139,9 @@ void Controller::odometry_cb(const Core::IncomingMessage<Odometry> &msg) {
     return;
   }
 
-  this->_vehicle_initial_position.x() = o.getPosition().getX();
-  this->_vehicle_initial_position.y() = o.getPosition().getY();
-  this->_vehicle_initial_position.z() = o.getPosition().getZ();
+  this->_vehicle_initial_position.x() = position.getX();
+  this->_vehicle_initial_position.y() = position.getY();
+  this->_vehicle_initial_position.z() = position.getZ();
   this->recorded_initial_position = true;
   this->_logger.info("recorded initial position");
 }
@@ -248,11 +254,12 @@ void Controller::control() {
   if (sent_point < 10) {
     auto msg = this->_controller_client->new_msg();
     auto wp = msg.content.initWaypoint();
-    wp.setX(this->_vehicle_initial_position.x());
-    wp.setY(this->_vehicle_initial_position.y());
-    wp.setZ(this->_vehicle_initial_position.z());
+    auto wp_pos = wp.initPosition();
+    wp_pos.setX(this->_vehicle_initial_position.x());
+    wp_pos.setY(this->_vehicle_initial_position.y());
+    wp_pos.setZ(this->_vehicle_initial_position.z());
 
-    wp.setR(this->_heading);
+    wp.setYaw(this->_heading);
     auto result = msg.send();
     auto response = result.value().content;
     if (response.getCode() != 200) {
@@ -328,16 +335,17 @@ void Controller::publish_trajectory_setpoint(PoseStamped::Reader &pose) {
   auto msg = this->_controller_client->new_msg();
   msg.content.initWaypoint();
   auto wp = msg.content.getWaypoint();
-  wp.setX(transformed.x());
-  wp.setY(transformed.y());
-  wp.setZ(transformed.z());
+  auto wp_pos = wp.getPosition();
+  wp_pos.setX(transformed.x());
+  wp_pos.setY(transformed.y());
+  wp_pos.setZ(transformed.z());
   auto q0 = this->temp_orientation.w();
   auto q1 = this->temp_orientation.x();
   auto q2 = this->temp_orientation.y();
   auto q3 = this->temp_orientation.z();
   auto yaw =
       std::atan2(2. * (q0 * q3 + q1 * q2), 1. - 2. * (q2 * q2 + q3 * q3));
-  wp.setR(yaw);
+  wp.setYaw(yaw);
   auto res = msg.send();
   auto response = res.value().content;
   if (response.getCode() != 200) {

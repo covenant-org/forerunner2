@@ -17,7 +17,7 @@ SoundPlanner::SoundPlanner(Core::ArgumentParser args)
       position(0, 0, 0),
       goal(0, 0, 0),
       _mic_stability() {
-  this->_odmetry_sub = this->create_subscriber<Odometry>(
+  this->_odometry_sub = this->create_subscriber<Odometry>(
       "odometry",
       std::bind(&SoundPlanner::odometry_cb, this, std::placeholders::_1));
   this->_telemetry_sub = this->create_subscriber<Telemetry>(
@@ -64,15 +64,29 @@ void SoundPlanner::mic_cb(const Core::IncomingMessage<StereoMic> &msg) {
 void SoundPlanner::odometry_cb(const Core::IncomingMessage<Odometry> &msg) {
   this->_logger.debug("Received odometry message");
   auto odom = msg.content;
-  auto pos = odom.getPosition();
-  auto q = odom.getQ();
-  auto angular = odom.getAngular();
+  auto pose_with_cov = odom.getPose();
+  auto pose = pose_with_cov.getPose();
+  auto position_msg = pose.getPosition();
+  position = Eigen::Vector3f(position_msg.getX(), position_msg.getY(), position_msg.getZ());
+
+  // Extract heading (yaw) from quaternion orientation
+  auto orientation = pose.getOrientation();
+  float qw = orientation.getW();
+  float qx = orientation.getX();
+  float qy = orientation.getY();
+  float qz = orientation.getZ();
+  quart = Eigen::Quaternionf(qw, qx, qy, qz);
+  float siny_cosp = 2.0f * (qw * qz + qx * qy);
+  float cosy_cosp = 1.0f - 2.0f * (qy * qy + qz * qz);
+  this->_heading = std::atan2(siny_cosp, cosy_cosp) * 180.0f / static_cast<float>(M_PI);
+
+  // Extract yaw speed if available
+  auto twist_witch_cov = odom.getTwist();
+  auto twist = twist_witch_cov.getTwist();
+  auto angular = twist.getAngular();
   this->_yaw_speed = angular.getZ();
-  quart = Eigen::Quaternionf(q.getW(), q.getX(), q.getY(), q.getZ());
-  position = Eigen::Vector3f(pos.getX(), pos.getY(), pos.getZ());
-  this->_heading = odom.getHeading();
-  this->_logger.debug("Pos xyz: %.2f \t %.2f \t %.2f", position.x(),
-                      position.y(), position.z());
+
+  this->_logger.debug("Updated odometry: x=%.2f y=%.2f z=%.2f heading=%.2f deg", position.x(), position.y(), position.z(), this->_heading);
 }
 
 void SoundPlanner::telemetry_cb(const Core::IncomingMessage<Telemetry> &msg) {
@@ -164,11 +178,12 @@ void SoundPlanner::run() {
   }
   this->_logger.info("Drone is now in the air");
   auto point_msg = this->_command_client->new_msg();
-  auto point = point_msg.content.initWaypoint();
-  point.setX(position.x());
-  point.setY(position.y());
-  point.setZ(position.z());
-  point.setR(_heading);
+  auto point_yaw = point_msg.content.initWaypoint();
+  auto position_waypoint = point_yaw.initPosition();
+  position_waypoint.setX(this->position.x());
+  position_waypoint.setY(this->position.y());
+  position_waypoint.setZ(this->position.z());
+  point_yaw.setYaw(_heading);
   goal = position;
   point_msg.send();
   auto offboard_msg = this->_command_client->new_msg();
@@ -194,11 +209,12 @@ void SoundPlanner::run() {
         position.x(), position.y(), position.z(), goal.x(), goal.y(), goal.z(),
         waypoint.yaw_deg);
     auto goal_msg = this->_command_client->new_msg();
-    auto point = goal_msg.content.initWaypoint();
-    point.setX(goal.x());
-    point.setY(goal.y());
-    point.setZ(goal.z());
-    point.setR(waypoint.yaw_deg);
+    auto point_yaw = goal_msg.content.initWaypoint();
+    auto position_waypoint = point_yaw.initPosition();
+    position_waypoint.setX(goal.x());
+    position_waypoint.setY(goal.y());
+    position_waypoint.setZ(goal.z());
+    point_yaw.setYaw(waypoint.yaw_deg);
     goal_msg.send();
     //    getchar();
     sleep(6);

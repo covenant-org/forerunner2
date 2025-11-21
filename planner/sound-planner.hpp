@@ -10,11 +10,12 @@
 #include <capnp_schemas/controller.capnp.h>
 #include <capnp_schemas/generics.capnp.h>
 #include <capnp_schemas/mavlink.capnp.h>
+#include <capnp_schemas/nav_msgs.capnp.h>
 #include <capnp_schemas/sensors.capnp.h>
 
 class SoundPlanner : public Core::Vertex {
  private:
-  std::shared_ptr<Core::Subscriber<Odometry>> _odmetry_sub;
+  std::shared_ptr<Core::Subscriber<Odometry>> _odometry_sub;
   std::shared_ptr<Core::Subscriber<Telemetry>> _telemetry_sub;
   std::shared_ptr<Core::Subscriber<StereoMic>> _mic_sub;
   std::shared_ptr<Core::Subscriber<Altitude>> _altitude_sub;
