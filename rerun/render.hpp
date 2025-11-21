@@ -498,6 +498,41 @@ inline void render_nav_path(const Core::EnvelopeMetadata& metadata,
 }
 
 // =====================
+// Goal functions
+// =====================
+inline void render_goal(const Core::EnvelopeMetadata& metadata,
+                       ::capnp::AnyPointer::Reader payload,
+                       RenderContext& context) {
+  auto reader = payload.getAs<::Goal>();
+  float x = 0, y = 0, z = 0;
+  switch (reader.which()) {
+    case ::Goal::Which::RELATIVE:
+    case ::Goal::Which::COORDS: {
+      auto pt = reader.getRelative();
+      x = pt.getPosition().getX();
+      y = pt.getPosition().getY();
+      z = -pt.getPosition().getZ();
+      break;
+    }
+    case ::Goal::Which::LATLON: {
+      auto latlon = reader.getLatlon();
+      x = latlon.getLatitude();
+      y = latlon.getLongitude();
+      z = -latlon.getAltitude();
+      break;
+    }
+    default:
+      context.stream().log(context.make_child_path("goal"), rerun::TextLog("(goal: tipo no soportado)"));
+      return;
+  }
+  rerun::Position3D pos(x, y, z);
+  context.stream().log(context.make_child_path("goal/position"), rerun::Boxes3D::from_centers_and_sizes({pos}, {{0.3f, 0.3f, 0.3f}}));
+  context.stream().log(context.make_child_path("goal/coords_x"), rerun::Scalars(static_cast<double>(x)));
+  context.stream().log(context.make_child_path("goal/coords_y"), rerun::Scalars(static_cast<double>(y)));
+  context.stream().log(context.make_child_path("goal/coords_z"), rerun::Scalars(static_cast<double>(z)));
+}
+
+// =====================
 // Odometry functions
 // =====================
 inline void render_odometry(const Core::EnvelopeMetadata& metadata,
@@ -674,14 +709,20 @@ RendererRegistry::register_renderer("Point",
   RendererRegistry::register_renderer("Odometry", &render_odometry);
 
 // =====================
-// nav_msgs registrations
+// visualization_msgs registrations
 // =====================
 [[maybe_unused]] const bool marker_registered =
   RendererRegistry::register_renderer("Marker", 
                                       &render_marker<::Marker, ANY_READER>);
 [[maybe_unused]] const bool marker_array_registered =
   RendererRegistry::register_renderer("MarkerArray", 
-                                      &render_marker_array<::MarkerArray, ANY_READER>);
+                                      &render_marker_array_dispatch<::MarkerArray, ANY_READER>);
+
+// =====================
+// controller registrations
+// =====================
+[[maybe_unused]] const bool goal_registered =
+  RendererRegistry::register_renderer("Goal", &render_goal);
 
 [[maybe_unused]] const bool pointcloud_registered =
   RendererRegistry::register_renderer("PointCloud", &render_pointcloud);
