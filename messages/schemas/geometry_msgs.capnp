@@ -10,23 +10,18 @@ struct Point {
   z @2 :Float64;
 }
 
-struct Route {
-  path @0 :List(Point);
-}
-
 struct Vector3 {
   x @0 :Float64;
   y @1 :Float64;
   z @2 :Float64;
 }
 
-# geometry_msgs/PointStamped
+# TODO: reconsiderar si siguen valiendo la pena los mensajes stamped
 struct PointStamped {
   header @0 :Header;
   point  @1 :Point;
 }
 
-# geometry_msgs/Quaternion
 struct Quaternion {
   x @0 :Float64;
   y @1 :Float64;
@@ -34,13 +29,27 @@ struct Quaternion {
   w @3 :Float64;
 }
 
-# geometry_msgs/Pose
 struct Pose {
   position    @0 :Point;
   orientation @1 :Quaternion;
 }
 
-# geometry_msgs/PoseStamped
+struct PoseWithCovariance {
+  pose       @0 :Pose;
+  covariance @1 :List(Float64);  # Debe contener 36 elementos (matriz 6x6)
+}
+
+struct Twist {
+  linear  @0 :Vector3;
+  angular @1 :Vector3;
+}
+
+struct TwistWithCovariance {
+  twist  @0 :Twist;
+  covariance @1 :List(Float64);
+}
+
+# TODO: reconsiderar si siguen valiendo la pena los mensajes stamped
 struct PoseStamped {
   header @0 :Header;
   pose   @1 :Pose;
@@ -51,7 +60,10 @@ struct Transform {
   rotation    @1 :Quaternion;
 }
 
+# TODO: reconsiderar si siguen valiendo la pena los mensajes stamped
 struct TransformStamped {
   header    @0 :Header;
   transform @1 :Transform;
 }
+
+

@@ -1,130 +1,101 @@
-// Generado por Claudio
+#include "dynamic_reflection.hpp"
 
-#include "argument_parser.hpp"
-#include "vertex.hpp"
-#include <capnp_schemas/generics.capnp.h>
-#include <capnp_schemas/geometry_msgs.capnp.h>
-#include <capnp_schemas/mavlink.capnp.h>
-#include <capnp_schemas/sensors.capnp.h>
-#include <capnp_schemas/std_msgs.capnp.h>
-#include <capnp_schemas/zed.capnp.h>
-#include <chrono>
 #include <iostream>
-#include <memory>
+#include <optional>
 #include <string>
-#include <thread>
+#include <utility>
+#include <vector>
 
-class Echo : public Core::Vertex {
- private:
-  std::string _topic;
-  std::string _message_type;
+namespace {
 
- public:
-  Echo(Core::ArgumentParser parser) : Core::Vertex(parser) {
-    _topic = this->get_argument<std::string>("topic");
-    _message_type = this->get_argument<std::string>("--type");
-
-    this->_logger.info("Echo listening to topic: %s (type: %s)", _topic.c_str(),
-                       _message_type.c_str());
-
-    // Subscribe based on message type
-    if (_message_type == "KeyValue") {
-      auto subscriber = this->create_subscriber<KeyValue>(
-          _topic, [this](const Core::IncomingMessage<KeyValue>& msg) {
-            this->_logger.info("[%s] %s = %s", _topic.c_str(),
-                               msg.content.getKey().cStr(),
-                               msg.content.getValue().cStr());
-          });
-    } else if (_message_type == "HomePosition") {
-      auto subscriber = this->create_subscriber<HomePosition>(
-          _topic, [this](const Core::IncomingMessage<HomePosition>& msg) {
-            auto pos = msg.content.getPos();
-            this->_logger.info("[%s] POS: x=%f y=%f z=%f", _topic.c_str(),
-                               pos.getX(), pos.getY(), pos.getZ());
-          });
-    } else if (_message_type == "Telemetry") {
-      auto subscriber = this->create_subscriber<Telemetry>(
-          _topic, [this](const Core::IncomingMessage<Telemetry>& msg) {
-            auto battery = msg.content.getBattery();
-            this->_logger.info(
-                "[%s] Armed: %s | Battery: %d | In Air: %s | Mode: %s",
-                _topic.c_str(), (msg.content.getArmed() ? "true" : "false"),
-                battery.getPercentage(),
-                (msg.content.getInAir() ? "true" : "false"),
-                msg.content.getMode().cStr());
-          });
-    } else if (_message_type == "Odometry") {
-      auto subscriber = this->create_subscriber<Odometry>(
-          _topic, [this](const Core::IncomingMessage<Odometry>& msg) {
-            auto pos = msg.content.getPosition();
-            auto vel = msg.content.getVelocity();
-            auto q = msg.content.getQ();
-            this->_logger.info(
-                "[%s] POS: (%f, %f, %f) | VEL: (%f, %f, %f) | Q: (%f, %f, %f, "
-                "%f) | Heading: %f",
-                _topic.c_str(), pos.getX(), pos.getY(), pos.getZ(), vel.getX(),
-                vel.getY(), vel.getZ(), q.getW(), q.getX(), q.getY(), q.getZ(),
-                msg.content.getHeading());
-          });
-    } else if (_message_type == "Altitude") {
-      auto subscriber = this->create_subscriber<Altitude>(
-          _topic, [this](const Core::IncomingMessage<Altitude>& msg) {
-            this->_logger.info(
-                "[%s] Local: %fm | Relative: %fm | Monotonic: %fm | Avg: %fm",
-                _topic.c_str(), msg.content.getLocal(),
-                msg.content.getRelative(), msg.content.getMonotonic(),
-                msg.content.getAvg());
-          });
-    } else if (_message_type == "Point") {
-      auto subscriber = this->create_subscriber<Point>(
-          _topic, [this](const Core::IncomingMessage<Point>& msg) {
-            this->_logger.info("[%s] (%f, %f, %f)", _topic.c_str(),
-                               msg.content.getX(), msg.content.getY(),
-                               msg.content.getZ());
-          });
-    } else if (_message_type == "PointCloud") {
-      auto subscriber = this->create_subscriber<PointCloud>(
-          _topic, [this](const Core::IncomingMessage<PointCloud>& msg) {
-            this->_logger.info(
-                "[%s] Width: %d | Height: %d | Size: %d | Data length: %d",
-                _topic.c_str(), msg.content.getWidth(), msg.content.getHeight(),
-                msg.content.getSize(), msg.content.getData().size());
-          });
-    } else {
-      this->_logger.error("Unknown message type: %s", _message_type.c_str());
-      this->_logger.info(
-          "Supported types: KeyValue, HomePosition, Telemetry, Odometry, "
-          "Altitude, Point, PointCloud");
-      throw std::runtime_error("Unsupported message type");
+void print_field(const DynamicReflection::ReflectedField& field,
+                 int indent = 0) {
+    const std::string pad(indent, ' ');
+    if (field.is_leaf()) {
+        std::cout << pad << field.name << ": " << field.value << '\n';
+        return;
     }
-  }
 
-  void run() override {
-    this->_logger.info("Echo started. Press Ctrl+C to stop.");
-    while (true) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::cout << pad << field.name << ":" << '\n';
+    for (const auto& child : field.children) {
+        print_field(child, indent + 2);
     }
-  }
-};
+}
+
+void print_fields(const std::vector<DynamicReflection::ReflectedField>& fields,
+                  int indent = 0) {
+    for (const auto& field : fields) {
+        print_field(field, indent);
+    }
+}
+
+void print_metadata(const Core::EnvelopeMetadata& metadata) {
+    if (!metadata.present) {
+        std::cout << "Metadata: (not available)\n";
+        return;
+    }
+
+    std::cout << "Metadata:" << '\n'
+              << "  topic: " << metadata.topic << '\n'
+              << "  typeId: " << metadata.typeId << '\n'
+              << "  typeName: " << metadata.typeName << '\n'
+              << "  timestampUsec: " << metadata.timestampUsec << '\n'
+              << "  schemaPath: "
+              << (metadata.schemaPath.empty() ? "<none>" : metadata.schemaPath)
+              << '\n'
+              << "  schemaTextBytes: " << metadata.schemaText.size() << '\n';
+}
+
+}  // namespace
 
 int main(int argc, char** argv) {
-  Core::BaseArgumentParser parser(argc, argv);
+    class AppArgumentParser : public Core::BaseArgumentParser {
+     public:
+        AppArgumentParser(int argc, char** argv)
+            : Core::BaseArgumentParser(argc, argv) {}
 
-  parser.add_argument("topic").help("Topic name to subscribe to").required();
+        void parse_args() { this->parse(); }
+    };
 
-  parser.add_argument("--type", "-t")
-      .help(
-          "Message type (KeyValue, HomePosition, Telemetry, Odometry, "
-          "Altitude, Point, PointCloud)")
-      .default_value("KeyValue");
+    AppArgumentParser args(argc, argv);
+    args.add_argument("--topic")
+        .help("Topic to echo messages from")
+        .required();
+    args.add_argument("-n", "--count")
+        .help("Number of messages to echo before exiting (0 = infinite)")
+        .scan<'i', int>()
+        .default_value(0);
+    args.add_argument("-m", "--metadata")
+        .help("Print metadata before fields")
+        .default_value(false)
+        .implicit_value(true);
+    args.add_argument("--schema")
+        .help("Override path to the .capnp schema used for reflection");
+    args.add_argument("--type")
+        .help("Override name of the struct to inspect");
+    args.parse_args();
 
-  try {
-    std::shared_ptr<Echo> echo = std::make_shared<Echo>(parser);
-    echo->run();
-  } catch (const std::exception& e) {
-    std::cerr << "Error: " << e.what() << std::endl;
-    return 1;
-  }
+    auto topic = args.get_argument<std::string>("topic");
+    auto schema = args.present("--schema");
+    auto type = args.present("--type");
+    const auto count = args.get_argument<int>("--count");
+    const auto show_metadata = args.get_argument<bool>("--metadata");
 
-  return 0;
+    DynamicReflection reflector(topic, std::move(schema), std::move(type));
+
+    std::cout << "Echo listening on '" << topic << "'" << std::endl;
+
+    int echoed = 0;
+    while (count == 0 || echoed < count) {
+        const auto reflected = reflector.wait_for_message();
+        if (show_metadata) {
+            print_metadata(reflected.metadata);
+        }
+        std::cout << reflected.metadata.typeName << ':' << '\n';
+        print_fields(reflected.fields, 2);
+        std::cout << std::flush;
+        ++echoed;
+    }
+
+    return 0;
 }

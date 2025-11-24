@@ -6,13 +6,13 @@
 
 class InputGoal : public Core::Vertex {
  private:
-  std::shared_ptr<Core::ActionClient<Position, GenericResponse>>
+  std::shared_ptr<Core::ActionClient<Point, GenericResponse>>
       _input_action_client;
 
  public:
   InputGoal(Core::ArgumentParser parser) : Core::Vertex(parser) {
     this->_input_action_client =
-        this->create_action_client<Position, GenericResponse>("input_goal");
+        this->create_action_client<Point, GenericResponse>("input_goal");
 
     float x = this->get_argument<float>("--x");
     float y = this->get_argument<float>("--y");

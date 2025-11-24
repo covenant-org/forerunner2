@@ -123,6 +123,8 @@ class Vertex : public BaseVertex {
     this->_sub_registry->setup(_registry);
   }
 
+  Logger& get_logger() { return _logger; }
+
   void notification_cb(const IncomingMessage<RegistryNotification> &msg) {
     if (msg.content.getType() == RegistryNotificationType::NODE_CHANGE) {
       auto node = msg.content.getNodeAdded().getPath();

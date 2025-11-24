@@ -6,6 +6,7 @@
 #include <capnp_schemas/controller.capnp.h>
 #include <capnp_schemas/generics.capnp.h>
 #include <capnp_schemas/mavlink.capnp.h>
+#include <capnp_schemas/nav_msgs.capnp.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -119,12 +120,13 @@ void FakeMavlink::command_cb(const Core::IncomingMessage<Command> &command,
     case Command::WAYPOINT: {
       this->_logger.debug("Entered Command::WAYPOINT");
       auto waypoint = command.content.getWaypoint();
+      auto waypoint_pos = waypoint.getPosition();
       this->_logger.debug("WAYPOINT coords: x=%f y=%f z=%f r=%f",
-                          waypoint.getX(), waypoint.getY(), waypoint.getZ(),
-                          waypoint.getR());
-      pos[0] = waypoint.getX();
-      pos[1] = waypoint.getY();
-      pos[2] = waypoint.getZ();
+                          waypoint_pos.getX(), waypoint_pos.getY(), waypoint_pos.getZ(),
+                          waypoint.getYaw());
+      pos[0] = waypoint_pos.getX();
+      pos[1] = waypoint_pos.getY();
+      pos[2] = waypoint_pos.getZ();
 
       // Check if armed - allow waypoints for armed drones even if not in air
       // yet
@@ -206,10 +208,14 @@ void FakeMavlink::publish_telemtry() {
 
 void FakeMavlink::publish_odometry() {
   auto msg = this->_odometry_publisher->new_msg();
-  auto angular = msg.content.initAngular();
-  auto pos = msg.content.initPosition();
-  auto vel = msg.content.initVelocity();
-  auto q = msg.content.initQ();
+  auto pose_w_cov = msg.content.initPose();
+  auto pose = pose_w_cov.initPose();
+  auto twist_w_cov = msg.content.initTwist();
+  auto twist = twist_w_cov.initTwist();
+  auto angular = twist.initAngular();
+  auto pos = pose.initPosition();
+  auto vel = twist.initLinear();
+  auto q = pose.initOrientation();
   angular.setX(0);
   angular.setZ(0);
   angular.setY(0);
@@ -223,7 +229,6 @@ void FakeMavlink::publish_odometry() {
   q.setY(0);
   q.setZ(0);
   q.setW(1);
-  msg.content.setHeading(0);
   msg.publish();
 }
 

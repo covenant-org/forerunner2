@@ -20,6 +20,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <mutex>
 #include <zmq.h>
 #include <zmq.hpp>
 
@@ -51,6 +52,31 @@ void Registry::check_heartbeat() {
           std::chrono::high_resolution_clock::now();
     }
     keeper.keep();
+  }
+}
+
+void Registry::topics_action_cb(
+    const IncomingMessage<TopicsListRequest>& request,
+    TopicsListResponse::Builder& response) {
+  bool include_internal = request.content.getIncludeInternal();
+  std::vector<std::pair<std::string, Endpoint>> topics;
+  {
+    std::lock_guard<std::mutex> lock(_topics_mutex);
+    topics.reserve(_topic_to_endpoint.size());
+    for (const auto& entry : _topic_to_endpoint) {
+      if (!include_internal && entry.first.rfind("registry/", 0) == 0)
+        continue;
+      topics.emplace_back(entry.first, entry.second);
+    }
+  }
+
+  auto list = response.initTopics(topics.size());
+  for (size_t i = 0; i < topics.size(); ++i) {
+    const auto& [name, endpoint] = topics[i];
+    auto item = list[i];
+    item.setName(name);
+    item.setHost(endpoint.host);
+    item.setPort(endpoint.port);
   }
 }
 
@@ -160,7 +186,12 @@ void Registry::handle_request(RouterEvent event) {
         .host = "127.0.0.1",
         .port = free_port.value(),
     };
-    auto const insert_res = _topic_to_endpoint.insert_or_assign(path, endpoint);
+    bool inserted_new = false;
+    {
+      std::lock_guard<std::mutex> lock(_topics_mutex);
+      auto const insert_res = _topic_to_endpoint.insert_or_assign(path, endpoint);
+      inserted_new = insert_res.second;
+    }
     this->_logger.info("New topic: %s at %d", color_topic(path).c_str(),
                        endpoint.port);
     res.setCode(201);
@@ -169,7 +200,7 @@ void Registry::handle_request(RouterEvent event) {
     host.setPort(endpoint.port);
     respond_event(event, message_from_builder(message));
     notify_waiters(path, endpoint);
-    if (!insert_res.second) {
+    if (!inserted_new) {
       this->notify_node_change(path, endpoint);
     } else {
       auto msg = this->_pub_notifications.new_msg();
@@ -187,7 +218,11 @@ void Registry::handle_request(RouterEvent event) {
     this->_logger.debug("querying topic: %s",
                         color_topic(request.getPath().cStr()).c_str());
     try {
-      Endpoint node = _topic_to_endpoint.at(path);
+      Endpoint node;
+      {
+        std::lock_guard<std::mutex> lock(_topics_mutex);
+        node = _topic_to_endpoint.at(path);
+      }
       this->_logger.debug("querying topic [%s] found at %d",
                           color_topic(request.getPath().cStr()).c_str(),
                           node.port);
@@ -334,10 +369,30 @@ void Registry::run() {
   }
   this->_pub_notifications._bind_to_port(port.value());
   auto notifications_topic = this->_pub_notifications.get_topic();
-  this->_topic_to_endpoint.insert_or_assign(
-      notifications_topic, Endpoint{.host = "127.0.0.1", .port = port.value()});
+  {
+    std::lock_guard<std::mutex> lock(_topics_mutex);
+    this->_topic_to_endpoint.insert_or_assign(
+        notifications_topic, Endpoint{.host = "127.0.0.1",
+                                       .port = port.value()});
+  }
   this->_logger.debug("Registry %s on %d", notifications_topic.c_str(),
                       port.value());
+
+  _topics_action = std::make_shared<ActionServer<TopicsListRequest, TopicsListResponse>>(
+      "registry/topics",
+      [this](IncomingMessage<TopicsListRequest> request,
+             TopicsListResponse::Builder& response) {
+        this->topics_action_cb(request, response);
+      });
+  std::string registry_uri = "tcp://127.0.0.1:" + std::to_string(_config.port);
+  std::thread topics_action_setup([this, registry_uri]() {
+    try {
+      this->_topics_action->setup(registry_uri);
+    } catch (const std::exception& ex) {
+      this->_logger.error("Failed to start topics action: %s", ex.what());
+    }
+  });
+  topics_action_setup.detach();
 
   std::string external_uri =
       this->_args.get_argument<std::string>("--registry-uri");

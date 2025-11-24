@@ -1,0 +1,10 @@
+[Unit]
+Description=Forerunner connectivity and registry check
+
+[Service]
+Type=oneshot
+Environment=COMPROBATION_BIN=rerun_comprobation
+ExecStart=rerun_comprobation
+
+[Install]
+WantedBy=default.target

@@ -4,6 +4,7 @@
 #include <Eigen/src/Geometry/AngleAxis.h>
 #include <Eigen/src/Geometry/Transform.h>
 #include <capnp_schemas/zed.capnp.h>
+#include <capnp_schemas/sensors.capnp.h>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -29,7 +30,7 @@
 
 Zed::Zed(const Core::ArgumentParser &parser) : Core::Vertex(parser) {
   this->_cloud_point_pub = this->create_publisher<PointCloud>("point_cloud");
-  this->_img_publisher = this->create_publisher<ImageData>("zed_image");
+  this->_img_publisher = this->create_publisher<Image>("zed_image");
 
   _camera = sl::Camera();
 

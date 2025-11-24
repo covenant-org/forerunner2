@@ -7,6 +7,20 @@ enum RequestType {
   heartbeat @3;
 }
 
+struct TopicEntry {
+  name @0 :Text;
+  host @1 :Text;
+  port @2 :UInt32;
+}
+
+struct TopicsListRequest {
+  includeInternal @0 :Bool;
+}
+
+struct TopicsListResponse {
+  topics @0 :List(TopicEntry);
+}
+
 struct Interface {
   ip      @0 :UInt32;
   network @1 :UInt32;

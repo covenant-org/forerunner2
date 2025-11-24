@@ -6,6 +6,8 @@
 #include <Eigen/src/Geometry/Quaternion.h>
 #include <Eigen/src/Geometry/Transform.h>
 #include <capnp_schemas/zed.capnp.h>
+#include <capnp_schemas/nav_msgs.capnp.h>
+#include <capnp_schemas/sensors.capnp.h>
 #include <pcl/common/transforms.h>
 #include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/filters/voxel_grid.h>
@@ -30,11 +32,19 @@ Mapping::Mapping(Core::ArgumentParser args)
 }
 
 void Mapping::odom_cb(const Core::IncomingMessage<Odometry>& odom) {
-  auto pos = odom.content.getPosition();
-  this->_position = Eigen::Vector3d(pos.getX(), -pos.getY(), -pos.getZ());
-  auto q = odom.content.getQ();
-  this->_orientation =
-      Eigen::Quaterniond(q.getW(), q.getX(), -q.getY(), -q.getZ());
+  // Extract pose (with covariance) and then pose
+  auto pose_with_cov = odom.content.getPose();
+  auto pose = pose_with_cov.getPose();
+  auto position = pose.getPosition();
+  this->_position = Eigen::Vector3d(position.getX(), -position.getY(), -position.getZ());
+
+  // Extract orientation quaternion
+  auto orientation = pose.getOrientation();
+  double qw = orientation.getW();
+  double qx = orientation.getX();
+  double qy = orientation.getY();
+  double qz = orientation.getZ();
+  this->_orientation = Eigen::Quaterniond(qw, qx, -qy, -qz);
 }
 
 void Mapping::stitch_cloud(const Core::IncomingMessage<PointCloud>& msg) {

@@ -171,24 +171,28 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
     case Command::WAYPOINT: {
       this->_logger.debug("Entered Command::WAYPOINT");
       auto waypoint = command.content.getWaypoint();
-      this->_logger.debug("WAYPOINT coords: x=%f y=%f z=%f r=%f",
-                          waypoint.getX(), waypoint.getY(), waypoint.getZ(),
-                          waypoint.getR());
+  auto position = waypoint.getPosition();
+  float x = static_cast<float>(position.getX());
+  float y = static_cast<float>(position.getY());
+  float z = static_cast<float>(position.getZ());
+  float yaw = waypoint.getYaw();
+  this->_logger.debug("WAYPOINT coords: x=%f y=%f z=%f yaw=%f", x, y, z, yaw);
 
-      // Check if armed - allow waypoints for armed drones even if not in air yet
-      if (!this->_telemetry->armed()) {
-        this->_logger.error("Drone must be armed for waypoint commands");
-        res.setCode(400);
-        res.setMessage("Drone not armed - cannot set waypoints");
-        return;
+  // Check if armed - allow waypoints for armed drones even if not in air yet
+  if (!this->_telemetry->armed()) {
+    this->_logger.error("Drone must be armed for waypoint commands");
+    res.setCode(400);
+    res.setMessage("Drone not armed - cannot set waypoints");
+    return;
       }
 
       // Set the position setpoint - offboard mode must be started separately by client
-      const auto set_res = this->_offboard->set_position_ned({
-          .north_m = waypoint.getX(),
-          .east_m = waypoint.getY(),
-          .down_m = waypoint.getZ(),
-          .yaw_deg = waypoint.getR()});
+    mavsdk::Offboard::PositionNedYaw pos_ned{};
+    pos_ned.north_m = x;
+    pos_ned.east_m = y;
+    pos_ned.down_m = z;
+    pos_ned.yaw_deg = yaw;
+    const auto set_res = this->_offboard->set_position_ned(pos_ned);
       if (set_res != mavsdk::Offboard::Result::Success) {
         std::string error_msg = "set_position_ned failed: ";
         switch (set_res) {
@@ -491,24 +495,39 @@ void Mavlink::position_cb(const mavsdk::Telemetry::Position &odom) {
 
 void Mavlink::odometry_cb(const mavsdk::Telemetry::Odometry &odom) {
   auto msg = this->_odometry_publisher->new_msg();
-  auto angular = msg.content.initAngular();
-  auto pos = msg.content.initPosition();
-  auto vel = msg.content.initVelocity();
-  auto q = msg.content.initQ();
+  // Fill pose (PoseWithCovariance)
+  auto pose_with_cov = msg.content.initPose();
+  auto pose = pose_with_cov.initPose();
+  auto position = pose.initPosition();
+  position.setX(odom.position_body.x_m);
+  position.setY(odom.position_body.y_m);
+  position.setZ(odom.position_body.z_m);
+  auto orientation = pose.initOrientation();
+  orientation.setX(odom.q.x);
+  orientation.setY(odom.q.y);
+  orientation.setZ(odom.q.z);
+  orientation.setW(odom.q.w);
+  // TODO: Fill covariance properly
+  // Covariance: fill with zeros (size 36)
+  auto cov = pose_with_cov.initCovariance(36);
+  for (size_t i = 0; i < 36; ++i) cov.set(i, 0.0);
+
+  // Fill twist (TwistWithCovariance)
+  auto twist_with_cov = msg.content.initTwist();
+  auto twist = twist_with_cov.initTwist();
+  auto linear = twist.initLinear();
+  linear.setX(odom.velocity_body.x_m_s);
+  linear.setY(odom.velocity_body.y_m_s);
+  linear.setZ(odom.velocity_body.z_m_s);
+  auto angular = twist.initAngular();
   angular.setX(odom.angular_velocity_body.roll_rad_s);
-  angular.setZ(odom.angular_velocity_body.pitch_rad_s);
-  angular.setY(odom.angular_velocity_body.yaw_rad_s);
-  pos.setX(odom.position_body.x_m);
-  pos.setY(odom.position_body.y_m);
-  pos.setZ(odom.position_body.z_m);
-  vel.setX(odom.velocity_body.x_m_s);
-  vel.setY(odom.velocity_body.y_m_s);
-  vel.setZ(odom.velocity_body.z_m_s);
-  q.setX(odom.q.x);
-  q.setY(odom.q.y);
-  q.setZ(odom.q.z);
-  q.setW(odom.q.w);
-  msg.content.setHeading(this->heading);
+  angular.setY(odom.angular_velocity_body.pitch_rad_s);
+  angular.setZ(odom.angular_velocity_body.yaw_rad_s);
+    // TODO: Fill covariance properly
+  // Covariance: fill with zeros (size 36)
+  auto cov_twist = twist_with_cov.initCovariance(36);
+  for (size_t i = 0; i < 36; ++i) cov_twist.set(i, 0.0);
+
   msg.publish();
 }
 

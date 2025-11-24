@@ -1,13 +1,9 @@
 @0xf7d08bd9a8e2fe17;
 
-struct PointCloud {
-	width @0 :UInt16;
-	height @1 :UInt16;
-	data @2 :Data;
-	size @3 :UInt32;
-}
+using Sensors = import "sensors.capnp";
+using PointCloud = Sensors.PointCloud;
 
 struct PointCloudChunk {
 	index @0 :UInt16;
-  cloud @1 :PointCloud;
+	cloud @1 :PointCloud;
 }

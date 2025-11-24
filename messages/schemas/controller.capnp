@@ -1,10 +1,11 @@
 @0xcf066f32651a0194;
 
-struct PointYaw{
-  x   @0 :Float32;
-  y   @1 :Float32;
-  z   @2 :Float32;
-  r   @3 :Float32;
+using Geometry = import "geometry_msgs.capnp";
+
+# TODO: Cambiar de PointYaw a Pose
+struct PointYaw{ 
+  position @0 :Geometry.Point;
+  yaw      @1 :Float32;
 }
 
 struct Command{
@@ -65,6 +66,11 @@ struct Goal{
   union{
     relative  @0 :PointYaw;
     coords    @1 :PointYaw;
-    latlon    @2 :PointYaw;
+    latlon    :group {
+      latitude  @2 :Float64;
+      longitude @3 :Float64;
+      altitude  @4 :Float32;
+      yaw       @5 :Float32;
+    }
   }
 }

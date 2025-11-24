@@ -55,7 +55,7 @@ class Publisher : public ISender {
     this->_bind_to_port(_port);
   }
 
-  OutgoingMessage<T> new_msg() { return OutgoingMessage<T>(this); }
+  OutgoingMessage<T> new_msg() { return OutgoingMessage<T>(this, _topic); }
 
   uint32_t publish(::capnp::MallocMessageBuilder& builder) {
     kj::VectorOutputStream buffer;

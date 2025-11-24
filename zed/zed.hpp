@@ -18,7 +18,7 @@ class Zed : Core::Vertex {
   sl::Camera _camera;
   std::shared_ptr<Core::Publisher<PointCloud>> _cloud_point_pub;
   std::shared_ptr<Core::Publisher<PointCloudChunk>> _map_pub;
-  std::shared_ptr<Core::Publisher<ImageData>> _img_publisher;
+  std::shared_ptr<Core::Publisher<Image>> _img_publisher;
   pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>* _cloud_encoder;
   std::chrono::steady_clock::time_point _last_published_frame;
 

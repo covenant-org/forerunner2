@@ -8,6 +8,7 @@
 #include <capnp_schemas/controller.capnp.h>
 #include <capnp_schemas/generics.capnp.h>
 #include <capnp_schemas/planner.capnp.h>
+#include <capnp_schemas/nav_msgs.capnp.h>
 #include <cmath>
 #include <eigen3/Eigen/src/Core/Matrix.h>
 #include <memory>
@@ -27,14 +28,14 @@ Planner::Planner(Core::ArgumentParser parser,
       this->create_publisher<MarkerArray>("octree_layers");
 
   this->_path_pub = this->create_publisher<Path>("planned_path");
-  this->_goal_pub = this->create_publisher<Position>("goal");
+  this->_goal_pub = this->create_publisher<Point>("goal");
 
   this->_cloud_sub = this->create_subscriber<PointCloud>(
       "point_cloud",
       std::bind(&Planner::cloud_point_cb, this, std::placeholders::_1));
 
   this->_goal_action_server =
-      this->create_action_server<Position, GenericResponse>(
+      this->create_action_server<Point, GenericResponse>(
           "input_goal",
           std::bind(&Planner::goal_server_cb, this, std::placeholders::_1,
                     std::placeholders::_2));
@@ -336,7 +337,7 @@ std::vector<pcl::PointXYZ> Planner::recover_octree_points() {
   return octree_points;
 }
 
-void Planner::goal_server_cb(const Core::IncomingMessage<Position> &msg,
+void Planner::goal_server_cb(const Core::IncomingMessage<Point> &msg,
                              GenericResponse::Builder &res) {
   this->_logger.info("goal received");
   auto content = msg.content;
@@ -435,16 +436,28 @@ void Planner::result_cb(SimplePlanner::PlanResponse response) {
 }
 
 void Planner::odometry_cb(const Core::IncomingMessage<Odometry> &msg) {
-  _drone_pose.position.x() = msg.content.getPosition().getX();
-  _drone_pose.position.y() = msg.content.getPosition().getY();
-  _drone_pose.position.z() = msg.content.getPosition().getZ();
-  _drone_pose.orientation.x() = msg.content.getQ().getX();
-  _drone_pose.orientation.y() = msg.content.getQ().getY();
-  _drone_pose.orientation.z() = msg.content.getQ().getZ();
-  _drone_pose.orientation.w() = msg.content.getQ().getW();
+  // Extract position from pose
+  auto odom = msg.content;
+  auto pose_with_cov = odom.getPose();
+  auto pose = pose_with_cov.getPose();
+  auto position = pose.getPosition();
+  _drone_pose.position.x() = position.getX();
+  _drone_pose.position.y() = position.getY();
+  _drone_pose.position.z() = position.getZ();
 
-  this->_logger.debug("drone position: (%f, %f, %f)", _drone_pose.position.x(),
-                      _drone_pose.position.y(), _drone_pose.position.z());
+  // Extract heading (yaw) from quaternion orientation
+  auto orientation = pose.getOrientation();
+  double qw = orientation.getW();
+  double qx = orientation.getX();
+  double qy = orientation.getY();
+  double qz = orientation.getZ();
+  _drone_pose.orientation.x() = qx;
+  _drone_pose.orientation.y() = qy;
+  _drone_pose.orientation.z() = qz;
+  _drone_pose.orientation.w() = qw;
+
+  this->_logger.debug("Drone position: x=%f y=%f z=%f", 
+                      _drone_pose.position.x(), _drone_pose.position.y(), _drone_pose.position.z());
 }
 
 void Planner::run() {

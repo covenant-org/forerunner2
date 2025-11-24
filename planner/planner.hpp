@@ -32,9 +32,9 @@ class Planner : Core::Vertex {
   size_t _path_sequence = 0;
   // cloudpoint
   std::shared_ptr<Core::Subscriber<PointCloud>> _cloud_sub;
-  std::shared_ptr<Core::ActionServer<Position, GenericResponse>>
+  std::shared_ptr<Core::ActionServer<Point, GenericResponse>>
       _goal_action_server;
-  std::shared_ptr<Core::Publisher<Position>> _goal_pub;
+  std::shared_ptr<Core::Publisher<Point>> _goal_pub;
   std::shared_ptr<Core::Subscriber<Odometry>> _odometry_sub;
   std::shared_ptr<Core::Publisher<MarkerArray>> _octree_pub;
   std::shared_ptr<Core::Publisher<MarkerArray>> _octree_layers_pub;
@@ -56,7 +56,7 @@ class Planner : Core::Vertex {
   bool _received_goal = false;
   bool _planning = false;
 
-  void goal_server_cb(const Core::IncomingMessage<Position> &,
+  void goal_server_cb(const Core::IncomingMessage<Point> &,
                       GenericResponse::Builder &);
   void planner_server_cb(const Core::IncomingMessage<ReplanRequest> &,
                          GenericResponse::Builder &);

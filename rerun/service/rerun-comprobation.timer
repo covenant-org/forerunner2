@@ -1,0 +1,10 @@
+[Unit]
+Description=Run rerun_comprobation periodically
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+Unit=rerun-comprobation.service
+
+[Install]
+WantedBy=timers.target
