@@ -750,7 +750,6 @@ void render_image(const Core::EnvelopeMetadata& metadata,
                      std::to_string(image.getHeight())));
 }
 
-
 // =====================
 // PointCloud functions
 // =====================
@@ -823,6 +822,46 @@ void render_pointcloud(const Core::EnvelopeMetadata& metadata,
 
   // Usar la función utilitaria para loguear igual que Viewer::log_map
   log_map(context.stream(), context.logger(), cloud);
+}
+
+// =====================
+// DetectionImage renderer
+// =====================
+template<typename T, typename ReaderT>
+void render_detection_image(const Core::EnvelopeMetadata& metadata,
+                            ReaderT reader_or_any,
+                            RenderContext& context) {
+  auto detection = resolve_reader<T>(reader_or_any);
+  auto image_data = detection.getImage();
+  auto encoded = image_data.getData();
+
+  if (encoded.size() == 0) {
+    if (context.logger())
+      context.logger()->warn("Received DetectionImage id %u without payload", detection.getObjectId());
+    return;
+  }
+  {
+    RenderContext subcontext(context.stream(), context.make_child_path("detection_image"), context.logger());
+    render_image<::Image, ::Image::Reader>(metadata, image_data, subcontext);
+  }
+
+  // Descripción
+  context.stream().log(context.make_child_path("detection_image/description"),
+                       rerun::TextLog(detection.getDescription().cStr()));
+
+  // Bounding box
+  const auto coordinates = detection.getCoordinates();
+  context.stream().log(context.make_child_path("detection_image/position"),
+    rerun::Boxes3D::from_centers_and_sizes(
+      {{static_cast<float>(coordinates.getX()),
+        static_cast<float>(-coordinates.getY()),
+        static_cast<float>(-coordinates.getZ())}},
+      {{0.15F, 0.15F, 0.15F}})
+      .with_colors({rerun::Color(255, 165, 0)}));
+
+  // Stats
+  context.stream().log(context.make_child_path("detection_image/stats"),
+    rerun::TextLog("Image " + std::to_string(image_data.getWidth()) + "x" + std::to_string(image_data.getHeight())));
 }
 
 // =================================
@@ -905,15 +944,23 @@ RendererRegistry::register_renderer("Point",
   RendererRegistry::register_renderer("Goal", 
                                       &render_goal<::Goal, ANY_READER>);
 
+// =====================
+// sensors registrations
+// =====================
 [[maybe_unused]] const bool pointcloud_registered =
   RendererRegistry::register_renderer("PointCloud", 
                                       &render_pointcloud<::PointCloud, ANY_READER>);
-
 [[maybe_unused]] const bool image_registered =
   RendererRegistry::register_renderer("Image", 
                                       &render_image<::Image, ANY_READER>);
+                                      
+// =====================
+// detection_msgs registrations
+// =====================
+[[maybe_unused]] const bool detection_image_registered =
+  RendererRegistry::register_renderer("DetectionImage", &render_detection_image<::DetectionImage, ANY_READER>);
 
-}
+}  
 
 inline void dispatch_message(const Core::EnvelopeMetadata& metadata,
                       ::capnp::AnyPointer::Reader payload,
