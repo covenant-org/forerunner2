@@ -809,19 +809,74 @@ void render_pointcloud(const Core::EnvelopeMetadata& metadata,
   auto width = reader.getWidth();
   auto height = reader.getHeight();
 
+  pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGBA>());
+  std::stringstream buffer(std::string((char*)data_reader.begin(), data_reader.size()));
+  pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA> _point_cloud_decoder;
+  try {
+    _point_cloud_decoder.decodePointCloud(buffer, cloud);
+  } catch (const std::exception& e) {
+    if (context.logger()) context.logger()->warn("Error while decoding cloudpoint: %s", e.what());
+    return;
+  }
+
+  size_t num_points = cloud->points.size();
+  if (num_points == 0) return;
+
+  std::vector<rerun::Position3D> positions;
+  std::vector<rerun::Color> colors;
+  positions.reserve(num_points);
+
+  for (size_t i = 0; i < num_points; ++i) {
+    auto point = cloud->points[i];
+    float x = point.x;
+    float y = point.y;
+    float z = point.z;
+    positions.emplace_back(x, y, z);
+    float distance = sqrt(x * x + y * y + z * z);
+    float min_dist = 0.5f;
+    float max_dist = 10.0f;
+    float normalized = std::clamp((distance - min_dist) / (max_dist - min_dist), 0.0f, 1.0f);
+    rerun::Color color;
+    if (normalized < 0.33f) {
+      float t = normalized / 0.33f;
+      color = rerun::Color(0, static_cast<uint8_t>(255 * t), static_cast<uint8_t>(255 * (1 - t)));
+    } else if (normalized < 0.66f) {
+      float t = (normalized - 0.33f) / 0.33f;
+      color = rerun::Color(static_cast<uint8_t>(255 * t), 255, 0);
+    } else {
+      float t = (normalized - 0.66f) / 0.34f;
+      color = rerun::Color(255, static_cast<uint8_t>(255 * (1 - t)), 0);
+    }
+    colors.push_back(color);
+  }
+  context.stream().log("world/drone/camera/depth/points", rerun::Points3D(positions).with_colors(colors));
+  context.stream().log("stats/camera/depth/point_count", rerun::Scalars(static_cast<double>(positions.size())));
+  context.stream().log("stats/camera/depth/total_received", rerun::Scalars(static_cast<double>(num_points)));
+  context.stream().log("stats/camera/depth/image_dimensions", rerun::TextLog("Dimensions: " + std::to_string(width) + "x" + std::to_string(height)));
+}
+
+template<typename T, typename ReaderT>
+void render_pointcloud_map(const Core::EnvelopeMetadata& metadata,
+                      ReaderT reader_or_any,
+                      RenderContext& context) {
+  auto reader = resolve_reader<T>(reader_or_any);
+  auto data_reader = reader.getData();
+  auto width = reader.getWidth();
+  auto height = reader.getHeight();
+
   pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
       new pcl::PointCloud<pcl::PointXYZRGBA>(width, height));
 
   std::stringstream buffer(
       std::string((char *)data_reader.begin(), data_reader.size()));
 
-  static pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA> decoder;
+  pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA> _map_point_cloud_decoder;
   try {
-    decoder.decodePointCloud(buffer, cloud);
+    _map_point_cloud_decoder.decodePointCloud(buffer, cloud);
   } catch (const std::exception &e) {
     if (context.logger())
       context.logger()->warn("Error while decoding cloudpoint: %s", e.what());
-      context.stream().log(context.make_child_path("pointcloud/error"), rerun::TextLog(e.what()));
+    context.stream().log(context.make_child_path("pointcloud/error"), rerun::TextLog(e.what()));
     return;
   }
 
@@ -882,6 +937,18 @@ void render_pointcloud_chunk(const Core::EnvelopeMetadata& metadata,
 
   auto index = std::to_string(reader.getIndex());
   log_map(context.stream(), context.logger(), cloud, index);
+}
+
+// Template for the same type with different implementations
+template<typename T, typename ReaderT>
+void render_pointcloud_dispatch(const Core::EnvelopeMetadata& metadata,
+                                  ReaderT reader_or_any,
+                                  RenderContext& context) {
+  if (metadata.topic.find("map") != std::string::npos) {
+    render_pointcloud_map<T, ReaderT>(metadata, reader_or_any, context);
+  } else {
+    render_pointcloud<T, ReaderT>(metadata, reader_or_any, context);
+  }
 }
 
 // =====================
@@ -1007,16 +1074,16 @@ RendererRegistry::register_renderer("Point",
 // =====================
 // sensors registrations
 // =====================
-[[maybe_unused]] const bool pointcloud_registered =
-  RendererRegistry::register_renderer("PointCloud", 
-                                      &render_pointcloud<::PointCloud, ANY_READER>);
 [[maybe_unused]] const bool image_registered =
   RendererRegistry::register_renderer("Image", 
                                       &render_image<::Image, ANY_READER>);
+[[maybe_unused]] const bool pointcloud_registered =
+  RendererRegistry::register_renderer("PointCloud", 
+                                      &render_pointcloud_dispatch<::PointCloud, ANY_READER>);
 [[maybe_unused]] const bool pointcloud_chunk_registered =
   RendererRegistry::register_renderer("PointCloudChunk", 
                                       &render_pointcloud_chunk<::PointCloudChunk, ANY_READER>);
-                                      
+       
 // =====================
 // detection_msgs registrations
 // =====================
