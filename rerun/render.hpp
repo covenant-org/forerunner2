@@ -716,6 +716,36 @@ inline void render_odometry(const Core::EnvelopeMetadata& metadata,
 }
 
 // =====================
+// Image functions
+// =====================
+inline void render_image(const Core::EnvelopeMetadata& metadata,
+                        ::capnp::AnyPointer::Reader payload,
+                        RenderContext& context) {
+  auto image = payload.getAs<::Image>();
+  auto encoded = image.getData();
+
+  if (encoded.size() == 0) {
+    if (context.logger())
+      context.logger()->warn("Received raw Image frame without payload");
+    return;
+  }
+
+  std::vector<uint8_t> bytes(encoded.begin(), encoded.end());
+
+  context.stream().log(
+      context.make_child_path("image"),
+      rerun::archetypes::EncodedImage::from_bytes(
+          rerun::Collection<uint8_t>::take_ownership(std::move(bytes)),
+          rerun::components::MediaType::jpeg()));
+
+  context.stream().log(
+      context.make_child_path("stats"),
+      rerun::TextLog("Image " + std::to_string(image.getWidth()) + "x" +
+                     std::to_string(image.getHeight())));
+}
+
+
+// =====================
 // PointCloud functions
 // =====================
 inline void log_map(rerun::RecordingStream& rec,
@@ -870,6 +900,9 @@ RendererRegistry::register_renderer("Point",
 
 [[maybe_unused]] const bool pointcloud_registered =
   RendererRegistry::register_renderer("PointCloud", &render_pointcloud);
+
+[[maybe_unused]] const bool image_registered =
+  RendererRegistry::register_renderer("Image", &render_image);
 
 }
 
