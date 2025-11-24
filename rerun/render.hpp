@@ -216,11 +216,11 @@ void render_point(const Core::EnvelopeMetadata& metadata,
 }
 
 // Ejemplo de render que reutiliza otros
-inline void render_point_stamped(const Core::EnvelopeMetadata& metadata,
-                                ::capnp::AnyPointer::Reader payload,
-                                RenderContext& context) {
-  (void)metadata;
-  auto reader = payload.getAs<::PointStamped>();
+template<typename T, typename ReaderT>
+void render_point_stamped(const Core::EnvelopeMetadata& metadata,
+                          ReaderT reader_or_any,
+                          RenderContext& context) {
+  auto reader = resolve_reader<T>(reader_or_any);
   {
     RenderContext subcontext(context.stream(), context.make_child_path("point_stamped"), context.logger());
     render_header<::Header, ::Header::Reader>(metadata, reader.getHeader(), subcontext);
@@ -291,8 +291,9 @@ void render_pose(const Core::EnvelopeMetadata& metadata, ReaderT reader_or_any, 
   }
 }
 
-inline void render_pose_stamped(const Core::EnvelopeMetadata& metadata, ANY_READER payload, RenderContext& context) {
-  auto reader = payload.getAs<::PoseStamped>();
+template<typename T, typename ReaderT>
+void render_pose_stamped(const Core::EnvelopeMetadata& metadata, ReaderT reader_or_any, RenderContext& context) {
+  auto reader = resolve_reader<T>(reader_or_any);
   const std::string parent_path = "pose_stamped";
   {
     RenderContext subcontext(context.stream(), context.make_child_path(parent_path + "/header"), context.logger());
@@ -338,7 +339,9 @@ void render_twist(const Core::EnvelopeMetadata& metadata, ReaderT reader_or_any,
 }
 
 template<typename T, typename ReaderT>
-void render_twist_with_covariance(const Core::EnvelopeMetadata& metadata, ReaderT reader_or_any, RenderContext& context) {
+void render_twist_with_covariance(const Core::EnvelopeMetadata& metadata, 
+                                  ReaderT reader_or_any, 
+                                  RenderContext& context) {
   auto reader = resolve_reader<T>(reader_or_any);
   const std::string parent_path = "twist_with_covariance";
   {
@@ -370,8 +373,9 @@ void render_transform(const Core::EnvelopeMetadata& metadata, ReaderT reader_or_
   }
 }
 
-inline void render_transform_stamped(const Core::EnvelopeMetadata& metadata, ANY_READER payload, RenderContext& context) {
-  auto reader = payload.getAs<::TransformStamped>();
+template<typename T, typename ReaderT>
+void render_transform_stamped(const Core::EnvelopeMetadata& metadata, ReaderT reader_or_any, RenderContext& context) {
+  auto reader = resolve_reader<T>(reader_or_any);
   const std::string parent_path = "transform_stamped";
   {
     RenderContext subcontext(context.stream(), context.make_child_path(parent_path + "/header"), context.logger());
@@ -644,10 +648,11 @@ void render_path_dispatch(const Core::EnvelopeMetadata& metadata,
 // =====================
 // Goal functions
 // =====================
-inline void render_goal(const Core::EnvelopeMetadata& metadata,
-                       ::capnp::AnyPointer::Reader payload,
-                       RenderContext& context) {
-  auto reader = payload.getAs<::Goal>();
+template<typename T, typename ReaderT>
+void render_goal(const Core::EnvelopeMetadata& metadata,
+                 ReaderT reader_or_any,
+                 RenderContext& context) {
+  auto reader = resolve_reader<T>(reader_or_any);
   float x = 0, y = 0, z = 0;
   switch (reader.which()) {
     case ::Goal::Which::RELATIVE:
@@ -679,11 +684,11 @@ inline void render_goal(const Core::EnvelopeMetadata& metadata,
 // =====================
 // Odometry functions
 // =====================
-inline void render_odometry(const Core::EnvelopeMetadata& metadata,
-                     ::capnp::AnyPointer::Reader payload,
+template<typename T, typename ReaderT>
+void render_odometry(const Core::EnvelopeMetadata& metadata,
+                     ReaderT reader_or_any,
                      RenderContext& context) {
-  (void)metadata;
-  auto odom = payload.getAs<::Odometry>();
+  auto odom = resolve_reader<T>(reader_or_any);
   const auto pose = odom.getPose().getPose();
   const auto position = pose.getPosition();
   const auto orientation = pose.getOrientation();
@@ -718,10 +723,11 @@ inline void render_odometry(const Core::EnvelopeMetadata& metadata,
 // =====================
 // Image functions
 // =====================
-inline void render_image(const Core::EnvelopeMetadata& metadata,
-                        ::capnp::AnyPointer::Reader payload,
-                        RenderContext& context) {
-  auto image = payload.getAs<::Image>();
+template<typename T, typename ReaderT>
+void render_image(const Core::EnvelopeMetadata& metadata,
+                 ReaderT reader_or_any,
+                 RenderContext& context) {
+  auto image = resolve_reader<T>(reader_or_any);
   auto encoded = image.getData();
 
   if (encoded.size() == 0) {
@@ -790,11 +796,11 @@ inline void log_map(rerun::RecordingStream& rec,
     rerun::TextLog("Dimensions: " + std::to_string(width) + "x" + std::to_string(height)));
 }
 
-inline void render_pointcloud(const Core::EnvelopeMetadata& metadata,
-                            ::capnp::AnyPointer::Reader payload,
-                            RenderContext& context) {
-  (void)metadata;
-  auto reader = payload.getAs<::PointCloud>();
+template<typename T, typename ReaderT>
+void render_pointcloud(const Core::EnvelopeMetadata& metadata,
+                      ReaderT reader_or_any,
+                      RenderContext& context) {
+  auto reader = resolve_reader<T>(reader_or_any);
   auto data_reader = reader.getData();
   auto width = reader.getWidth();
   auto height = reader.getHeight();
@@ -820,16 +826,11 @@ inline void render_pointcloud(const Core::EnvelopeMetadata& metadata,
 }
 
 // =================================
-// Template para renders reusables
+// Template for renders 
 // =================================
-// [[maybe_unused]] const bool point_registered = 
-//  RendererRegistry::register_renderer("Point",
-//                                      &render_point<::Point, ANY_READER>);
-// ======================================
-// Template para renders de un solo uso
-// =================================
-// [[maybe_unused]] const bool odometry_registered =
-//   RendererRegistry::register_renderer("Odometry", &render_odometry);
+// [[maybe_unused]] const bool [type]_registered =
+//   RendererRegistry::register_renderer("[Type]", 
+//                                       &render_[Type]<::[Structure], ANY_READER>);
 
 // =====================
 // std_msgs registrations
@@ -850,7 +851,8 @@ inline void render_pointcloud(const Core::EnvelopeMetadata& metadata,
 RendererRegistry::register_renderer("Point",
                                     &render_point<::Point, ANY_READER>);
 [[maybe_unused]] const bool point_stamped_registered =
-  RendererRegistry::register_renderer("PointStamped", &render_point_stamped);
+  RendererRegistry::register_renderer("PointStamped", 
+                                      &render_point_stamped<::PointStamped, ANY_READER>);
 [[maybe_unused]] const bool quaternion_registered =
   RendererRegistry::register_renderer("Quaternion", 
                                       &render_quaternion<::Quaternion, ANY_READER>);
@@ -867,20 +869,24 @@ RendererRegistry::register_renderer("Point",
   RendererRegistry::register_renderer("TwistWithCovariance", 
                                       &render_twist_with_covariance<::TwistWithCovariance, ANY_READER>);
 [[maybe_unused]] const bool pose_stamped_registered =
-  RendererRegistry::register_renderer("PoseStamped", &render_pose_stamped);
+  RendererRegistry::register_renderer("PoseStamped", 
+                                      &render_pose_stamped<::PoseStamped, ANY_READER>);
 [[maybe_unused]] const bool transform_registered =
   RendererRegistry::register_renderer("Transform", 
                                       &render_transform<::Transform, ANY_READER>);
 [[maybe_unused]] const bool transform_stamped_registered =
-  RendererRegistry::register_renderer("TransformStamped", &render_transform_stamped);
+  RendererRegistry::register_renderer("TransformStamped", 
+                                      &render_transform_stamped<::TransformStamped, ANY_READER>);
 
 // =====================
 // nav_msgs registrations
 // =====================
-[[maybe_unused]] const bool nav_path_registered =
-  RendererRegistry::register_renderer("Path", &render_path_dispatch<::Path, ANY_READER>);
+[[maybe_unused]] const bool path_registered =
+  RendererRegistry::register_renderer("Path", 
+                                      &render_path_dispatch<::Path, ANY_READER>);
 [[maybe_unused]] const bool odometry_registered =
-  RendererRegistry::register_renderer("Odometry", &render_odometry);
+  RendererRegistry::register_renderer("Odometry", 
+                                      &render_odometry<::Odometry, ANY_READER>);
   
 // =====================
 // visualization_msgs registrations
@@ -896,13 +902,16 @@ RendererRegistry::register_renderer("Point",
 // controller registrations
 // =====================
 [[maybe_unused]] const bool goal_registered =
-  RendererRegistry::register_renderer("Goal", &render_goal);
+  RendererRegistry::register_renderer("Goal", 
+                                      &render_goal<::Goal, ANY_READER>);
 
 [[maybe_unused]] const bool pointcloud_registered =
-  RendererRegistry::register_renderer("PointCloud", &render_pointcloud);
+  RendererRegistry::register_renderer("PointCloud", 
+                                      &render_pointcloud<::PointCloud, ANY_READER>);
 
 [[maybe_unused]] const bool image_registered =
-  RendererRegistry::register_renderer("Image", &render_image);
+  RendererRegistry::register_renderer("Image", 
+                                      &render_image<::Image, ANY_READER>);
 
 }
 
