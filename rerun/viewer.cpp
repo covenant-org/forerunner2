@@ -83,19 +83,19 @@ std::string Viewer::build_recording_path(
   return final_path.string();
 }
 
-Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
+Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args), _args(args) {
   this->_point_cloud_decoder =
       new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>();
   this->_map_point_cloud_decoder =
       new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>();
 
   this->_rec = std::make_shared<rerun::RecordingStream>("Forerunner v2");
-  const bool no_record = args.get_argument<bool>("--no-record");
-  const bool spawn_requested = args.get_argument<bool>("--spawn");
-  const auto recording_type = args.present("--type");
+  const bool no_record = _args.get_argument<bool>("--no-record");
+  const bool spawn_requested = _args.get_argument<bool>("--spawn");
+  const auto recording_type = _args.present("--type");
 
   if (!no_record) {
-    const auto recording_id = args.get_argument<std::string>("--id");
+    const auto recording_id = _args.get_argument<std::string>("--id");
     auto final_path = this->build_recording_path(recording_id, recording_type);
     auto error = this->_rec->save(final_path);
     if (error.is_err()) {
@@ -105,7 +105,7 @@ Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
     }
   }
 
-  if (auto url = args.present("--grpc")) {
+  if (auto url = _args.present("--grpc")) {
     auto error = this->_rec->connect_grpc();
     if (error.is_err()) {
       this->_logger.error(

@@ -37,6 +37,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <zlib.h>
 
 namespace Core {
 class Logger;
@@ -61,10 +62,12 @@ class RenderContext {
  public:
   RenderContext(rerun::RecordingStream& stream,
                 std::string base_path,
-                Core::Logger* logger = nullptr)
+                Core::Logger* logger = nullptr,
+                Viewer* viewer = nullptr)
       : _stream(stream),
         _base_path(std::move(base_path)),
-        _logger(logger) {}
+        _logger(logger),
+        _viewer(viewer) {}
 
   rerun::RecordingStream& stream() { return _stream; }
   const std::string& base_path() const { return _base_path; }
@@ -79,11 +82,13 @@ class RenderContext {
   }
 
   Core::Logger* logger() const { return _logger; }
+  Viewer* viewer() const { return _viewer; }
 
  private:
   rerun::RecordingStream& _stream;
   std::string _base_path;
   Core::Logger* _logger;
+  Viewer* _viewer;
 };
 
 using RendererFn = std::function<void(const Core::EnvelopeMetadata&,
@@ -824,6 +829,61 @@ void render_pointcloud(const Core::EnvelopeMetadata& metadata,
   log_map(context.stream(), context.logger(), cloud);
 }
 
+
+template<typename T, typename ReaderT>
+void render_pointcloud_chunk(const Core::EnvelopeMetadata& metadata,
+                      ReaderT reader_or_any,
+                      RenderContext& context) {
+  auto reader = resolve_reader<T>(reader_or_any);
+  auto cloud_msg = reader.getCloud();
+  auto data_reader = cloud_msg.getData();
+  auto width = cloud_msg.getWidth();
+  auto height = cloud_msg.getHeight();
+
+  // Obtener el argumento de compresión desde el Viewer si es posible
+  bool compression = false;
+  if (context.viewer()) {
+    compression = context.viewer()->get_args().get_argument<bool>("--map-compression");
+  }
+
+  pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
+      new pcl::PointCloud<pcl::PointXYZRGBA>(width, height));
+  if (compression) {
+    size_t len = cloud->points.size() * sizeof(pcl::PointXYZRGBA);
+    auto res =
+        uncompress(reinterpret_cast<Bytef*>(cloud->points.data()), &len,
+                   (unsigned char*)data_reader.begin(), data_reader.size());
+    if (res != Z_OK) {
+      if (context.logger()) {
+        context.logger()->error("Error while uncompressing map");
+        switch (res) {
+          case Z_MEM_ERROR:
+            context.logger()->error("Z_MEM_ERROR: insufficient memory");
+            break;
+          case Z_BUF_ERROR:
+            context.logger()->error("Z_BUF_ERROR: insufficient output buffer");
+            break;
+          case Z_DATA_ERROR:
+            context.logger()->error("Z_DATA_ERROR: corrupted input data");
+            break;
+          default:
+            break;
+        }
+      }
+      return;
+    }
+    if (context.logger()) {
+      context.logger()->debug("Read %zu bytes", len);
+    }
+  } else {
+    memcpy((unsigned char*)cloud->points.data(),
+           (unsigned char*)data_reader.begin(), data_reader.size());
+  }
+
+  auto index = std::to_string(reader.getIndex());
+  log_map(context.stream(), context.logger(), cloud, index);
+}
+
 // =====================
 // DetectionImage renderer
 // =====================
@@ -953,6 +1013,9 @@ RendererRegistry::register_renderer("Point",
 [[maybe_unused]] const bool image_registered =
   RendererRegistry::register_renderer("Image", 
                                       &render_image<::Image, ANY_READER>);
+[[maybe_unused]] const bool pointcloud_chunk_registered =
+  RendererRegistry::register_renderer("PointCloudChunk", 
+                                      &render_pointcloud_chunk<::PointCloudChunk, ANY_READER>);
                                       
 // =====================
 // detection_msgs registrations

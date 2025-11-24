@@ -23,9 +23,10 @@
 #include <rerun/recording_stream.hpp>
 
 class Viewer : public Core::Vertex {
- private:
+private:
+  Core::ArgumentParser _args;
   Core::Logger _logger;
- private:
+  
   std::shared_ptr<Core::Subscriber<PointCloud>> _sub;
   std::shared_ptr<Core::Subscriber<PointCloud>> _map_sub;
   std::shared_ptr<Core::Subscriber<PointCloudChunk>> _map_chunk_sub;
@@ -51,6 +52,7 @@ class Viewer : public Core::Vertex {
       const std::optional<std::string> &recording_type = std::nullopt);
 
  public:
+  const Core::ArgumentParser& get_args() const { return _args; }
   Core::Logger* get_logger() { return &_logger; }
 
   template <typename T = bool>
