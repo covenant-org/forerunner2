@@ -200,6 +200,7 @@ int main(int argc, char** argv) {
   std::unique_ptr<RegistryExample::Renderer> renderer;
   if (!args.get_argument<bool>("--no-render")) {
     renderer = std::make_unique<RegistryExample::Renderer>(&viewer);
+    // TODO: Pasar vertex de viewer a render?
   }
   viewer.run();
   return 0;

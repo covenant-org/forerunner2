@@ -11,7 +11,7 @@
 #include "../core/message.hpp"
 #include "../core/dynamic_reflection.hpp"
 #include "../core/vertex.hpp"
-#include "viewer.hpp" // Forward declaration para Viewer
+#include "viewer.hpp" // Forward declaration for Viewer
 
 #include <capnp_schemas/geometry_msgs.capnp.h>
 #include <capnp_schemas/mavlink.capnp.h>
@@ -44,14 +44,14 @@ class Logger;
 }
 
 namespace RerunRenderers {
-// Utilidad para obtener el reader correcto desde AnyPointer o Reader directo
+// Utility to get the correct reader from AnyPointer or direct Reader
 template<typename T, typename ReaderT>
 typename T::Reader resolve_reader(ReaderT reader_or_any) {
   if constexpr (std::is_same_v<ReaderT, ANY_READER>) {
     if (reader_or_any.isStruct()) {
       return reader_or_any.template getAs<T>();
     }
-    // Si no es struct, retorna default constructed (puedes ajustar si quieres lanzar excepción)
+    // Si no es struct, retorna default constructed
     return typename T::Reader();
   } else {
     return reader_or_any;
@@ -103,14 +103,14 @@ class RendererRegistry {
       func(metadata, payload, context);
     };
   }
-  // Sobrecarga para aceptar funciones render_*
+  // Overload to accept render_* functions
   template<typename RenderFunc>
   static bool register_renderer(const std::string& type_name, RenderFunc func) {
     auto& table = instance();
     RendererFn wrapper = RendererRegistry::make_renderer(func);
     return table.map.emplace(type_name, std::move(wrapper)).second;
   }
-  // Versión original para RendererFn directo
+  // Original version for direct RendererFn
   static bool register_renderer(const std::string& type_name, RendererFn fn) {
     auto& table = instance();
     return table.map.emplace(type_name, std::move(fn)).second;
@@ -220,7 +220,7 @@ void render_point(const Core::EnvelopeMetadata& metadata,
                        rerun::Points3D(positions).with_radii({0.05F}));
 }
 
-// Ejemplo de render que reutiliza otros
+// Example of render that reuses others
 template<typename T, typename ReaderT>
 void render_point_stamped(const Core::EnvelopeMetadata& metadata,
                           ReaderT reader_or_any,
@@ -523,7 +523,7 @@ inline void render_octree_marker_array(const Core::EnvelopeMetadata& metadata,
       .with_quaternions({rerun::Quaternion::IDENTITY})
       .with_fill_mode(rerun::components::FillMode::Solid)
       .with_colors(colors));
-  // Estadísticas
+  // Statistics
   context.stream().log(context.make_child_path("stats/octree_count"),
     rerun::Scalars(static_cast<double>(markers.size())));
   context.stream().log(context.make_child_path("stats/octree_dimensions"),
@@ -582,7 +582,7 @@ void render_path(const Core::EnvelopeMetadata& metadata,
   }
 }
 
-// Renderer para Path que replica render_path de Viewer
+// Renderer for Path that replicates render_path from Viewer
 inline void render_path_arrows(const Core::EnvelopeMetadata& metadata,
                               ::capnp::AnyPointer::Reader payload,
                               RerunRenderers::RenderContext& context) {
@@ -594,13 +594,13 @@ inline void render_path_arrows(const Core::EnvelopeMetadata& metadata,
   std::vector<rerun::Position3D> origins;
   std::vector<rerun::Color> colors;
 
-  // Extraer puntos del path
+  // Extract points from the path
   for (auto pose : poses) {
     auto pos = pose.getPose().getPosition();
     points.emplace_back(pos.getX(), pos.getY(), -pos.getZ());
   }
 
-  // Crear vectores de dirección entre puntos consecutivos
+  // Create direction vectors between consecutive points
   for (size_t i = 0; i < poses.size() - 1; ++i) {
     auto current_pos = poses[i].getPose().getPosition();
     auto next_pos = poses[i + 1].getPose().getPosition();
@@ -624,11 +624,11 @@ inline void render_path_arrows(const Core::EnvelopeMetadata& metadata,
     }
   }
 
-  // Loguear el path como puntos
+  // Log the path as points
   context.stream().log(context.make_child_path("path/points"),
     rerun::Points3D(points).with_colors(colors).with_radii({0.05f}));
 
-  // Loguear flechas de dirección
+  // Log direction arrows
   if (!vectors.empty()) {
     context.stream().log(context.make_child_path("path/arrows"),
       rerun::Arrows3D::from_vectors(vectors)
@@ -880,7 +880,6 @@ void render_pointcloud_map(const Core::EnvelopeMetadata& metadata,
     return;
   }
 
-  // Usar la función utilitaria para loguear igual que Viewer::log_map
   log_map(context.stream(), context.logger(), cloud);
 }
 
@@ -895,7 +894,6 @@ void render_pointcloud_chunk(const Core::EnvelopeMetadata& metadata,
   auto width = cloud_msg.getWidth();
   auto height = cloud_msg.getHeight();
 
-  // Obtener el argumento de compresión desde el Viewer si es posible
   bool compression = false;
   if (context.viewer()) {
     compression = context.viewer()->get_args().get_argument<bool>("--map-compression");
@@ -972,7 +970,7 @@ void render_detection_image(const Core::EnvelopeMetadata& metadata,
     render_image<::Image, ::Image::Reader>(metadata, image_data, subcontext);
   }
 
-  // Descripción
+  // Description
   context.stream().log(context.make_child_path("detection_image/description"),
                        rerun::TextLog(detection.getDescription().cStr()));
 
