@@ -533,15 +533,16 @@ void render_marker_array_dispatch(const Core::EnvelopeMetadata& metadata,
   } else
     render_marker_array<T, ReaderT>(metadata, reader_or_any, context);
   }
-}
+
 
 // =====================
 // Path functions
 // =====================
-inline void render_nav_path(const Core::EnvelopeMetadata& metadata,
-                            ::capnp::AnyPointer::Reader payload,
-                            RenderContext& context) {
-  auto reader = payload.getAs<::Path>();
+template<typename T, typename ReaderT>
+void render_path(const Core::EnvelopeMetadata& metadata,
+                  ReaderT reader_or_any,
+                  RenderContext& context) {
+  auto reader = resolve_reader<T>(reader_or_any);
   // Render header
   {
     RenderContext subcontext(context.stream(), context.make_child_path("path"), context.logger());
@@ -554,22 +555,89 @@ inline void render_nav_path(const Core::EnvelopeMetadata& metadata,
     auto pos = pose.getPose().getPosition();
     points.emplace_back(pos.getX(), pos.getY(), -pos.getZ());
   }
-    if (points.size() >= 2) {
-      // Usar la API C++: strips, color verde, radio
-      std::vector<rerun::components::LineStrip3D> strips;
-      strips.emplace_back(points);
-      std::vector<rerun::components::Color> colors = { rerun::components::Color(0, 255, 0) };
-      std::vector<rerun::components::Radius> radii = { rerun::components::Radius(0.02f) };
-      context.stream().log(
-        context.make_child_path("path/line"),
-        rerun::LineStrips3D(strips)
-          .with_colors(colors)
-          .with_radii(radii)
-      );
-    } else if (points.size() == 1) {
+  if (points.size() >= 2) {
+    std::vector<rerun::components::LineStrip3D> strips;
+    strips.emplace_back(points);
+    std::vector<rerun::components::Color> colors = { rerun::components::Color(0, 255, 0) };
+    std::vector<rerun::components::Radius> radii = { rerun::components::Radius(0.02f) };
+    context.stream().log(
+      context.make_child_path("path/line"),
+      rerun::LineStrips3D(strips)
+        .with_colors(colors)
+        .with_radii(radii)
+    );
+  } else if (points.size() == 1) {
     context.stream().log(context.make_child_path("path/line"), rerun::Points3D(points).with_radii({0.04f}));
   } else {
     context.stream().log(context.make_child_path("path/line"), rerun::TextLog("(empty path: no points)"));
+  }
+}
+
+// Renderer para Path que replica render_path de Viewer
+inline void render_path_arrows(const Core::EnvelopeMetadata& metadata,
+                              ::capnp::AnyPointer::Reader payload,
+                              RerunRenderers::RenderContext& context) {
+  auto reader = payload.getAs<::Path>();
+  auto poses = reader.getPoses();
+
+  std::vector<rerun::Position3D> points;
+  std::vector<rerun::Vec3D> vectors;
+  std::vector<rerun::Position3D> origins;
+  std::vector<rerun::Color> colors;
+
+  // Extraer puntos del path
+  for (auto pose : poses) {
+    auto pos = pose.getPose().getPosition();
+    points.emplace_back(pos.getX(), pos.getY(), -pos.getZ());
+  }
+
+  // Crear vectores de dirección entre puntos consecutivos
+  for (size_t i = 0; i < poses.size() - 1; ++i) {
+    auto current_pos = poses[i].getPose().getPosition();
+    auto next_pos = poses[i + 1].getPose().getPosition();
+
+    float dx = next_pos.getX() - current_pos.getX();
+    float dy = next_pos.getY() - current_pos.getY();
+    float dz = next_pos.getZ() - current_pos.getZ();
+
+    float length = std::sqrt(dx * dx + dy * dy + dz * dz);
+    if (length > 0.001f) {
+      float scale = std::min(length * 0.8f, 0.3f);
+      dx = (dx / length) * scale;
+      dy = (dy / length) * scale;
+      dz = (dz / length) * scale;
+
+      origins.emplace_back(current_pos.getX(), current_pos.getY(), -current_pos.getZ());
+      vectors.emplace_back(dx, dy, -dz);
+
+      float t = static_cast<float>(i) / (poses.size() - 1);
+      colors.emplace_back(static_cast<uint8_t>(255 * t), 0, static_cast<uint8_t>(255 * (1 - t)));
+    }
+  }
+
+  // Loguear el path como puntos
+  context.stream().log(context.make_child_path("path/points"),
+    rerun::Points3D(points).with_colors(colors).with_radii({0.05f}));
+
+  // Loguear flechas de dirección
+  if (!vectors.empty()) {
+    context.stream().log(context.make_child_path("path/arrows"),
+      rerun::Arrows3D::from_vectors(vectors)
+        .with_origins(origins)
+        .with_colors(colors)
+        .with_radii({0.02f}));
+  }
+}
+
+// Template for the same type with different implementations
+template<typename T, typename ReaderT>
+void render_path_dispatch(const Core::EnvelopeMetadata& metadata,
+                                  ReaderT reader_or_any,
+                                  RenderContext& context) {
+  if (metadata.topic.find("planned_path") != std::string::npos) {
+    render_path_arrows(metadata, reader_or_any, context);
+  } else {
+    render_path<T, ReaderT>(metadata, reader_or_any, context);
   }
 }
 
@@ -780,10 +848,10 @@ RendererRegistry::register_renderer("Point",
 // nav_msgs registrations
 // =====================
 [[maybe_unused]] const bool nav_path_registered =
-  RendererRegistry::register_renderer("Path", &render_nav_path);
+  RendererRegistry::register_renderer("Path", &render_path_dispatch<::Path, ANY_READER>);
 [[maybe_unused]] const bool odometry_registered =
   RendererRegistry::register_renderer("Odometry", &render_odometry);
-
+  
 // =====================
 // visualization_msgs registrations
 // =====================
@@ -802,7 +870,8 @@ RendererRegistry::register_renderer("Point",
 
 [[maybe_unused]] const bool pointcloud_registered =
   RendererRegistry::register_renderer("PointCloud", &render_pointcloud);
-}  // namespace
+
+}
 
 inline void dispatch_message(const Core::EnvelopeMetadata& metadata,
                       ::capnp::AnyPointer::Reader payload,
@@ -829,7 +898,6 @@ inline void dispatch_message(const Core::IncomingMessage<T>& msg,
   const ::capnp::StructSchema schema = ::capnp::Schema::from<T>().asStruct();
   dispatch_message(msg.metadata, msg.getRawPayload(), context, schema);
 }
-
 }  // namespace RerunRenderers
 
 namespace RegistryExample {
