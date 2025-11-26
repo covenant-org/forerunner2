@@ -51,8 +51,8 @@ void Mavlink::publish_config() {
   msg.publish();
 }
 
-void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
-                         GenericResponse::Builder &res) {
+void Mavlink::command_cb(const Core::IncomingMessage<Command>& command,
+                         GenericResponse::Builder& res) {
   this->_logger.debug("Requested command");
   res.setCode(200);
   res.setMessage("OK");
@@ -451,7 +451,7 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
     case Command::SET_ACTUATORS: {
       auto actuators = command.content.getSetActuators();
       mavsdk::Offboard::ActuatorControlGroup group;
-      for (const auto &value : actuators) {
+      for (const auto& value : actuators) {
         group.controls.push_back(value);
       }
       mavsdk::Offboard::ActuatorControl ctl;
@@ -468,10 +468,13 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
       auto attitude = command.content.getSetAttitude();
       mavsdk::Offboard::Attitude ctl;
       auto q = attitude.getQ();
+      // TODO: Change attitude mavsdk message to use quartenions
+      /*
       ctl.q[0] = q[0];
       ctl.q[1] = q[1];
       ctl.q[2] = q[2];
       ctl.q[3] = q[3];
+      */
       ctl.thrust_value = attitude.getThrust();
       auto ctl_res = this->_offboard->set_attitude(ctl);
       if (ctl_res != mavsdk::Offboard::Result::Success) {
@@ -487,7 +490,7 @@ void Mavlink::command_cb(const Core::IncomingMessage<Command> &command,
   }
 }
 
-bool Mavlink::init_mavlink_connection(const std::string &uri) {
+bool Mavlink::init_mavlink_connection(const std::string& uri) {
   mavsdk::ConnectionResult result = this->_mavsdk.add_any_connection(uri);
   if (result != mavsdk::ConnectionResult::Success) {
     return false;
@@ -526,7 +529,7 @@ void Mavlink::publish_telemtry() {
   msg.publish();
 }
 
-void Mavlink::odometry_cb(const mavsdk::Telemetry::Odometry &odom) {
+void Mavlink::odometry_cb(const mavsdk::Telemetry::Odometry& odom) {
   auto msg = this->_odometry_publisher->new_msg();
   auto angular = msg.content.initAngular();
   auto pos = msg.content.initPosition();
@@ -551,7 +554,7 @@ void Mavlink::odometry_cb(const mavsdk::Telemetry::Odometry &odom) {
 
 void Mavlink::run() {
   this->_passthrough->subscribe_message(
-      HOME_POSITION_MESSAGE_ID, [this](const __mavlink_message &msg) {
+      HOME_POSITION_MESSAGE_ID, [this](const __mavlink_message& msg) {
         mavlink_msg_home_position_decode(&msg, &this->_mavlink_home_position);
         auto home_position_msg = this->_home_position_publisher->new_msg();
         home_position_msg.content.getPos().setX(this->_mavlink_home_position.x);
@@ -573,24 +576,24 @@ void Mavlink::run() {
       std::bind(&Mavlink::odometry_cb, this, std::placeholders::_1));
 
   this->_telemetry->subscribe_battery(
-      [this](const mavsdk::Telemetry::Battery &bat) {
+      [this](const mavsdk::Telemetry::Battery& bat) {
         this->_telemetry_state.bat = bat.remaining_percent;
         this->publish_telemtry();
       });
 
-  this->_telemetry->subscribe_armed([this](const bool &arm) {
+  this->_telemetry->subscribe_armed([this](const bool& arm) {
     this->_telemetry_state.arm = arm;
     this->publish_telemtry();
     // this->_logger.debug("Armed %d", arm);
   });
 
-  this->_telemetry->subscribe_in_air([this](const bool &inar) {
+  this->_telemetry->subscribe_in_air([this](const bool& inar) {
     this->_telemetry_state.inar = inar;
     this->publish_telemtry();
   });
 
   this->_telemetry->subscribe_flight_mode(
-      [this](const mavsdk::Telemetry::FlightMode &mode) {
+      [this](const mavsdk::Telemetry::FlightMode& mode) {
         std::stringstream ss;
         ss << mode;
         this->_telemetry_state.mode = ss.str();
@@ -598,7 +601,7 @@ void Mavlink::run() {
       });
 
   this->_telemetry->subscribe_altitude(
-      [this](const mavsdk::Telemetry::Altitude &altitude) {
+      [this](const mavsdk::Telemetry::Altitude& altitude) {
         auto msg = this->_altitude_publisher->new_msg();
         auto alt = msg.content;
         alt.setLocal(altitude.altitude_local_m);
@@ -610,7 +613,7 @@ void Mavlink::run() {
       });
 
   this->_telemetry->subscribe_heading(
-      [this](const mavsdk::Telemetry::Heading &heading) {
+      [this](const mavsdk::Telemetry::Heading& heading) {
         this->heading = heading.heading_deg;
       });
 
@@ -620,7 +623,7 @@ void Mavlink::run() {
   }
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   Core::BaseArgumentParser base(argc, argv);
   base.add_argument("--mavlink-uri")
       .help("ip where the mavlink instance is running")

@@ -39,7 +39,7 @@ Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
       throw error;
     }
   } else if (auto url = args.present("--grpc")) {
-    auto error = this->_rec->connect_grpc();
+    auto error = this->_rec->connect_grpc(url.value());
     if (error.is_err()) {
       this->_logger.error(
           "Error while connecting to remote viewer '%s' streaming to file: %s",
@@ -84,7 +84,7 @@ Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
 }
 
 void Viewer::controller_metrics_cb(
-    const Core::IncomingMessage<ControlMetrics> &msg) {
+    const Core::IncomingMessage<ControlMetrics>& msg) {
   auto qd = msg.content.getQd();
   auto qe = msg.content.getQe();
   auto pwm = msg.content.getPwm();
@@ -93,11 +93,27 @@ void Viewer::controller_metrics_cb(
       rerun::Boxes3D::from_centers_and_half_sizes({{0, 0, 0}}, {{1, 1, 1}})
           .with_quaternions(
               {rerun::Quaternion::from_wxyz(qd[0], qd[1], qd[2], qd[3])}));
+  this->_rec->log("/controller/qd/w",
+                  rerun::Scalars(static_cast<double>(qd[0])));
+  this->_rec->log("/controller/qd/x",
+                  rerun::Scalars(static_cast<double>(qd[1])));
+  this->_rec->log("/controller/qd/y",
+                  rerun::Scalars(static_cast<double>(qd[2])));
+  this->_rec->log("/controller/qd/z",
+                  rerun::Scalars(static_cast<double>(qd[3])));
   this->_rec->log(
       "/world/controller/qe",
       rerun::Boxes3D::from_centers_and_half_sizes({{0, 0, 0}}, {{1, 1, 1}})
           .with_quaternions(
               {rerun::Quaternion::from_wxyz(qe[0], qe[1], qe[2], qe[3])}));
+  this->_rec->log("/controller/qe/w",
+                  rerun::Scalars(static_cast<double>(qe[0])));
+  this->_rec->log("/controller/qe/x",
+                  rerun::Scalars(static_cast<double>(qe[1])));
+  this->_rec->log("/controller/qe/y",
+                  rerun::Scalars(static_cast<double>(qe[2])));
+  this->_rec->log("/controller/qe/z",
+                  rerun::Scalars(static_cast<double>(qe[3])));
 
   uint8_t i = 0;
   for (auto esc : pwm) {
@@ -148,9 +164,9 @@ rerun::Color Viewer::distance_to_color(float distance) {
   }
 }
 
-void Viewer::render_path(const Core::IncomingMessage<Path> &msg,
-                         const std::string &points_name,
-                         const std::string &path_arrows) {
+void Viewer::render_path(const Core::IncomingMessage<Path>& msg,
+                         const std::string& points_name,
+                         const std::string& path_arrows) {
   auto poses = msg.content.getPoses();
 
   std::vector<rerun::Position3D> points;
@@ -210,12 +226,12 @@ void Viewer::render_path(const Core::IncomingMessage<Path> &msg,
   }
 }
 
-void Viewer::planned_path_cb(const Core::IncomingMessage<Path> &msg) {
+void Viewer::planned_path_cb(const Core::IncomingMessage<Path>& msg) {
   this->_logger.info("planned_path_cb was called");
   this->render_path(msg, "path/points", "path/arrows");
 }
 
-void Viewer::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
+void Viewer::odom_cb(const Core::IncomingMessage<Odometry>& msg) {
   auto content = msg.content;
   auto q = msg.content.getQ();
   auto position = content.getPosition();
@@ -236,7 +252,7 @@ void Viewer::odom_cb(const Core::IncomingMessage<Odometry> &msg) {
       rerun::Scalars(static_cast<double>(content.getVelocity().getZ())));
 }
 
-void Viewer::goal_cb(const Core::IncomingMessage<Position> &msg) {
+void Viewer::goal_cb(const Core::IncomingMessage<Position>& msg) {
   auto content = msg.content;
   this->_rec->log("goal/position",
                   rerun::Boxes3D::from_centers_and_sizes(
@@ -250,7 +266,7 @@ void Viewer::goal_cb(const Core::IncomingMessage<Position> &msg) {
                   rerun::Scalars(static_cast<double>(content.getZ())));
 }
 
-void Viewer::octree_cb(const Core::IncomingMessage<MarkerArray> &msg) {
+void Viewer::octree_cb(const Core::IncomingMessage<MarkerArray>& msg) {
   std::vector<rerun::components::PoseTranslation3D> centers;
   std::vector<rerun::HalfSize3D> sizes;
   std::vector<rerun::Color> colors;
@@ -282,7 +298,7 @@ void Viewer::octree_cb(const Core::IncomingMessage<MarkerArray> &msg) {
       rerun::TextLog("Octree markers: " + std::to_string(markers.size())));
 }
 
-void Viewer::octree_layers_cb(const Core::IncomingMessage<MarkerArray> &msg) {
+void Viewer::octree_layers_cb(const Core::IncomingMessage<MarkerArray>& msg) {
   std::vector<rerun::components::PoseTranslation3D> centers;
   std::vector<rerun::HalfSize3D> sizes;
   std::vector<rerun::Color> colors;
@@ -314,14 +330,14 @@ void Viewer::octree_layers_cb(const Core::IncomingMessage<MarkerArray> &msg) {
       rerun::TextLog("Octree markers: " + std::to_string(markers.size())));
 }
 
-void Viewer::mic_cb(const Core::IncomingMessage<StereoMic> &msg) {
+void Viewer::mic_cb(const Core::IncomingMessage<StereoMic>& msg) {
   this->_rec->log("mic/left",
                   rerun::Scalars(static_cast<double>(msg.content.getLeft())));
   this->_rec->log("mic/right",
                   rerun::Scalars(static_cast<double>(msg.content.getRight())));
 }
 
-void Viewer::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
+void Viewer::point_cloud_cb(const Core::IncomingMessage<PointCloud>& msg) {
   auto data_reader = msg.content.getData();
   auto width = msg.content.getWidth();
   auto height = msg.content.getHeight();
@@ -329,10 +345,10 @@ void Viewer::point_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
   pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
       new pcl::PointCloud<pcl::PointXYZRGBA>());
   std::stringstream buffer(
-      std::string((char *)data_reader.begin(), data_reader.size()));
+      std::string((char*)data_reader.begin(), data_reader.size()));
   try {
     _point_cloud_decoder->decodePointCloud(buffer, cloud);
-  } catch (const std::exception &e) {
+  } catch (const std::exception& e) {
     _logger.warn("Error while decoding cloudpoint: %s", e.what());
     return;
   }
@@ -412,7 +428,7 @@ void Viewer::log_map(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud,
 }
 
 void Viewer::map_cloud_chunk_cb(
-    const Core::IncomingMessage<PointCloudChunk> &msg) {
+    const Core::IncomingMessage<PointCloudChunk>& msg) {
   auto cloud_msg = msg.content.getCloud();
   auto data_reader = cloud_msg.getData();
   auto width = cloud_msg.getWidth();
@@ -424,8 +440,8 @@ void Viewer::map_cloud_chunk_cb(
   if (compression) {
     size_t len = cloud->points.size() * sizeof(pcl::PointXYZRGBA);
     auto res =
-        uncompress(reinterpret_cast<Bytef *>(cloud->points.data()), &len,
-                   (unsigned char *)data_reader.begin(), data_reader.size());
+        uncompress(reinterpret_cast<Bytef*>(cloud->points.data()), &len,
+                   (unsigned char*)data_reader.begin(), data_reader.size());
     if (res != Z_OK) {
       _logger.error("Error while uncompressing map");
       switch (res) {
@@ -445,15 +461,15 @@ void Viewer::map_cloud_chunk_cb(
     }
     _logger.debug("Read %d bytes", len);
   } else {
-    memcpy((unsigned char *)cloud->points.data(),
-           (unsigned char *)data_reader.begin(), data_reader.size());
+    memcpy((unsigned char*)cloud->points.data(),
+           (unsigned char*)data_reader.begin(), data_reader.size());
   }
 
   auto index = std::to_string(msg.content.getIndex());
   this->log_map(cloud, index);
 }
 
-void Viewer::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
+void Viewer::map_cloud_cb(const Core::IncomingMessage<PointCloud>& msg) {
   auto data_reader = msg.content.getData();
   auto width = msg.content.getWidth();
   auto height = msg.content.getHeight();
@@ -462,11 +478,11 @@ void Viewer::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
       new pcl::PointCloud<pcl::PointXYZRGBA>(width, height));
 
   std::stringstream buffer(
-      std::string((char *)data_reader.begin(), data_reader.size()));
+      std::string((char*)data_reader.begin(), data_reader.size()));
 
   try {
     _map_point_cloud_decoder->decodePointCloud(buffer, cloud);
-  } catch (const std::exception &e) {
+  } catch (const std::exception& e) {
     _logger.warn("Error while decoding cloudpoint: %s", e.what());
     return;
   }
@@ -486,7 +502,7 @@ void Viewer::run() {
   while (true) sleep(1);
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   Core::BaseArgumentParser args(argc, argv);
   auto root = Core::find_root();
   if (root.empty()) {
@@ -529,7 +545,7 @@ int main(int argc, char **argv) {
       .implicit_value(false)
       .help("Enable decompression of map chunks")
       .flag();
-  auto &group = args.add_mutually_exclusive_group();
+  auto& group = args.add_mutually_exclusive_group();
   group.add_argument("--grpc").help("URL of remote viewer");
   group.add_argument("--save-file")
       .help("Path of file to save the recording to");

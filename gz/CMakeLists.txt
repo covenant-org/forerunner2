@@ -31,3 +31,14 @@ target_link_libraries(${PROJECT_NAME}
                         ${GZ-MSGS_LIBRARIES}
                         ${GZ-TRANSPORT_LIBRARIES}
                         ${PCL_LIBRARIES})
+
+add_executable(suspend suspend.cpp)
+
+target_link_libraries(suspend
+                        core
+                        cppzmq 
+                        capnp 
+                        capnp_schemas 
+                        kj
+                        ${GZ-MSGS_LIBRARIES}
+                        ${GZ-TRANSPORT_LIBRARIES})
