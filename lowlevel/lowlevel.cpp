@@ -28,12 +28,14 @@ LowLevel::LowLevel(Core::ArgumentParser args) : Core::Vertex(args) {
   _g = Eigen::Vector3d(0, 0, -9.81);
   _m = 2;
   _f = Eigen::Vector3d(0, 0, 0);
-  _kpt << 4, 0, 0, 0, 4, 0, 0, 0, 7.5;
-  _kdt << 2, 0, 0, 0, 2, 0, 0, 0, 3;
+  auto kpt = this->get_argument<double>("--kpt");
+  auto kdt = this->get_argument<double>("--kdt");
+  _kpt << kpt, 0, 0, 0, kpt, 0, 0, 0, kpt;
+  _kdt << kdt, 0, 0, 0, kdt, 0, 0, 0, kdt;
   auto kpr = this->_args.get_argument<double>("--kpr");
   auto kdr = this->_args.get_argument<double>("--kdr");
-  _kpr << kpr, 0, 0, 0, kpr, 0, 0, 0, kpr;
-  _kdr << kdr, 0, 0, 0, kdr, 0, 0, 0, kdr;
+  _kpr << kpr, 0, 0, 0, kpr, 0, 0, 0, 9;
+  _kdr << kdr, 0, 0, 0, kdr, 0, 0, 0, 8.5;
   _J << 0.0216, 0, 0, 0, 0.0216, 0, 0, 0, 0.04;
 }
 
@@ -94,10 +96,11 @@ Eigen::Vector3d LowLevel::get_torque_input(Eigen::Vector3d fu, double yaw) {
   }
   auto real = std::sqrt((1 + dot) / 2);
 
-  _qd =
-      Eigen::Quaterniond(real, -imaginary.x(), -imaginary.y(), -imaginary.z());
+  //  _qd =
+  //      Eigen::Quaterniond(real, -imaginary.x(), -imaginary.y(),
+  //      -imaginary.z());
   // FIX: Forced quartenion
-  _qd = Eigen::Quaterniond(std::cos(-M_PI_4 / 2), std::sin(-M_PI_4 / 2), 0, 0);
+  _qd = Eigen::Quaterniond(std::cos(M_PI_4 / 2), std::sin(M_PI_4 / 2), 0, 0);
   _qe = qz.conjugate() * _qd * this->_q;
   _qe.normalize();
   auto theta = 2 * std::acos(_qe.w());
@@ -158,7 +161,7 @@ void LowLevel::run() {
     Eigen::Vector3d pd{0, 0, 7};
     auto goal_msg = this->_goal_pub->new_msg();
     goal_msg.content.setX(pd.x());
-    goal_msg.content.setY(pd.y());
+    goal_msg.content.setY(-pd.y());
     goal_msg.content.setZ(-pd.z());
     goal_msg.publish();
     double error, fth = 0;
@@ -179,17 +182,19 @@ void LowLevel::run() {
     this->_logger.info("Error :%f", error);
     float factor = 1.0 / 4.0;
     float real_pwm[4];
-    fth = 24;
-    tau[1] -= tau[1];
-    tau[2] -= tau[2] / 0.005;
-    real_pwm[0] = factor * (fth / 10 + tau[0] + tau[1] + tau[2]);
-    real_pwm[1] = factor * (fth / 10 - tau[0] - tau[1] + tau[2]);
-    real_pwm[2] = factor * (fth / 10 - tau[0] + tau[1] - tau[2]);
-    real_pwm[3] = factor * (fth / 10 + tau[0] - tau[1] - tau[2]);
-    actuators[0] = sqrt_n_trim(real_pwm[0]);
-    actuators[1] = sqrt_n_trim(real_pwm[1]);
-    actuators[2] = sqrt_n_trim(real_pwm[2]);
-    actuators[3] = sqrt_n_trim(real_pwm[3]);
+    fth = this->_args.get_argument<double>("--fth");
+    fth /= 0.003;
+    tau[0] /= 0.001;
+    tau[1] = -1 * tau[1] / 0.001;
+    tau[2] = -1 * tau[2] / 0.00001;
+    real_pwm[0] = factor * (fth + tau[0] + tau[1] + tau[2]);
+    real_pwm[1] = factor * (fth - tau[0] - tau[1] + tau[2]);
+    real_pwm[3] = factor * (fth + tau[0] - tau[1] - tau[2]);
+    real_pwm[2] = factor * (fth - tau[0] + tau[1] - tau[2]);
+    actuators[0] = sqrt_n_trim(real_pwm[0] / 1000);
+    actuators[1] = sqrt_n_trim(real_pwm[1] / 1000);
+    actuators[2] = sqrt_n_trim(real_pwm[2] / 1000);
+    actuators[3] = sqrt_n_trim(real_pwm[3] / 1000);
     ctl.set(0, actuators[0]);
     ctl.set(1, actuators[1]);
     ctl.set(2, actuators[2]);
@@ -203,10 +208,10 @@ void LowLevel::run() {
     qd_msg.set(2, _qd.y());
     qd_msg.set(3, _qd.z());
     auto qe_msg = msg.content.initQe(4);
-    qe_msg.set(0, _q.w());
-    qe_msg.set(1, _q.x());
-    qe_msg.set(2, _q.y());
-    qe_msg.set(3, _q.z());
+    qe_msg.set(0, _qe.w());
+    qe_msg.set(1, _qe.x());
+    qe_msg.set(2, _qe.y());
+    qe_msg.set(3, _qe.z());
     auto pwm_msg = msg.content.initPwm(4);
     pwm_msg.set(0, actuators[0]);
     pwm_msg.set(1, actuators[1]);
@@ -228,8 +233,11 @@ void LowLevel::run() {
 
 int main(int argc, char** argv) {
   Core::BaseArgumentParser args(argc, argv);
-  args.add_argument("--kpr").default_value(4.0).scan<'g', double>();
+  args.add_argument("--kpr").default_value(4.8).scan<'g', double>();
   args.add_argument("--kdr").default_value(2.2).scan<'g', double>();
+  args.add_argument("--kpt").default_value(1.0).scan<'g', double>();
+  args.add_argument("--kdt").default_value(0.0).scan<'g', double>();
+  args.add_argument("--fth").default_value(30.0).scan<'g', double>();
   LowLevel controller(args);
   controller.run();
   return 0;

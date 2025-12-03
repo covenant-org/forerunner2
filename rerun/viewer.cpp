@@ -101,11 +101,6 @@ void Viewer::controller_metrics_cb(
                   rerun::Scalars(static_cast<double>(qd[2])));
   this->_rec->log("/controller/qd/z",
                   rerun::Scalars(static_cast<double>(qd[3])));
-  this->_rec->log(
-      "/world/controller/qe",
-      rerun::Boxes3D::from_centers_and_half_sizes({{0, 0, 0}}, {{1, 1, 1}})
-          .with_quaternions(
-              {rerun::Quaternion::from_wxyz(qe[0], qe[1], qe[2], qe[3])}));
   this->_rec->log("/controller/qe/w",
                   rerun::Scalars(static_cast<double>(qe[0])));
   this->_rec->log("/controller/qe/x",
@@ -250,6 +245,20 @@ void Viewer::odom_cb(const Core::IncomingMessage<Odometry>& msg) {
   this->_rec->log(
       "world/drone/velocity/z",
       rerun::Scalars(static_cast<double>(content.getVelocity().getZ())));
+
+  this->_rec->log("/controller/q/w",
+                  rerun::Scalars(static_cast<double>(q.getW())));
+  this->_rec->log("/controller/q/x",
+                  rerun::Scalars(static_cast<double>(q.getX())));
+  this->_rec->log("/controller/q/y",
+                  rerun::Scalars(static_cast<double>(q.getY())));
+  this->_rec->log("/controller/q/z",
+                  rerun::Scalars(static_cast<double>(q.getZ())));
+  this->_rec->log(
+      "/world/q",
+      rerun::Boxes3D::from_centers_and_half_sizes({{0, 0, 0}}, {{1, 1, 1}})
+          .with_quaternions({rerun::datatypes::Quaternion{
+              q.getX(), q.getY(), q.getZ(), q.getW()}}));
 }
 
 void Viewer::goal_cb(const Core::IncomingMessage<Position>& msg) {
