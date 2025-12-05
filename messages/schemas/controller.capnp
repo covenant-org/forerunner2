@@ -83,5 +83,5 @@ struct ControlMetrics{
     thrust  @2 :List(Float32);
     pwm     @3 :List(Float32);
     fu      @4 :List(Float32);
-    error   @5 :Float32;
+    error   @5 :List(Float32);
   }

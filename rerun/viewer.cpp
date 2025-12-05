@@ -127,9 +127,12 @@ void Viewer::controller_metrics_cb(
     this->_rec->log("/world/controller/fu/" + std::to_string(i++),
                     rerun::Scalars(static_cast<double>(u)));
   }
+  i = 0;
   auto error = msg.content.getError();
-  this->_rec->log("/world/controller/position_error",
-                  rerun::Scalars(static_cast<double>(error)));
+  for (auto e : error) {
+    this->_rec->log("/world/controller/error/" + std::to_string(i++),
+                    rerun::Scalars(static_cast<double>(e)));
+  }
 }
 
 rerun::Color Viewer::distance_to_color(float distance) {
@@ -265,7 +268,7 @@ void Viewer::goal_cb(const Core::IncomingMessage<Position>& msg) {
   auto content = msg.content;
   this->_rec->log("goal/position",
                   rerun::Boxes3D::from_centers_and_sizes(
-                      {{content.getX(), content.getY(), -content.getZ()}},
+                      {{content.getX(), content.getY(), content.getZ()}},
                       {{0.3, 0.3, 0.3}}));
   this->_rec->log("goal/coords_x",
                   rerun::Scalars(static_cast<double>(content.getX())));
