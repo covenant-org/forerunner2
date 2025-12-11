@@ -24,7 +24,7 @@ LowLevel::LowLevel(Core::ArgumentParser args) : Core::Vertex(args) {
   _q = Eigen::Quaterniond(1, 0, 0, 0);
   _pos = Eigen::Vector3d(0, 0, 0);
   _linear_velocity = Eigen::Vector3d(0, 0, 0);
-  _angular_velocity = Eigen::Vector3d(0, 0, 0);
+  _angular_vel = Eigen::Vector3d(0, 0, 0);
   _g = Eigen::Vector3d(0, 0, -9.81);
   _m = 0.216;
   _f = Eigen::Vector3d(0, 0, 0);
@@ -34,8 +34,9 @@ LowLevel::LowLevel(Core::ArgumentParser args) : Core::Vertex(args) {
   _kdt << kdt, 0, 0, 0, kdt, 0, 0, 0, 0.31;
   auto kpr = this->_args.get_argument<double>("--kpr");
   auto kdr = this->_args.get_argument<double>("--kdr");
-  _kpr << -1 * kpr, 0, 0, 0, kpr, 0, 0, 0, kpr;
-  _kdr << -1 * kdr, 0, 0, 0, kdr, 0, 0, 0, kdr;
+  _krmax = this->get_argument<double>("--krmax");
+  _kpr << kpr, 0, 0, 0, kpr, 0, 0, 0, 0;
+  _kdr << kdr, 0, 0, 0, kdr, 0, 0, 0, 0;
   _J << 0.0216, 0, 0, 0, 0.0216, 0, 0, 0, 0.04;
 }
 
@@ -51,7 +52,7 @@ void LowLevel::_odom_cb(const Core::IncomingMessage<Odometry>& msg) {
   _pos = Eigen::Vector3d(odom_pos.getX(), odom_pos.getY(), odom_pos.getZ());
   _linear_velocity =
       Eigen::Vector3d(velocity.getX(), velocity.getY(), velocity.getZ());
-  _angular_velocity =
+  _angular_vel =
       Eigen::Vector3d(angular.getX(), angular.getY(), angular.getZ());
 }
 
@@ -98,6 +99,7 @@ Eigen::Vector3d LowLevel::get_torque_input(Eigen::Vector3d fu, double yaw) {
 
   _qd =
       Eigen::Quaterniond(real, -imaginary.x(), -imaginary.y(), -imaginary.z());
+  _qd = Eigen::Quaterniond(1, 0, 0, 0);
   _qe = qz.conjugate() * _qd.conjugate() * this->_q;
   _qe.normalize();
   auto theta = 2 * std::acos(_qe.w());
@@ -110,8 +112,15 @@ Eigen::Vector3d LowLevel::get_torque_input(Eigen::Vector3d fu, double yaw) {
     _qe.normalize();
   }
 
-  return -2 * _kpr * quaternion_ln(_qe) - _kdr * this->_angular_velocity +
-         this->_angular_velocity.cross(this->_J * this->_angular_velocity);
+  Eigen::Vector3d pd_coef =
+      -_kpr * quaternion_ln(_qe) - _kdr * this->_angular_vel;
+  auto pd_norm = pd_coef.norm();
+  _logger.info("pd_coef %f krmax: %f", pd_norm, _krmax);
+  Eigen::Vector3d control(0, 0, 0);
+  if (pd_norm != 0) {
+    control = -_krmax * std::tanh(pd_norm / _krmax) * (pd_coef / pd_norm);
+  }
+  return control + this->_angular_vel.cross(this->_J * this->_angular_vel);
 }
 
 float sqrt_n_trim(float input) {
@@ -177,10 +186,13 @@ void LowLevel::run() {
     }
     auto actuator_ctl = this->_mavlink_client->new_msg();
     auto ctl = actuator_ctl.content.initSetActuators(4);
-    this->_logger.info("fth: %f tx: %f ty: %f tz: %f", fth, tau[0], tau[1],
-                       tau[2]);
     float factor = 1.0 / 4.0;
     float real_pwm[4];
+    if (get_argument<double>("--fth") > 0) {
+      fth = get_argument<double>("fth");
+    }
+    this->_logger.info("fth: %f tx: %f ty: %f tz: %f", fth, tau[0], tau[1],
+                       tau[2]);
     tau[0] /= 1;
     tau[1] = -1 * tau[1] / 1;
     tau[2] = -1 * tau[2] / 1;
@@ -235,6 +247,8 @@ int main(int argc, char** argv) {
   Core::BaseArgumentParser args(argc, argv);
   args.add_argument("--kpr").default_value(22.0).scan<'g', double>();
   args.add_argument("--kdr").default_value(15.0).scan<'g', double>();
+  args.add_argument("--krmax").default_value(0.0).scan<'g', double>();
+  args.add_argument("--fth").default_value(0.0).scan<'g', double>();
   args.add_argument("--kpt").default_value(0.15).scan<'g', double>();
   args.add_argument("--kdt").default_value(0.05).scan<'g', double>();
   LowLevel controller(args);

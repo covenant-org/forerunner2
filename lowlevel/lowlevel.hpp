@@ -24,7 +24,7 @@ class LowLevel : public Core::Vertex {
   std::shared_ptr<Core::ActionClient<Command, GenericResponse>> _mavlink_client;
   Eigen::Vector3d _pos;
   Eigen::Vector3d _linear_velocity;
-  Eigen::Vector3d _angular_velocity;
+  Eigen::Vector3d _angular_vel;
   Eigen::Vector3d _g;
   Eigen::Vector3d _f;
   Eigen::Matrix3d _kdt;
@@ -32,6 +32,7 @@ class LowLevel : public Core::Vertex {
   Eigen::Matrix3d _J;
   Eigen::Matrix3d _kpr;
   Eigen::Matrix3d _kdr;
+  double _krmax;
   double _m;
   void _odom_cb(const Core::IncomingMessage<Odometry>&);
   Eigen::Quaterniond get_q_desired(Eigen::Vector3d fu, double yaw);
