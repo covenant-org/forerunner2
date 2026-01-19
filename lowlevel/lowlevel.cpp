@@ -30,13 +30,14 @@ LowLevel::LowLevel(Core::ArgumentParser args) : Core::Vertex(args) {
   _f = Eigen::Vector3d(0, 0, 0);
   auto kpt = this->get_argument<double>("--kpt");
   auto kdt = this->get_argument<double>("--kdt");
-  _kpt << kpt, 0, 0, 0, kpt, 0, 0, 0, 0.4;
-  _kdt << kdt, 0, 0, 0, kdt, 0, 0, 0, 0.31;
+  _kpt << kpt, 0, 0, 0, kpt, 0, 0, 0, 0.45;
+  ///build/lowlevel/lowlevel --kpt 0.45 --kdt 0.43  --kpr 63 --kdr 11.8 --krmax 900
+  _kdt << kdt, 0, 0, 0, kdt, 0, 0, 0, 0.48;
   auto kpr = this->_args.get_argument<double>("--kpr");
   auto kdr = this->_args.get_argument<double>("--kdr");
   _krmax = this->get_argument<double>("--krmax");
-  _kpr << kpr, 0, 0, 0, kpr, 0, 0, 0, 0;
-  _kdr << kdr, 0, 0, 0, kdr, 0, 0, 0, 0;
+  _kpr << kpr, 0, 0, 0, kpr, 0, 0, 0, 80;
+  _kdr << kdr, 0, 0, 0, kdr, 0, 0, 0, 40;
   _J << 0.0216, 0, 0, 0, 0.0216, 0, 0, 0, 0.04;
 }
 
@@ -99,7 +100,6 @@ Eigen::Vector3d LowLevel::get_torque_input(Eigen::Vector3d fu, double yaw) {
 
   _qd =
       Eigen::Quaterniond(real, -imaginary.x(), -imaginary.y(), -imaginary.z());
-  _qd = Eigen::Quaterniond(1, 0, 0, 0);
   _qe = qz.conjugate() * _qd.conjugate() * this->_q;
   _qe.normalize();
   auto theta = 2 * std::acos(_qe.w());
@@ -194,8 +194,8 @@ void LowLevel::run() {
     this->_logger.info("fth: %f tx: %f ty: %f tz: %f", fth, tau[0], tau[1],
                        tau[2]);
     tau[0] /= 1;
-    tau[1] = -1 * tau[1] / 1;
-    tau[2] = -1 * tau[2] / 1;
+    tau[1] = 1 * tau[1] / 1;
+    tau[2] = 1 * tau[2] / 1;
     real_pwm[0] = factor * (fth + tau[0] + tau[1] + tau[2]);
     real_pwm[1] = factor * (fth - tau[0] - tau[1] + tau[2]);
     real_pwm[3] = factor * (fth + tau[0] - tau[1] - tau[2]);
@@ -245,12 +245,12 @@ void LowLevel::run() {
 
 int main(int argc, char** argv) {
   Core::BaseArgumentParser args(argc, argv);
-  args.add_argument("--kpr").default_value(22.0).scan<'g', double>();
-  args.add_argument("--kdr").default_value(15.0).scan<'g', double>();
-  args.add_argument("--krmax").default_value(0.0).scan<'g', double>();
+  args.add_argument("--kpr").default_value(63.0).scan<'g', double>();
+  args.add_argument("--kdr").default_value(11.8).scan<'g', double>();
+  args.add_argument("--krmax").default_value(900).scan<'g', double>();
   args.add_argument("--fth").default_value(0.0).scan<'g', double>();
-  args.add_argument("--kpt").default_value(0.15).scan<'g', double>();
-  args.add_argument("--kdt").default_value(0.05).scan<'g', double>();
+  args.add_argument("--kpt").default_value(0.25).scan<'g', double>();
+  args.add_argument("--kdt").default_value(0.2865).scan<'g', double>();
   LowLevel controller(args);
   controller.run();
   return 0;
