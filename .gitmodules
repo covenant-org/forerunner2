@@ -28,3 +28,6 @@
 [submodule "vendor/zlib"]
 	path = vendor/zlib
 	url = https://github.com/madler/zlib.git
+[submodule "crazybridge/crazyflie_cpp"]
+	path = crazybridge/crazyflie_cpp
+	url = https://github.com/whoenig/crazyflie_cpp.git
