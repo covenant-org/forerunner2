@@ -5,7 +5,7 @@
 
 void NATNET_CALLCONV MessageHandler(Verbosity msgType, const char* msg) {
   // Optional: Filter out debug messages
-  if (msgType < Verbosity_Info) {
+  if (msgType < Verbosity_None) {
     return;
   }
 
