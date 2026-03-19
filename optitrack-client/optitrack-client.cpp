@@ -238,6 +238,19 @@ void OptitrackClient::OutputFrameQueueToConsole() {
       // 0x01 : bool, rigid body was successfully tracked in this frame
       bool bTrackingValid = data->RigidBodies[i].params & 0x01;
       int streamingID = data->RigidBodies[i].ID;
+      auto msg = this->_pose_publisher->new_msg();
+      auto pose = msg.content.initPose();
+      auto orientation = pose.initOrientation();
+      auto position = pose.initPosition();
+      position.setX(data->RigidBodies[i].x);
+      position.setY(data->RigidBodies[i].y);
+      position.setZ(data->RigidBodies[i].z);
+      orientation.setX(data->RigidBodies[i].qx);
+      orientation.setY(data->RigidBodies[i].qy);
+      orientation.setZ(data->RigidBodies[i].qz);
+      orientation.setW(data->RigidBodies[i].qw);
+      msg.publish();
+
       printf("%s [ID=%d  Error(mm)=%.5f  Tracked=%d]\n",
              g_AssetIDtoAssetName[streamingID].c_str(), streamingID,
              data->RigidBodies[i].MeanError * 1000.0f, bTrackingValid);
@@ -339,14 +352,6 @@ void OptitrackClient::OutputFrameQueueToConsole() {
         strcpy(szMarkerType, "Unlabeled");
       else
         strcpy(szMarkerType, "Labeled");
-
-      auto msg = this->_pose_publisher->new_msg();
-      auto pose = msg.content.initPose();
-      auto position = pose.initPosition();
-      position.setX(marker.x);
-      position.setY(marker.y);
-      position.setZ(marker.z);
-      msg.publish();
 
       printf(
           "%s Marker [ModelID=%d, MarkerID=%d] [size=%3.2f] "

@@ -1049,3 +1049,5 @@ perf.data*
 .devcontainer/.devpod-internal
 
 *.svo2
+params*.csv
+log*.csv
