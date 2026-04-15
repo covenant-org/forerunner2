@@ -1,6 +1,6 @@
 #pragma once
 #include "argument_parser.hpp"
-#include "capnp_schemas/geometry_msgs.capnp.h"
+#include "capnp_schemas/optitrack.capnp.h"
 #include "publisher.hpp"
 #include "utils.hpp"
 #include "vertex.hpp"
@@ -16,7 +16,8 @@
 
 class OptitrackClient : public Core::Vertex {
  private:
-  std::shared_ptr<Core::Publisher<PoseStamped>> _pose_publisher;
+  std::shared_ptr<Core::Publisher<TrackingMarker>> _marker_publisher;
+  std::shared_ptr<Core::Publisher<RigidBody>> _rigid_publisher;
   NatNetClient* g_pClient = NULL;
   bool gUpdatedDataDescriptions = false;
   bool gNeedUpdatedDataDescriptions = true;

@@ -23,6 +23,58 @@
 #include <vector>
 #include <zlib.h>
 
+void Viewer::controller_metrics_cb(
+    const Core::IncomingMessage<ControlMetrics>& msg) {
+  auto qd = msg.content.getQd();
+  auto qe = msg.content.getQe();
+  auto pwm = msg.content.getPwm();
+  this->_rec->log(
+      "/world/controller/qd",
+      rerun::Boxes3D::from_centers_and_half_sizes({{0, 0, 0}}, {{1, 1, 1}})
+          .with_quaternions(
+              {rerun::Quaternion::from_wxyz(qd[0], qd[1], qd[2], qd[3])}));
+  this->_rec->log("/controller/qd/w",
+                  rerun::Scalars(static_cast<double>(qd[0])));
+  this->_rec->log("/controller/qd/x",
+                  rerun::Scalars(static_cast<double>(qd[1])));
+  this->_rec->log("/controller/qd/y",
+                  rerun::Scalars(static_cast<double>(qd[2])));
+  this->_rec->log("/controller/qd/z",
+                  rerun::Scalars(static_cast<double>(qd[3])));
+  this->_rec->log("/controller/qe/w",
+                  rerun::Scalars(static_cast<double>(qe[0])));
+  this->_rec->log("/controller/qe/x",
+                  rerun::Scalars(static_cast<double>(qe[1])));
+  this->_rec->log("/controller/qe/y",
+                  rerun::Scalars(static_cast<double>(qe[2])));
+  this->_rec->log("/controller/qe/z",
+                  rerun::Scalars(static_cast<double>(qe[3])));
+
+  uint8_t i = 0;
+  for (auto esc : pwm) {
+    this->_rec->log("/world/controller/pwm/" + std::to_string(i++),
+                    rerun::Scalars(static_cast<double>(esc)));
+  }
+  i = 0;
+  auto thrust = msg.content.getThrust();
+  for (auto t : thrust) {
+    this->_rec->log("/world/controller/thrust/" + std::to_string(i++),
+                    rerun::Scalars(static_cast<double>(t)));
+  }
+  i = 0;
+  auto fu = msg.content.getFu();
+  for (auto u : fu) {
+    this->_rec->log("/world/controller/fu/" + std::to_string(i++),
+                    rerun::Scalars(static_cast<double>(u)));
+  }
+  i = 0;
+  auto error = msg.content.getError();
+  for (auto e : error) {
+    this->_rec->log("/world/controller/error/" + std::to_string(i++),
+                    rerun::Scalars(static_cast<double>(e)));
+  }
+}
+
 Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
   this->_point_cloud_decoder =
       new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>();
@@ -88,6 +140,9 @@ Viewer::Viewer(Core::ArgumentParser args) : Core::Vertex(args) {
   this->_detection_images_sub = this->create_subscriber<DetectionImage>(
       "detection_images",
       std::bind(&Viewer::detection_image_cb, this, std::placeholders::_1));
+  this->_ctl_metrics_sub = this->create_subscriber<ControlMetrics>(
+      "controller/metrics",
+      std::bind(&::Viewer::controller_metrics_cb, this, std::placeholders::_1));
 }
 
 rerun::Color Viewer::distance_to_color(float distance) {
@@ -278,10 +333,9 @@ void Viewer::zed_image_cb(const Core::IncomingMessage<ImageData>& msg) {
           rerun::Collection<uint8_t>::take_ownership(std::move(bytes)),
           rerun::components::MediaType::jpeg()));
 
-  this->_rec->log(
-      "zed/stats",
-      rerun::TextLog("Image " + std::to_string(image.getWidth()) + "x" +
-                     std::to_string(image.getHeight())));
+  this->_rec->log("zed/stats",
+                  rerun::TextLog("Image " + std::to_string(image.getWidth()) +
+                                 "x" + std::to_string(image.getHeight())));
 }
 
 void Viewer::goal_cb(const Core::IncomingMessage<Position>& msg) {
@@ -460,7 +514,7 @@ void Viewer::log_map(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud,
 }
 
 void Viewer::map_cloud_chunk_cb(
-    const Core::IncomingMessage<PointCloudChunk> &msg) {
+    const Core::IncomingMessage<PointCloudChunk>& msg) {
   auto cloud_msg = msg.content.getCloud();
   auto data_reader = cloud_msg.getData();
   auto width = cloud_msg.getWidth();
@@ -501,7 +555,7 @@ void Viewer::map_cloud_chunk_cb(
   this->log_map(cloud, index);
 }
 
-void Viewer::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
+void Viewer::map_cloud_cb(const Core::IncomingMessage<PointCloud>& msg) {
   auto data_reader = msg.content.getData();
   auto width = msg.content.getWidth();
   auto height = msg.content.getHeight();
@@ -510,11 +564,11 @@ void Viewer::map_cloud_cb(const Core::IncomingMessage<PointCloud> &msg) {
       new pcl::PointCloud<pcl::PointXYZRGBA>(width, height));
 
   std::stringstream buffer(
-      std::string((char *)data_reader.begin(), data_reader.size()));
+      std::string((char*)data_reader.begin(), data_reader.size()));
 
   try {
     _map_point_cloud_decoder->decodePointCloud(buffer, cloud);
-  } catch (const std::exception &e) {
+  } catch (const std::exception& e) {
     _logger.warn("Error while decoding cloudpoint: %s", e.what());
     return;
   }

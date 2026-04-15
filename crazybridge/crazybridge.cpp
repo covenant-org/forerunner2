@@ -5,41 +5,144 @@
 #include <Eigen/src/Core/Matrix.h>
 #include <Eigen/src/Geometry/Quaternion.h>
 #include <cstdio>
+#include <fstream>
 #include <functional>
 #include <memory>
+#include <string>
 #include <unistd.h>
 
 CrazyBridge::CrazyBridge(Core::ArgumentParser args)
     : Core::Vertex(args),
       crf("radio://0/100/2M/E7E7E7E7E7", this->clogger,
           std::bind(&CrazyBridge::cb, this, std::placeholders::_1)) {
-  printf("%s\n", this->crf.getFirmwareVersion().c_str());
+  this->_logger.info("Firmware: %s\n", this->crf.getFirmwareVersion().c_str());
   this->crf.requestParamToc();
   this->crf.requestLogToc();
-  this->crf.setParam(51, 1);
+
+  this->_logger.info("Reading file");
+  std::fstream pid_params_file("./pid.conf");
+  this->_logger.info("Setting PID translation parameters");
+  std::string kp_x_str, kp_y_str, kp_z_str, kd_x_str, kd_y_str, kd_z_str,
+      emptyline;
+
+  std::getline(pid_params_file, emptyline);
+  this->_logger.debug("%s", emptyline.c_str());
+
+  std::getline(pid_params_file, kp_x_str);
+  std::getline(pid_params_file, kp_y_str);
+  std::getline(pid_params_file, kp_z_str);
+
+  std::getline(pid_params_file, emptyline);
+  this->_logger.debug("%s", emptyline.c_str());
+
+  std::getline(pid_params_file, kd_x_str);
+  std::getline(pid_params_file, kd_y_str);
+  std::getline(pid_params_file, kd_z_str);
+  this->_logger.debug("Done reading file");
+  auto trans_kp_x = this->crf.getParamTocEntry("ootParams", "trans_kp_x");
+  auto trans_kp_y = this->crf.getParamTocEntry("ootParams", "trans_kp_y");
+  auto trans_kp_z = this->crf.getParamTocEntry("ootParams", "trans_kp_z");
+  this->_logger.debug("Done reading kp param entries");
+  auto trans_kd_x = this->crf.getParamTocEntry("ootParams", "trans_kd_x");
+  auto trans_kd_y = this->crf.getParamTocEntry("ootParams", "trans_kd_y");
+  auto trans_kd_z = this->crf.getParamTocEntry("ootParams", "trans_kd_z");
+  this->_logger.debug("Done reading param entries");
+  this->crf.setParam(trans_kp_x->id, std::stof(kp_x_str));
+  this->crf.setParam(trans_kp_y->id, std::stof(kp_y_str));
+  this->crf.setParam(trans_kp_z->id, std::stof(kp_z_str));
+  this->crf.setParam(trans_kd_x->id, std::stof(kd_x_str));
+  this->crf.setParam(trans_kd_y->id, std::stof(kd_y_str));
+  this->crf.setParam(trans_kd_z->id, std::stof(kd_z_str));
+
+  this->_logger.info("Setting PID rotation parameters");
+
+  std::getline(pid_params_file, emptyline);
+
+  std::getline(pid_params_file, kp_x_str);
+  std::getline(pid_params_file, kp_y_str);
+  std::getline(pid_params_file, kp_z_str);
+
+  std::getline(pid_params_file, emptyline);
+
+  std::getline(pid_params_file, kd_x_str);
+  std::getline(pid_params_file, kd_y_str);
+  std::getline(pid_params_file, kd_z_str);
+  auto rot_kp_x = this->crf.getParamTocEntry("ootParams", "rot_kp_x");
+  auto rot_kp_y = this->crf.getParamTocEntry("ootParams", "rot_kp_y");
+  auto rot_kp_z = this->crf.getParamTocEntry("ootParams", "rot_kp_z");
+  auto rot_kd_x = this->crf.getParamTocEntry("ootParams", "rot_kd_x");
+  auto rot_kd_y = this->crf.getParamTocEntry("ootParams", "rot_kd_y");
+  auto rot_kd_z = this->crf.getParamTocEntry("ootParams", "rot_kd_z");
+  this->crf.setParam(rot_kp_x->id, std::stof(kp_x_str));
+  this->crf.setParam(rot_kp_y->id, std::stof(kp_y_str));
+  this->crf.setParam(rot_kp_z->id, std::stof(kp_z_str));
+  this->crf.setParam(rot_kd_x->id, std::stof(kd_x_str));
+  this->crf.setParam(rot_kd_y->id, std::stof(kd_y_str));
+  this->crf.setParam(rot_kd_z->id, std::stof(kd_z_str));
+  this->_logger.info("Done configuring pid");
+
+  //  high level commander
+  this->crf.setParam(96, 1);
+  // kalman estimator
   this->crf.setParam(157, 2);
-  this->_pose_subscriber = this->create_subscriber<PoseStamped>(
+  this->_marker_subscriber = this->create_subscriber<TrackingMarker>(
       "optitrack/marker",
-      std::bind(&CrazyBridge::pose_callback, this, std::placeholders::_1));
+      std::bind(&CrazyBridge::marker_cb, this, std::placeholders::_1));
   this->_odom_publisher = this->create_publisher<Odometry>("odometry");
+
+  std::function<void(uint32_t, std::vector<double>*, void*)> posErrorLogCB =
+      std::bind(&onLogPosError, std::placeholders::_1, std::placeholders::_2,
+                std::placeholders::_3);
+  std::function<void(uint32_t, std::vector<double>*, void*)> velErrorLogCB =
+      std::bind(&onLogVelError, std::placeholders::_1, std::placeholders::_2,
+                std::placeholders::_3);
+  std::function<void(uint32_t, std::vector<double>*, void*)> qErrorLogCB =
+      std::bind(&onLogQError, std::placeholders::_1, std::placeholders::_2,
+                std::placeholders::_3);
+  std::function<void(uint32_t, std::vector<double>*, void*)> angVelErrorLogCB =
+      std::bind(&onLogAngVelError, std::placeholders::_1, std::placeholders::_2,
+                std::placeholders::_3);
 
   std::function<void(uint32_t, std::vector<double>*, void*)> qLogCB =
       std::bind(&onLogQuartenion, std::placeholders::_1, std::placeholders::_2,
                 std::placeholders::_3);
-  this->qLog = std::make_unique<LogBlockGeneric>(
-      &this->crf,
-      std::vector<std::string>{"kalman.stateX", "kalman.stateY",
-                               "kalman.stateZ"},
-      this, qLogCB);
-
   std::function<void(uint32_t, std::vector<double>*, void*)> posLogCB =
       std::bind(&onLogPosition, std::placeholders::_1, std::placeholders::_2,
                 std::placeholders::_3);
+  this->posLog = std::make_unique<LogBlockGeneric>(
+      &this->crf,
+      std::vector<std::string>{"kalman.stateX", "kalman.stateY",
+                               "kalman.stateZ"},
+      this, posLogCB);
+
   this->qLog = std::make_unique<LogBlockGeneric>(
       &this->crf,
       std::vector<std::string>{"kalman.q0", "kalman.q1", "kalman.q2",
                                "kalman.q3"},
-      this, posLogCB);
+      this, qLogCB);
+  this->posErrorLog = std::make_unique<LogBlockGeneric>(
+      &this->crf,
+      std::vector<std::string>{"oot.pos_err_x", "oot.pos_err_y",
+                               "oot.pos_err_z"},
+      this, posErrorLogCB);
+  this->velErrorLog = std::make_unique<LogBlockGeneric>(
+      &this->crf,
+      std::vector<std::string>{"oot.vel_err_x", "oot.vel_err_y",
+                               "oot.vel_err_z"},
+      this, velErrorLogCB);
+  this->qErrorLog = std::make_unique<LogBlockGeneric>(
+      &this->crf,
+      std::vector<std::string>{"oot.q_err_x", "oot.q_err_y", "oot.q_err_z",
+                               "oot.q_err_w"},
+      this, qErrorLogCB);
+  this->angVelErrorLog = std::make_unique<LogBlockGeneric>(
+      &this->crf,
+      std::vector<std::string>{"oot.ang_vel_err_x", "oot.ang_vel_err_y",
+                               "oot.ang_vel_err_z"},
+      this, angVelErrorLogCB);
+  this->_metrics_publisher =
+      this->create_publisher<ControlMetrics>("controller/metrics");
+  this->_logger.debug("CrazyBridge setup ready");
 }
 
 void onLogQuartenion(uint32_t time_in_ms, std::vector<double>* values,
@@ -53,12 +156,60 @@ void onLogQuartenion(uint32_t time_in_ms, std::vector<double>* values,
   bridge->publish_odom();
 }
 
+void onLogPosError(uint32_t time_in_ms, std::vector<double>* values,
+                   void* data) {
+  (void)time_in_ms;
+  if (data == nullptr) return;
+  if (values->size() != 3) return;
+  // CrazyBridge* bridge = (CrazyBridge*)data;
+}
+
+void onLogVelError(uint32_t time_in_ms, std::vector<double>* values,
+                   void* data) {
+  (void)time_in_ms;
+  if (data == nullptr) return;
+  if (values->size() != 3) return;
+  // CrazyBridge* bridge = (CrazyBridge*)data;
+}
+
+void onLogQError(uint32_t time_in_ms, std::vector<double>* values, void* data) {
+  (void)time_in_ms;
+  if (data == nullptr) return;
+  if (values->size() != 4) return;
+  CrazyBridge* bridge = (CrazyBridge*)data;
+  bridge->last_q_error = Eigen::Quaterniond(values->at(0), values->at(1),
+                                            values->at(2), values->at(3));
+}
+void onLogAngVelError(uint32_t time_in_ms, std::vector<double>* values,
+                      void* data) {
+  (void)time_in_ms;
+  if (data == nullptr) return;
+  if (values->size() != 3) return;
+  CrazyBridge* bridge = (CrazyBridge*)data;
+  auto msg = bridge->_metrics_publisher->new_msg();
+  msg.content.initFu(0);
+  msg.content.initPwm(0);
+  msg.content.initQd(0);
+  msg.content.initThrust(0);
+  auto e = msg.content.initQe(4);
+  e.set(0, bridge->last_q_error.x());
+  e.set(1, bridge->last_q_error.y());
+  e.set(2, bridge->last_q_error.z());
+  e.set(3, bridge->last_q_error.w());
+
+  auto error = msg.content.initError(3);
+  error.set(0, (float)values->at(0));
+  error.set(1, (float)values->at(1));
+  error.set(2, (float)values->at(2));
+  msg.publish();
+}
+
 void onLogPosition(uint32_t time_in_ms, std::vector<double>* values,
                    void* data) {
   (void)time_in_ms;
   if (data == nullptr) return;
-  CrazyBridge* bridge = (CrazyBridge*)data;
   if (values->size() != 3) return;
+  CrazyBridge* bridge = (CrazyBridge*)data;
   bridge->_pose.pos =
       Eigen::Vector3d(values->at(0), values->at(1), values->at(2));
   bridge->publish_odom();
@@ -69,28 +220,24 @@ void CrazyBridge::publish_odom() {
   auto q = msg.content.initQ();
   auto pos = msg.content.initPosition();
   q.setX(this->_pose.q.x());
-  q.setY(this->_pose.q.y());
-  q.setZ(this->_pose.q.z());
+  q.setY(-this->_pose.q.y());
+  q.setZ(-this->_pose.q.z());
   q.setW(this->_pose.q.w());
   pos.setX(this->_pose.pos.x());
-  pos.setY(this->_pose.pos.y());
-  pos.setZ(this->_pose.pos.z());
+  pos.setY(-this->_pose.pos.y());
+  pos.setZ(-this->_pose.pos.z());
   msg.publish();
 }
 
-void CrazyBridge::pose_callback(const Core::IncomingMessage<PoseStamped>& msg) {
-  auto pose = msg.content.getPose();
-  auto position = pose.getPosition();
-  auto orientation = pose.getOrientation();
-  auto x = (float)position.getX();
-  auto y = (float)position.getY();
-  auto z = (float)position.getZ();
-  auto qx = (float)orientation.getX();
-  auto qy = (float)orientation.getY();
-  auto qz = (float)orientation.getZ();
-  auto qw = (float)orientation.getW();
-  this->_logger.debug("Received position %f, %f, %f, %f, %f, %f\n", x, y, z, qx,
-                      qz, qy, qw);
+void CrazyBridge::marker_cb(const Core::IncomingMessage<TrackingMarker>& msg) {
+  this->_logger.debug("pose callback");
+  auto point = msg.content.getPoint();
+  auto x = point.getX();
+  auto y = point.getY();
+  auto z = point.getZ();
+  //  this->_logger.debug("Received position %f, %f, %f, %f, %f, %f\n", x, y, z,
+  //  qx,
+  //                      qz, qy, qw);
   // this->crf.sendExternalPoseUpdate(x, y, z, qx, qy, qz, qw);
   this->crf.sendExternalPositionUpdate(x, y, z);
 }
@@ -98,18 +245,24 @@ void CrazyBridge::pose_callback(const Core::IncomingMessage<PoseStamped>& msg) {
 void CrazyBridge::cb(const char* msg) { printf("%s\n", msg); }
 
 void CrazyBridge::run() {
-  this->qLog->start(10);
-  this->posLog->start(10);
+  this->qLog->start(1);
+  this->posLog->start(1);
+  this->qErrorLog->start(1);
+  this->angVelErrorLog->start(1);
   char k;
   scanf("%c", &k);
   while (getchar() != '\n');
-  this->crf.takeoff(2, 2);
-  int i = 0;
-  while (i < 100) {
-    this->crf.goTo(0, 0, 0, 0, 2);
-    usleep(50000);
-  }
-  this->crf.land(0, 1);
+  this->crf.takeoff(2, 3);
+  sleep(7);
+  this->crf.goTo(1.5, 1.5, 2, 0, 2);
+  sleep(7);
+  //  usleep(50000);
+  //  int i = 0;
+  //  while (i < 10) {
+  //    this->crf.goTo(0, 0, 2, 0, 2);
+  //    usleep(5000);
+  //  }
+  this->crf.land(0, 5);
   this->qLog->stop();
   this->posLog->stop();
 }

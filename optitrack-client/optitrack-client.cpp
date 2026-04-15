@@ -51,8 +51,10 @@ void NATNET_CALLCONV DataHandler(sFrameOfMocapData* data, void* pUserData) {
 
 OptitrackClient::OptitrackClient(Core::ArgumentParser args)
     : Core::Vertex(args) {
-  this->_pose_publisher =
-      this->create_publisher<PoseStamped>("optitrack/marker");
+  this->_marker_publisher =
+      this->create_publisher<TrackingMarker>("optitrack/marker");
+  this->_rigid_publisher =
+      this->create_publisher<RigidBody>("optitrack/rigid_body");
   // Print NatNet client version info
   unsigned char ver[4];
   NatNet_GetVersion(ver);
@@ -137,7 +139,7 @@ void OptitrackClient::run() {
     // print all mocap frames in data queue to console
     OutputFrameQueueToConsole();
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
   }
 }
 
@@ -238,7 +240,10 @@ void OptitrackClient::OutputFrameQueueToConsole() {
       // 0x01 : bool, rigid body was successfully tracked in this frame
       bool bTrackingValid = data->RigidBodies[i].params & 0x01;
       int streamingID = data->RigidBodies[i].ID;
-      auto msg = this->_pose_publisher->new_msg();
+
+      auto msg = this->_rigid_publisher->new_msg();
+      msg.content.setId(streamingID);
+      msg.content.setName(g_AssetIDtoAssetName[streamingID].c_str());
       auto pose = msg.content.initPose();
       auto orientation = pose.initOrientation();
       auto position = pose.initPosition();
@@ -262,54 +267,7 @@ void OptitrackClient::OutputFrameQueueToConsole() {
              data->RigidBodies[i].qw);
     }
 
-    // Skeletons
-    printf("------------------------\n");
-    printf("Skeletons [Count=%d]\n", data->nSkeletons);
-    for (i = 0; i < data->nSkeletons; i++) {
-      sSkeletonData skData = data->Skeletons[i];
-      printf("Skeleton [ID=%d  Bone count=%d]\n", skData.skeletonID,
-             skData.nRigidBodies);
-      for (int j = 0; j < skData.nRigidBodies; j++) {
-        sRigidBodyData rbData = skData.RigidBodyData[j];
-        printf("Bone %d\t%3.2f\t%3.2f\t%3.2f\t%3.2f\t%3.2f\t%3.2f\t%3.2f\n",
-               rbData.ID, rbData.x, rbData.y, rbData.z, rbData.qx, rbData.qy,
-               rbData.qz, rbData.qw);
-      }
-    }
-
     // Trained Markerset Data (Motive 3.1 / NatNet 4.1 and later)
-    printf("------------------------\n");
-    printf("Assets [Count=%d]\n", data->nAssets);
-    for (int i = 0; i < data->nAssets; i++) {
-      sAssetData asset = data->Assets[i];
-      printf("Trained Markerset [ID=%d  Bone count=%d   Marker count=%d]\n",
-             asset.assetID, asset.nRigidBodies, asset.nMarkers);
-
-      // Trained Markerset Rigid Bodies
-      for (int j = 0; j < asset.nRigidBodies; j++) {
-        // note : Trained markerset ids are of the form:
-        // parent markerset ID  : high word (upper 16 bits of int)
-        // rigid body id        : low word  (lower 16 bits of int)
-        int assetID, rigidBodyID;
-        sRigidBodyData rbData = asset.RigidBodyData[j];
-        NatNet_DecodeID(rbData.ID, &assetID, &rigidBodyID);
-        printf("Bone %d\t%3.2f\t%3.2f\t%3.2f\t%3.2f\t%3.2f\t%3.2f\t%3.2f\n",
-               rigidBodyID, rbData.x, rbData.y, rbData.z, rbData.qx, rbData.qy,
-               rbData.qz, rbData.qw);
-      }
-
-      // Trained Markerset markers
-      for (int j = 0; j < asset.nMarkers; j++) {
-        sMarker marker = asset.MarkerData[j];
-        int assetID, markerID;
-        NatNet_DecodeID(marker.ID, &assetID, &markerID);
-        printf(
-            "Marker [AssetID=%d, MarkerID=%d] [size=%3.2f] "
-            "[pos=%3.2f,%3.2f,%3.2f] [residual(mm)=%.4f]\n",
-            assetID, markerID, marker.size, marker.x, marker.y, marker.z,
-            marker.residual * 1000.0f);
-      }
-    }
 
     // labeled markers - this includes all markers (Active, Passive, and
     // 'unlabeled' (markers with no asset but a PointCloud ID)
@@ -352,6 +310,14 @@ void OptitrackClient::OutputFrameQueueToConsole() {
         strcpy(szMarkerType, "Unlabeled");
       else
         strcpy(szMarkerType, "Labeled");
+
+      auto marker_msg = this->_marker_publisher->new_msg();
+      marker_msg.content.setId(markerID);
+      auto point = marker_msg.content.initPoint();
+      point.setX(marker.x);
+      point.setY(marker.y);
+      point.setZ(marker.z);
+      marker_msg.publish();
 
       printf(
           "%s Marker [ModelID=%d, MarkerID=%d] [size=%3.2f] "
