@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.15)
 project(crazybridge)
 
+
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 find_package(cppzmq REQUIRED)
 find_package(capnp_schemas REQUIRED)
@@ -20,3 +21,5 @@ target_link_libraries(${PROJECT_NAME}
 
 include_directories(crazyflie_cpp/include)
 include_directories(crazyflie_cpp/crazyflie-link-cpp/include)
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE OOT)

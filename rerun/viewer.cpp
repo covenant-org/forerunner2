@@ -246,9 +246,9 @@ void Viewer::odom_cb(const Core::IncomingMessage<Odometry>& msg) {
   this->_rec->log("world/drone",
                   rerun::Transform3D::from_translation_rotation(
                       rerun::components::Translation3D{
-                          position.getX(), -position.getY(), -position.getZ()},
+                          position.getX(), position.getY(), position.getZ()},
                       rerun::Rotation3D(rerun::datatypes::Quaternion{
-                          q.getX(), -q.getY(), -q.getZ(), q.getW()})));
+                          q.getX(), q.getY(), q.getZ(), q.getW()})));
 }
 
 void Viewer::person_reco_path_cb(const Core::IncomingMessage<Point>& msg) {

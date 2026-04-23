@@ -8,6 +8,7 @@
 #include "subscriber.hpp"
 #include "vertex.hpp"
 #include <Eigen/Dense>
+#include <Eigen/src/Core/Matrix.h>
 #include <Eigen/src/Geometry/Quaternion.h>
 #include <memory>
 
@@ -36,6 +37,7 @@ class CrazyBridge : public Core::Vertex {
   std::shared_ptr<Core::Publisher<Odometry>> _odom_publisher;
   void cb(const char*);
   std::unique_ptr<LogBlockGeneric> qErrorLog;
+  std::unique_ptr<LogBlockGeneric> qdLog;
   std::unique_ptr<LogBlockGeneric> angVelErrorLog;
   std::unique_ptr<LogBlockGeneric> posErrorLog;
   std::unique_ptr<LogBlockGeneric> velErrorLog;
@@ -44,6 +46,8 @@ class CrazyBridge : public Core::Vertex {
 
  public:
   Eigen::Quaterniond last_q_error;
+  Eigen::Quaterniond last_qd;
+  Eigen::Vector3d last_pos_error;
   InternalPose _pose;
   std::shared_ptr<Core::Publisher<ControlMetrics>> _metrics_publisher;
   void marker_cb(const Core::IncomingMessage<TrackingMarker>&);
@@ -62,6 +66,8 @@ void onLogAngVelError(uint32_t time_in_ms, std::vector<double>* values,
                       void* /*userData*/);
 void onLogQuartenion(uint32_t time_in_ms, std::vector<double>* values,
                      void* /*userData*/);
+void onLogQD(uint32_t time_in_ms, std::vector<double>* values,
+             void* /*userData*/);
 void onLogPosition(uint32_t time_in_ms, std::vector<double>* values,
                    void* /*userData*/);
 

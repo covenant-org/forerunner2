@@ -19,6 +19,7 @@ CrazyBridge::CrazyBridge(Core::ArgumentParser args)
   this->crf.requestParamToc();
   this->crf.requestLogToc();
 
+#ifdef OOT
   this->_logger.info("Reading file");
   std::fstream pid_params_file("./pid.conf");
   this->_logger.info("Setting PID translation parameters");
@@ -80,6 +81,7 @@ CrazyBridge::CrazyBridge(Core::ArgumentParser args)
   this->crf.setParam(rot_kd_y->id, std::stof(kd_y_str));
   this->crf.setParam(rot_kd_z->id, std::stof(kd_z_str));
   this->_logger.info("Done configuring pid");
+#endif  // OOT
 
   //  high level commander
   this->crf.setParam(96, 1);
@@ -109,6 +111,9 @@ CrazyBridge::CrazyBridge(Core::ArgumentParser args)
   std::function<void(uint32_t, std::vector<double>*, void*)> posLogCB =
       std::bind(&onLogPosition, std::placeholders::_1, std::placeholders::_2,
                 std::placeholders::_3);
+  std::function<void(uint32_t, std::vector<double>*, void*)> qdLogCB =
+      std::bind(&onLogQD, std::placeholders::_1, std::placeholders::_2,
+                std::placeholders::_3);
   this->posLog = std::make_unique<LogBlockGeneric>(
       &this->crf,
       std::vector<std::string>{"kalman.stateX", "kalman.stateY",
@@ -120,6 +125,10 @@ CrazyBridge::CrazyBridge(Core::ArgumentParser args)
       std::vector<std::string>{"kalman.q0", "kalman.q1", "kalman.q2",
                                "kalman.q3"},
       this, qLogCB);
+  this->_metrics_publisher =
+      this->create_publisher<ControlMetrics>("controller/metrics");
+
+#ifdef OOT
   this->posErrorLog = std::make_unique<LogBlockGeneric>(
       &this->crf,
       std::vector<std::string>{"oot.pos_err_x", "oot.pos_err_y",
@@ -135,13 +144,16 @@ CrazyBridge::CrazyBridge(Core::ArgumentParser args)
       std::vector<std::string>{"oot.q_err_x", "oot.q_err_y", "oot.q_err_z",
                                "oot.q_err_w"},
       this, qErrorLogCB);
+  this->qdLog = std::make_unique<LogBlockGeneric>(
+      &this->crf,
+      std::vector<std::string>{"oot.qd_x", "oot.qd_y", "oot.qd_z", "oot.qd_w"},
+      this, qdLogCB);
   this->angVelErrorLog = std::make_unique<LogBlockGeneric>(
       &this->crf,
       std::vector<std::string>{"oot.ang_vel_err_x", "oot.ang_vel_err_y",
                                "oot.ang_vel_err_z"},
       this, angVelErrorLogCB);
-  this->_metrics_publisher =
-      this->create_publisher<ControlMetrics>("controller/metrics");
+#endif  // OOT
   this->_logger.debug("CrazyBridge setup ready");
 }
 
@@ -156,12 +168,23 @@ void onLogQuartenion(uint32_t time_in_ms, std::vector<double>* values,
   bridge->publish_odom();
 }
 
+void onLogQD(uint32_t time_in_ms, std::vector<double>* values, void* data) {
+  (void)time_in_ms;
+  if (data == nullptr) return;
+  CrazyBridge* bridge = (CrazyBridge*)data;
+  if (values->size() != 4) return;
+  bridge->last_qd = Eigen::Quaterniond(values->at(3), values->at(0),
+                                       values->at(1), values->at(2));
+}
+
 void onLogPosError(uint32_t time_in_ms, std::vector<double>* values,
                    void* data) {
   (void)time_in_ms;
   if (data == nullptr) return;
   if (values->size() != 3) return;
-  // CrazyBridge* bridge = (CrazyBridge*)data;
+  CrazyBridge* bridge = (CrazyBridge*)data;
+  bridge->last_pos_error =
+      Eigen::Vector3d(values->at(0), values->at(1), values->at(2));
 }
 
 void onLogVelError(uint32_t time_in_ms, std::vector<double>* values,
@@ -173,12 +196,13 @@ void onLogVelError(uint32_t time_in_ms, std::vector<double>* values,
 }
 
 void onLogQError(uint32_t time_in_ms, std::vector<double>* values, void* data) {
+  printf("dafdfa\n");
   (void)time_in_ms;
   if (data == nullptr) return;
   if (values->size() != 4) return;
   CrazyBridge* bridge = (CrazyBridge*)data;
-  bridge->last_q_error = Eigen::Quaterniond(values->at(0), values->at(1),
-                                            values->at(2), values->at(3));
+  bridge->last_q_error = Eigen::Quaterniond(values->at(3), values->at(0),
+                                            values->at(1), values->at(2));
 }
 void onLogAngVelError(uint32_t time_in_ms, std::vector<double>* values,
                       void* data) {
@@ -189,18 +213,23 @@ void onLogAngVelError(uint32_t time_in_ms, std::vector<double>* values,
   auto msg = bridge->_metrics_publisher->new_msg();
   msg.content.initFu(0);
   msg.content.initPwm(0);
-  msg.content.initQd(0);
-  msg.content.initThrust(0);
+  auto qd = msg.content.initQd(4);
+  qd.set(1, bridge->last_qd.x());
+  qd.set(2, bridge->last_qd.y());
+  qd.set(3, bridge->last_qd.z());
+  qd.set(0, bridge->last_qd.w());
+
   auto e = msg.content.initQe(4);
-  e.set(0, bridge->last_q_error.x());
-  e.set(1, bridge->last_q_error.y());
-  e.set(2, bridge->last_q_error.z());
-  e.set(3, bridge->last_q_error.w());
+  e.set(1, bridge->last_q_error.x());
+  e.set(2, bridge->last_q_error.y());
+  e.set(3, bridge->last_q_error.z());
+  e.set(0, bridge->last_q_error.w());
 
   auto error = msg.content.initError(3);
-  error.set(0, (float)values->at(0));
-  error.set(1, (float)values->at(1));
-  error.set(2, (float)values->at(2));
+  error.set(0, (float)bridge->last_pos_error.x());
+  error.set(1, (float)bridge->last_pos_error.y());
+  error.set(2, (float)bridge->last_pos_error.z());
+
   msg.publish();
 }
 
@@ -220,12 +249,12 @@ void CrazyBridge::publish_odom() {
   auto q = msg.content.initQ();
   auto pos = msg.content.initPosition();
   q.setX(this->_pose.q.x());
-  q.setY(-this->_pose.q.y());
-  q.setZ(-this->_pose.q.z());
+  q.setY(this->_pose.q.y());
+  q.setZ(this->_pose.q.z());
   q.setW(this->_pose.q.w());
   pos.setX(this->_pose.pos.x());
-  pos.setY(-this->_pose.pos.y());
-  pos.setZ(-this->_pose.pos.z());
+  pos.setY(this->_pose.pos.y());
+  pos.setZ(this->_pose.pos.z());
   msg.publish();
 }
 
@@ -245,16 +274,21 @@ void CrazyBridge::marker_cb(const Core::IncomingMessage<TrackingMarker>& msg) {
 void CrazyBridge::cb(const char* msg) { printf("%s\n", msg); }
 
 void CrazyBridge::run() {
-  this->qLog->start(1);
-  this->posLog->start(1);
+  this->qLog->start(5);
+  this->posLog->start(5);
+
+#ifdef OOT
   this->qErrorLog->start(1);
-  this->angVelErrorLog->start(1);
+  this->qdLog->start(1);
+  this->angVelErrorLog->start(10);
+  this->_logger.info("logging oot");
+#endif  // OOT
   char k;
   scanf("%c", &k);
   while (getchar() != '\n');
   this->crf.takeoff(2, 3);
-  sleep(7);
-  this->crf.goTo(1.5, 1.5, 2, 0, 2);
+  sleep(4);
+  this->crf.goTo(1, 1, 2, 0, 4);
   sleep(7);
   //  usleep(50000);
   //  int i = 0;
