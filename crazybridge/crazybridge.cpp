@@ -13,7 +13,7 @@
 
 CrazyBridge::CrazyBridge(Core::ArgumentParser args)
     : Core::Vertex(args),
-      crf("radio://0/100/2M/E7E7E7E7E7", this->clogger,
+      crf("radio://0/80/2M/E7E7E7E7E7", this->clogger,
           std::bind(&CrazyBridge::cb, this, std::placeholders::_1)) {
   this->_logger.info("Firmware: %s\n", this->crf.getFirmwareVersion().c_str());
   this->crf.requestParamToc();
@@ -131,9 +131,8 @@ CrazyBridge::CrazyBridge(Core::ArgumentParser args)
 #ifdef OOT
   this->posErrorLog = std::make_unique<LogBlockGeneric>(
       &this->crf,
-      std::vector<std::string>{"oot.pos_err_x", "oot.pos_err_y",
-                               "oot.pos_err_z"},
-      this, posErrorLogCB);
+      std::vector<std::string>{"oot.fth_x", "oot.fth_y", "oot.fth_z"}, this,
+      posErrorLogCB);
   this->velErrorLog = std::make_unique<LogBlockGeneric>(
       &this->crf,
       std::vector<std::string>{"oot.vel_err_x", "oot.vel_err_y",
@@ -196,7 +195,6 @@ void onLogVelError(uint32_t time_in_ms, std::vector<double>* values,
 }
 
 void onLogQError(uint32_t time_in_ms, std::vector<double>* values, void* data) {
-  printf("dafdfa\n");
   (void)time_in_ms;
   if (data == nullptr) return;
   if (values->size() != 4) return;
@@ -280,23 +278,19 @@ void CrazyBridge::run() {
 #ifdef OOT
   this->qErrorLog->start(1);
   this->qdLog->start(1);
-  this->angVelErrorLog->start(10);
+  this->angVelErrorLog->start(1);
+  this->posErrorLog->start(5);
   this->_logger.info("logging oot");
 #endif  // OOT
   char k;
   scanf("%c", &k);
   while (getchar() != '\n');
-  this->crf.takeoff(2, 3);
-  sleep(4);
-  this->crf.goTo(1, 1, 2, 0, 4);
-  sleep(7);
-  //  usleep(50000);
-  //  int i = 0;
-  //  while (i < 10) {
-  //    this->crf.goTo(0, 0, 2, 0, 2);
-  //    usleep(5000);
-  //  }
-  this->crf.land(0, 5);
+  this->crf.takeoff(2, 2);
+  sleep(3);
+  //  this->crf.goTo(0.3, 0, 2, 0, 4);
+  //  sleep(4);
+  this->crf.land(0, 3);
+  sleep(5);
   this->qLog->stop();
   this->posLog->stop();
 }
